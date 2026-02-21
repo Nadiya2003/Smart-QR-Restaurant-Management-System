@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 
-// @desc    Register a new customer
+// @desc    Register a new customer (Single User Mode: Deletes existing users)
 // @route   POST /api/auth/register
 // @access  Public
 const registerCustomer = async (req, res) => {
@@ -14,23 +14,16 @@ const registerCustomer = async (req, res) => {
             return res.status(400).json({ message: 'Please add all fields' });
         }
 
-        // Check if customer exists
-        const [existingCustomers] = await db.query(
-            'SELECT id FROM customers WHERE email = ?',
-            [email]
-        );
-
-        if (existingCustomers.length > 0) {
-            return res.status(400).json({ message: 'User already exists' });
-        }
-
         // Hash password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create customer
+        // SINGLE USER MODE: Delete all existing customers
+        await db.query('DELETE FROM customers');
+
+        // Create customer (using 'name' and 'password_hash' columns)
         const [result] = await db.query(
-            'INSERT INTO customers (full_name, email, phone, password) VALUES (?, ?, ?, ?)',
+            'INSERT INTO customers (name, email, phone, password_hash) VALUES (?, ?, ?, ?)',
             [full_name, email, phone, hashedPassword]
         );
 
@@ -38,7 +31,7 @@ const registerCustomer = async (req, res) => {
             res.status(201).json({
                 message: 'Customer registered successfully',
                 id: result.insertId,
-                full_name,
+                full_name, // Returning as full_name for frontend consistency
                 email
             });
         } else {
@@ -70,12 +63,14 @@ const loginCustomer = async (req, res) => {
 
         const customer = customers[0];
 
-        if (customer && (await bcrypt.compare(password, customer.password))) {
+        // Check password against password_hash
+        if (customer && (await bcrypt.compare(password, customer.password_hash))) {
             res.json({
                 message: 'Login successful',
                 id: customer.id,
-                full_name: customer.full_name,
+                full_name: customer.name, // Mapping 'name' to 'full_name' for frontend
                 email: customer.email,
+                phone: customer.phone,
                 token: generateToken(customer.id),
             });
         } else {
@@ -94,12 +89,20 @@ const getCustomerProfile = async (req, res) => {
     try {
         // req.user is set by authentication middleware
         const [customers] = await db.query(
-            'SELECT id, full_name, email, phone, created_at FROM customers WHERE id = ?',
+            'SELECT id, name, email, phone, created_at FROM customers WHERE id = ?',
             [req.user.id]
         );
 
         if (customers.length > 0) {
-            res.json(customers[0]);
+            const customer = customers[0];
+            // Format response
+            res.json({
+                id: customer.id,
+                full_name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                created_at: customer.created_at
+            });
         } else {
             res.status(404).json({ message: 'Customer not found' });
         }

@@ -1,44 +1,72 @@
 /**
  * Order Status Component
- * Displays current order status with visual timeline
- * Status flow: Kitchen → Cooking → Serving → Finished
+ * Displays current order status with a premium visual timeline
  */
 
-function OrderStatus({ status = 'kitchen' }) {
-  // Define status flow
-  const statusSteps = ['Kitchen', 'Cooking', 'Serving', 'Finished'];
-  const currentStepIndex = statusSteps.map(s => s.toLowerCase()).indexOf(status);
+function OrderStatus({ status = 'PENDING' }) {
+  // Define status flow with display labels
+  const steps = [
+    { key: 'PENDING', label: 'Ordered' },
+    { key: 'PREPARING', label: 'Cooking' },
+    { key: 'READY', label: 'Serving' },
+    { key: 'COMPLETED', label: 'Done' }
+  ];
 
-  // Status colors
-  const getStatusColor = (step) => {
-    const stepIndex = statusSteps.map(s => s.toLowerCase()).indexOf(step.toLowerCase());
-    if (stepIndex < currentStepIndex) return 'bg-green-500';
-    if (stepIndex === currentStepIndex) return 'bg-gold-500 animate-pulse';
-    return 'bg-gray-600';
+  const currentStepIndex = steps.findIndex(s => s.key === status.toUpperCase());
+
+  const getStepStatus = (index) => {
+    if (index < currentStepIndex) return 'completed';
+    if (index === currentStepIndex) return 'current';
+    return 'upcoming';
   };
 
   return (
-    <div className="flex items-center justify-between gap-2 p-4 bg-white/5 rounded-lg">
-      {statusSteps.map((step, index) => (
-        <div key={step} className="flex items-center flex-1">
-          {/* Status Circle */}
-          <div className={`w-10 h-10 rounded-full ${getStatusColor(step)} flex items-center justify-center text-white font-bold transition-smooth`}>
-            {index < currentStepIndex ? '✓' : index + 1}
-          </div>
+    <div className="w-full py-6">
+      <div className="relative flex justify-between">
+        {/* Progress Line Background */}
+        <div className="absolute top-5 left-0 w-full h-[2px] bg-white/10 z-0"></div>
 
-          {/* Connecting Line */}
-          {index < statusSteps.length - 1 && (
-            <div className={`flex-1 h-1 mx-2 ${
-              index < currentStepIndex ? 'bg-green-500' : 'bg-gray-600'
-            } transition-smooth`}></div>
-          )}
-        </div>
-      ))}
+        {/* Progress Line Active */}
+        <div
+          className="absolute top-5 left-0 h-[2px] bg-gold-500 transition-all duration-1000 z-0"
+          style={{ width: `${(currentStepIndex / (steps.length - 1)) * 100}%` }}
+        ></div>
 
-      {/* Status Label */}
-      <div className="text-right">
-        <p className="text-xs text-gray-400">Status</p>
-        <p className="text-sm font-bold text-gold-500 capitalize">{status}</p>
+        {steps.map((step, index) => {
+          const stepStatus = getStepStatus(index);
+          return (
+            <div key={step.key} className="relative z-10 flex flex-col items-center group">
+              {/* Point */}
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${stepStatus === 'completed'
+                    ? 'bg-gold-500 border-gold-500 text-black'
+                    : stepStatus === 'current'
+                      ? 'bg-black border-gold-500 text-gold-500 shadow-[0_0_15px_rgba(212,175,55,0.5)]'
+                      : 'bg-black border-white/20 text-white/40'
+                  }`}
+              >
+                {stepStatus === 'completed' ? (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <span className="text-sm font-black">{index + 1}</span>
+                )}
+              </div>
+
+              {/* Label */}
+              <span className={`mt-3 text-[10px] uppercase font-black tracking-widest transition-colors duration-500 ${stepStatus === 'upcoming' ? 'text-white/20' : 'text-gold-500'
+                }`}>
+                {step.label}
+              </span>
+
+              {/* Status Pulse for current */}
+              {stepStatus === 'current' && (
+                <div className="absolute top-0 w-10 h-10 rounded-full bg-gold-500/20 animate-ping -z-10"></div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

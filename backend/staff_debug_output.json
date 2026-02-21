@@ -1,0 +1,14 @@
+{
+  "managerRoleId": 1,
+  "staffCount": 1,
+  "staff": [
+    {
+      "id": 1,
+      "name": "Bandara",
+      "email": "bandara123@gmail.com",
+      "status": "active",
+      "created_at": "2026-01-27T16:43:06.000Z",
+      "role": "steward"
+    }
+  ]
+}

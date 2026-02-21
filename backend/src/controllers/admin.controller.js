@@ -1,0 +1,316 @@
+import pool from '../config/db.js';
+
+// --- Staff Management ---
+export const getAllStaff = async (req, res) => {
+    try {
+        const [staff] = await pool.query(
+            `SELECT su.id, su.full_name as name, su.email, su.phone,
+                    sr.role_name as role, su.is_active, su.created_at, su.permissions
+             FROM staff_users su
+             JOIN staff_roles sr ON su.role_id = sr.id
+             ORDER BY su.created_at DESC`
+        );
+
+        const staffWithPermissions = staff.map(s => {
+            let permissions = [];
+            try {
+                permissions = JSON.parse(s.permissions || '[]');
+            } catch (e) {
+                permissions = s.permissions ? [s.permissions] : [];
+            }
+            return { ...s, permissions };
+        });
+
+        res.json({ staff: staffWithPermissions });
+    } catch (err) {
+        console.error('Get all staff error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const toggleStaffStatus = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const { id } = req.params;
+        const { status } = req.body; // 'active', 'inactive'
+
+        console.log(`Updating staff ${id} status to: ${status}`);
+
+        // Get staff details before update
+        const [staffBefore] = await connection.query(
+            'SELECT id, full_name, email, is_active FROM staff_users WHERE id = ?',
+            [id]
+        );
+
+        if (staffBefore.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Staff member not found' });
+        }
+
+        const staffUser = staffBefore[0];
+        const newIsActive = status === 'active' ? 1 : 0;
+
+        // Update staff status
+        await connection.query(
+            'UPDATE staff_users SET is_active = ? WHERE id = ?',
+            [newIsActive, id]
+        );
+
+        // Log the action in audit_logs
+        const actionType = status === 'active' ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED';
+        const details = `Staff account ${staffUser.full_name} status changed to ${status}`;
+        const performerId = req.user?.userId || 0;
+
+        try {
+            await connection.query(
+                'INSERT INTO audit_logs (action_type, target_user_id, performed_by, details) VALUES (?, ?, ?, ?)',
+                [actionType, id, performerId, details]
+            );
+        } catch (auditErr) {
+            console.warn('Audit log failed:', auditErr.message);
+        }
+
+        await connection.commit();
+        res.json({
+            message: `Staff status updated to ${status}`,
+            is_active: newIsActive
+        });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Toggle staff status error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const updateStaffPermissions = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { permissions } = req.body;
+
+        if (!Array.isArray(permissions)) {
+            return res.status(400).json({ message: 'Permissions must be an array' });
+        }
+
+        const permissionsJson = JSON.stringify(permissions);
+        await pool.query('UPDATE staff_users SET permissions = ? WHERE id = ?', [permissionsJson, id]);
+
+        res.json({ message: 'Permissions updated successfully' });
+    } catch (err) {
+        console.error('Update staff permissions error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// --- Customer Management ---
+export const getAllCustomers = async (req, res) => {
+    try {
+        const [customers] = await pool.query(
+            `SELECT id, name, email, phone, loyalty_points, is_active, created_at
+             FROM customers
+             ORDER BY created_at DESC`
+        );
+
+        res.json({ customers });
+    } catch (err) {
+        console.error('Get all customers error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateCustomerPermissions = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { permissions } = req.body;
+
+        const [tables] = await pool.query("SHOW TABLES LIKE 'customer_permissions'");
+
+        if (tables.length === 0) {
+            return res.status(501).json({ message: 'Customer permissions not implemented in current schema' });
+        }
+
+        await pool.query('DELETE FROM customer_permissions WHERE customer_id = ?', [id]);
+
+        if (permissions && permissions.length > 0) {
+            const values = permissions.map(p => [id, p, true]);
+            await pool.query('INSERT INTO customer_permissions (customer_id, permission_key, allowed) VALUES ?', [values]);
+        }
+
+        res.json({ message: 'Customer permissions updated' });
+    } catch (err) {
+        console.error('Update customer permissions error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// --- Order Management ---
+export const getAllOrders = async (req, res) => {
+    try {
+        const [orders] = await pool.query(`
+            SELECT o.id, o.created_at, o.customer_id, o.steward_id,
+                   ot.name as order_type,
+                   os.name as status,
+                   pm.name as payment_method,
+                   ps.name as payment_status,
+                   c.name as customer_name,
+                   su.full_name as steward_name,
+                   (SELECT COALESCE(SUM(oi.price * oi.quantity), 0)
+                    FROM order_items oi
+                    WHERE oi.order_id = o.id) as total_price
+            FROM orders o
+            LEFT JOIN customers c ON o.customer_id = c.id
+            LEFT JOIN stewards st ON o.steward_id = st.id
+            LEFT JOIN staff_users su ON st.staff_id = su.id
+            LEFT JOIN order_types ot ON o.order_type_id = ot.id
+            LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id
+            LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
+            ORDER BY o.created_at DESC
+        `);
+
+        res.json({ orders });
+    } catch (err) {
+        console.error('Get all orders error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateOrderStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = ?', [status.toUpperCase()]);
+        if (statusRows.length === 0) {
+            return res.status(400).json({ message: 'Invalid status' });
+        }
+
+        await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusRows[0].id, id]);
+        res.json({ message: 'Order status updated' });
+    } catch (err) {
+        console.error('Update order status error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// --- Stats ---
+export const getStats = async (req, res) => {
+    try {
+        const [counts] = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM customers) as customers,
+                (SELECT COUNT(*) FROM staff_users) as staff,
+                (SELECT COUNT(*) FROM orders) as orders,
+                (SELECT COALESCE(SUM(oi.price * oi.quantity), 0)
+                 FROM orders o
+                 JOIN order_items oi ON o.id = oi.order_id
+                 JOIN payment_statuses ps ON o.payment_status_id = ps.id
+                 WHERE ps.name = 'PAID') as revenue,
+                (SELECT COUNT(*) FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE os.name = 'PENDING') as pendingOrders,
+                (SELECT COUNT(*) FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE os.name = 'COMPLETED') as completedOrders
+        `);
+
+        res.json({ stats: counts[0] });
+    } catch (err) {
+        console.error('Get stats error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// --- Reservation Management ---
+export const getAllReservations = async (req, res) => {
+    try {
+        const [reservations] = await pool.query(`
+            SELECT r.id, r.reservation_time, r.guest_count, r.status, r.comments, r.created_at,
+                   c.name as customer_name,
+                   c.email as customer_email,
+                   c.phone as customer_phone,
+                   t.table_number,
+                   t.capacity
+            FROM reservations r
+            JOIN customers c ON r.customer_id = c.id
+            JOIN restaurant_tables t ON r.table_id = t.id
+            ORDER BY r.reservation_time DESC
+        `);
+
+        res.json({ reservations });
+    } catch (err) {
+        console.error('Get all reservations error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateReservationStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'];
+        if (!validStatuses.includes(status.toUpperCase())) {
+            return res.status(400).json({ message: 'Invalid reservation status' });
+        }
+
+        await pool.query('UPDATE reservations SET status = ? WHERE id = ?', [status.toUpperCase(), id]);
+        res.json({ message: 'Reservation status updated' });
+    } catch (err) {
+        console.error('Update reservation status error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// --- Audit Logs ---
+export const getAuditLogs = async (req, res) => {
+    try {
+        const { limit = 100, offset = 0, action_type, target_user_id } = req.query;
+
+        let query = `
+            SELECT a.id, a.action_type, a.details, a.created_at, a.ip_address,
+                   t.full_name as target_user_name, t.email as target_user_email,
+                   p.full_name as performed_by_name, p.email as performed_by_email
+            FROM audit_logs a
+            LEFT JOIN staff_users t ON a.target_user_id = t.id
+            LEFT JOIN staff_users p ON a.performed_by = p.id
+            WHERE 1=1
+        `;
+
+        const params = [];
+
+        if (action_type) {
+            query += ` AND a.action_type = ?`;
+            params.push(action_type);
+        }
+
+        if (target_user_id) {
+            query += ` AND a.target_user_id = ?`;
+            params.push(target_user_id);
+        }
+
+        query += ` ORDER BY a.created_at DESC LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit), parseInt(offset));
+
+        const [logs] = await pool.query(query, params);
+
+        let countQuery = `SELECT COUNT(*) as total FROM audit_logs WHERE 1=1`;
+        const countParams = [];
+
+        if (action_type) {
+            countQuery += ` AND action_type = ?`;
+            countParams.push(action_type);
+        }
+
+        if (target_user_id) {
+            countQuery += ` AND target_user_id = ?`;
+            countParams.push(target_user_id);
+        }
+
+        const [[{ total }]] = await pool.query(countQuery, countParams);
+
+        res.json({ logs, total, limit: parseInt(limit), offset: parseInt(offset) });
+    } catch (err) {
+        console.error('Get audit logs error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};

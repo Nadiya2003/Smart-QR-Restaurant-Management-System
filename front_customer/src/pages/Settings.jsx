@@ -25,7 +25,7 @@ function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-dark-gradient md:ml-64 mb-20 md:mb-0 px-4 py-8">
+    <div className="min-h-screen bg-dark-gradient mb-20 md:mb-0 px-4 py-8">
       <div className="max-w-2xl mx-auto">
 
         {/* Header Section */}

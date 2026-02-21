@@ -1,6 +1,6 @@
-const jwt = require('jsonwebtoken');
+import jwt from 'jsonwebtoken';
 
-const protect = (req, res, next) => {
+export const protect = (req, res, next) => {
     let token;
 
     if (
@@ -8,15 +8,12 @@ const protect = (req, res, next) => {
         req.headers.authorization.startsWith('Bearer')
     ) {
         try {
-            // Get token from header
             token = req.headers.authorization.split(' ')[1];
 
-            // Verify token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
 
-            // Add user to request object
-            // We attach the payload which usually contains id, email etc.
             req.user = decoded;
+            // Standardize: req.user should have { userId, role }
 
             next();
         } catch (error) {
@@ -30,4 +27,10 @@ const protect = (req, res, next) => {
     }
 };
 
-module.exports = { protect };
+export const adminOnly = (req, res, next) => {
+    if (req.user && req.user.role === 'ADMIN') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Not authorized as admin' });
+    }
+};

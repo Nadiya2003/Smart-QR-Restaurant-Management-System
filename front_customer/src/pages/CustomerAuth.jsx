@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCustomer } from '../context/CustomerContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 
 function CustomerAuth() {
   const navigate = useNavigate();
+  const { refreshAuth } = useCustomer();
 
   const [isLogin, setIsLogin] = useState(true);
 
@@ -17,39 +19,134 @@ function CustomerAuth() {
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
 
-  const sriLankanNames = ['Kasun', 'Nimal', 'Saman', 'Dilani', 'Tharindu', 'Isuru'];
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleLogin = (e) => {
+  // Validation Helpers
+  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validatePhone = (phone) => /^(?:\+94|0)?7[0-9]{8}$/.test(phone);
+  const validatePassword = (password) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (loginEmail && loginPassword) {
-      const authData = {
-        name: sriLankanNames[Math.floor(Math.random() * sriLankanNames.length)],
-        email: loginEmail,
-        phone: '+94' + Math.floor(Math.random() * 900000000 + 100000000),
-        id: Math.random().toString(36).substr(2, 9),
-      };
-      localStorage.setItem('customerAuth', JSON.stringify(authData));
-      navigate('/customer/select-steward');
+    setError('');
+    setSuccess('');
+
+    if (!loginEmail || !loginPassword) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    if (!validateEmail(loginEmail)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('customerAuth', JSON.stringify({
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          phone: data.user.phone,
+          token: data.token,
+          permissions: data.user.permissions // Store permissions
+        }));
+
+        refreshAuth();
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const redirect = searchParams.get('redirect');
+        navigate(redirect || '/customer/dashboard');
+      } else {
+        setError(data.message || 'Login failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+      console.error('Login error:', err);
     }
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    if (
-      registerName &&
-      registerPhone &&
-      registerEmail &&
-      registerPassword &&
-      registerPassword === registerConfirmPassword
-    ) {
-      const authData = {
-        name: registerName,
-        email: registerEmail,
-        phone: registerPhone,
-        id: Math.random().toString(36).substr(2, 9),
-      };
-      localStorage.setItem('customerAuth', JSON.stringify(authData));
-      navigate('/customer/select-steward');
+    setError('');
+    setSuccess('');
+
+    // Validations
+    if (!registerName || !registerPhone || !registerEmail || !registerPassword || !registerConfirmPassword) {
+      setError('All fields are required');
+      return;
+    }
+
+    if (registerName.length < 3) {
+      setError('Name must be at least 3 characters long');
+      return;
+    }
+
+    if (!validatePhone(registerPhone)) {
+      setError('Please enter a valid Sri Lankan phone number (e.g., 0712345678)');
+      return;
+    }
+
+    if (!validateEmail(registerEmail)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (!validatePassword(registerPassword)) {
+      setError('Password must contain at least 8 characters, including uppercase, lowercase, number, and symbol.');
+      return;
+    }
+
+    if (registerPassword !== registerConfirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: registerName,
+          email: registerEmail,
+          phone: registerPhone,
+          password: registerPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSuccess('Registration successful! Please login.');
+        setIsLogin(true); // Switch to login view
+        setLoginEmail(registerEmail);
+        setRegisterName('');
+        setRegisterPhone('');
+        setRegisterEmail('');
+        setRegisterPassword('');
+        setRegisterConfirmPassword('');
+      } else {
+        setError(data.message || 'Registration failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+      console.error('Registration error:', err);
     }
   };
 
@@ -57,11 +154,28 @@ function CustomerAuth() {
     <div className="min-h-screen bg-dark-gradient flex items-center justify-center px-4 py-8">
       <GlassCard className="w-full max-w-md p-8">
         <div className="text-center mb-8">
+          <img
+            src="/logo.png"
+            alt="Melissa's Food Court Logo"
+            className="h-24 w-auto mx-auto mb-4 drop-shadow-[0_0_15px_rgba(212,175,55,0.5)] object-contain"
+          />
           <h1 className="text-3xl font-bold mb-2">
-            <span className="text-[#D4AF37]">Melissa's</span> Food Court
+            <span className="text-[#D4AF37] drop-shadow-[0_0_10px_rgba(212,175,55,0.4)]">Melissa's Food Court</span>
           </h1>
           <p className="text-gray-400">{isLogin ? 'Welcome back' : 'Create your account'}</p>
         </div>
+
+        {error && (
+          <div className="mb-4 bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-2 rounded text-sm text-center">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 bg-green-500/20 border border-green-500/50 text-green-200 px-4 py-2 rounded text-sm text-center">
+            {success}
+          </div>
+        )}
 
         {isLogin ? (
           <form onSubmit={handleLogin} className="space-y-6">
@@ -78,7 +192,16 @@ function CustomerAuth() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Password</label>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm font-medium">Password</label>
+                <button
+                  type="button"
+                  onClick={() => navigate('/customer/forgot-password')}
+                  className="text-xs text-[#D4AF37] hover:text-[#E6C86E]"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <input
                 type="password"
                 value={loginPassword}
