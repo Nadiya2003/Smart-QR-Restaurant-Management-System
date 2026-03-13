@@ -20,7 +20,7 @@ function Footer() {
                                 className="h-10 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
                             />
                             <span className="bg-gradient-to-r from-[#D4AF37] to-[#E6C86E] text-transparent bg-clip-text text-xl font-bold">
-                                Melissas Food Court
+                                Melissa&apos;s Food Court
                             </span>
                         </Link>
                         <p className="text-sm leading-relaxed max-w-xs">
@@ -54,11 +54,11 @@ function Footer() {
                         <ul className="flex flex-col gap-4 text-sm">
                             <li className="flex gap-3">
                                 <span>📍</span>
-                                <span>123 Gourmet Lane, Colombo 07,<br />Sri Lanka</span>
+                                <span>No 151, Kandy Road, Yakkala,<br />Gampaha, Sri Lanka</span>
                             </li>
                             <li className="flex gap-3">
                                 <span>📞</span>
-                                <a href="tel:+94112345678" className="hover:text-[#D4AF37] transition-colors">+94 (11) 234 5678</a>
+                                <a href="tel:+94704260260" className="hover:text-[#D4AF37] transition-colors">+94 (70) 426 0260</a>
                             </li>
                             <li className="flex gap-3">
                                 <span>📧</span>
@@ -92,7 +92,7 @@ function Footer() {
 
                 {/* Bottom Bar */}
                 <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
-                    <p>© {currentYear} Melissas Food Court. All rights reserved.</p>
+                    <p>© {currentYear} Melissa&apos;s Food Court. All rights reserved.</p>
                     <div className="flex gap-6">
                         <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
                         <a href="#" className="hover:text-white transition-colors">Terms of Service</a>

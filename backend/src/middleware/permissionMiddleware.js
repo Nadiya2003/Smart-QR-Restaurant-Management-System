@@ -40,13 +40,19 @@ export const checkPermission = (permissionKey) => {
                     }
                 }
             } else if (role === 'CUSTOMER') {
-                // Check customer_permissions
-                const [rows] = await pool.query(
-                    'SELECT allowed FROM customer_permissions WHERE customer_id = ? AND permission_key = ?',
-                    [userId, permissionKey]
-                );
-                if (rows.length > 0 && rows[0].allowed) {
+                // Default permissions that every customer should have
+                const defaultCustomerPerms = ['account.manage', 'menu.view', 'orders.place', 'stewards.rate'];
+                if (defaultCustomerPerms.includes(permissionKey)) {
                     hasPermission = true;
+                } else {
+                    // Check customer_permissions table for others
+                    const [rows] = await pool.query(
+                        'SELECT allowed FROM customer_permissions WHERE customer_id = ? AND permission_key = ?',
+                        [userId, permissionKey]
+                    );
+                    if (rows.length > 0 && rows[0].allowed) {
+                        hasPermission = true;
+                    }
                 }
             }
 

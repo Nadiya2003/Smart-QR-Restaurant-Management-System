@@ -141,7 +141,7 @@ export const getAllCustomers = async (req, res) => {
     try {
         const [customers] = await pool.query(
             `SELECT id, name, email, phone, loyalty_points, is_active, created_at
-             FROM customers
+             FROM online_customers
              ORDER BY created_at DESC`
         );
 
@@ -183,7 +183,7 @@ export const toggleCustomerStatus = async (req, res) => {
         const { status } = req.body; // 'active', 'inactive'
         const newIsActive = status === 'active' ? 1 : 0;
 
-        await pool.query('UPDATE customers SET is_active = ? WHERE id = ?', [newIsActive, id]);
+        await pool.query('UPDATE online_customers SET is_active = ? WHERE id = ?', [newIsActive, id]);
         
         // Audit log
         try {
@@ -242,7 +242,7 @@ export const getStats = async (req, res) => {
     try {
         const [[{ deliveryCount }]] = await pool.query('SELECT COUNT(*) as deliveryCount FROM delivery_orders');
         const [[{ takeawayCount }]] = await pool.query('SELECT COUNT(*) as takeawayCount FROM takeaway_orders');
-        const [[{ customerCount }]] = await pool.query('SELECT COUNT(*) as customerCount FROM customers');
+        const [[{ customerCount }]] = await pool.query('SELECT COUNT(*) as customerCount FROM online_customers');
         const [[{ staffCount }]] = await pool.query('SELECT COUNT(*) as staffCount FROM staff_users');
         const [[{ revenue }]] = await pool.query(`
             SELECT (

@@ -9,6 +9,7 @@ import menuRoutes from './routes/menu.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import stewardRoutes from './routes/steward.routes.js';
 import reservationRoutes from './routes/reservation.routes.js';
+import contactRoutes from './routes/contact.routes.js';
 
 // Legacy/Compatibility (Optional cleanup)
 import staffAuthRoutes from './routes/staff.auth.routes.js';
@@ -28,6 +29,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/stewards', express.static('public/stewards'));
 app.use('/food', express.static('public/food'));
+app.use('/uploads', express.static('public/uploads'));
 
 // Root Route
 app.get('/', (req, res) => {
@@ -64,6 +66,7 @@ app.use('/api/menu', menuRoutes);
 // Additional Helper Routes
 app.use('/api/stewards', stewardRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

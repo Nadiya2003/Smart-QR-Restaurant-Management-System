@@ -9,14 +9,13 @@ const transporter = nodemailer.createTransport({
 });
 
 // Debug verification
-/*
 transporter.verify((error, success) => {
     if (error) {
-        console.error('Email Service Error:', error);
+        console.error('Email Service Error (SMTP):', error.message);
+        console.warn('💡 TIP: Ensure EMAIL_USER is your Gmail and EMAIL_PASS is a 16-character App Password.');
     } else {
-        console.log('Email Service Ready');
+        console.log('✅ Email Service Ready');
     }
 });
-*/
 
 export default transporter;

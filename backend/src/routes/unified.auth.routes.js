@@ -1,10 +1,11 @@
 import express from 'express';
 import { register, login, getProfile, forgotPassword, resetPassword, verifyOTP } from '../controllers/unified.auth.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
+import { uploadProfile } from '../utils/upload.js';
 
 const router = express.Router();
 
-router.post('/register', register);
+router.post('/register', uploadProfile.single('profile_image'), register);
 router.post('/login', login);
 router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOTP);

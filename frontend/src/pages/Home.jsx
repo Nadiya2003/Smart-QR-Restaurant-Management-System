@@ -1,9 +1,11 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useCart } from '../context/CartContext';
 import Button from '../components/Button';
 import GlassCard from '../components/GlassCard';
 import Carousel from '../components/Carousel';
 import SafeImage from '../components/SafeImage';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * Home Page - Landing page with hero section, CTAs, carousel, and features
@@ -16,6 +18,8 @@ function Home() {
 
     const navigate = useNavigate();
     const location = useLocation();
+    const { setOrderType } = useCart();
+    const { isAuthenticated } = useAuth();
     const [faqOpen, setFaqOpen] = useState(null);
 
     useEffect(() => {
@@ -39,11 +43,11 @@ function Home() {
     }, [location]);
 
     const homeFAQ = [
-        { q: "What are your opening hours?", a: "We are open daily from 11:00 AM to 11:00 PM." },
-        { q: "Where is the restaurant located?", a: "We are located at 123 Heritage Lane, Colombo 07, Sri Lanka." },
-        { q: "How can I reserve a table?", a: "You can reserve a table through our website's 'Reservations' page, or by calling us directly at +94 77 123 4567." },
-        { q: "Do you offer food delivery?", a: "Yes, we offer delivery within a 10km radius of our restaurant. Usually between 30 to 45 minutes." },
-        { q: "Do you have vegetarian options?", a: "Yes, we have a wide variety of vegetarian Sri Lankan curries and Italian pasta dishes." }
+        { q: "What are your opening hours?", a: "We are open from 10:00 AM to 11:00 PM every day." },
+        { q: "Do you offer takeaway and delivery?", a: "Yes, we provide both takeaway and delivery services through the Order Online section." },
+        { q: "Can I reserve a table online?", a: "Yes, you can reserve a table through the Reservation page after logging in." },
+        { q: "What payment methods do you accept?", a: "We accept online payments including credit/debit cards." },
+        { q: "Do you have vegetarian options?", a: "Yes, we offer several vegetarian dishes in our menu." }
     ];
 
     const carouselImages = [
@@ -61,7 +65,7 @@ function Home() {
                 <div className="text-center mb-12 animate-fade-in">
                     <h1 className="text-5xl md:text-7xl font-bold mb-6">
                         <span className="bg-gradient-to-r from-[#D4AF37] via-[#E6C86E] to-[#D4AF37] text-transparent bg-clip-text">
-                            Melissas Food Court
+                            Melissa&apos;s Food Court
                         </span>
                     </h1>
                     <p className="text-xl md:text-2xl text-gray-300 mb-4">
@@ -78,11 +82,51 @@ function Home() {
                     <Button onClick={() => navigate('/reservation')} size="lg">
                         📅 Book a Table
                     </Button>
-                    <Button onClick={() => navigate('/menu')} variant="outline" size="lg">
+                    <Button 
+                        onClick={() => {
+                            if (!isAuthenticated) {
+                                localStorage.setItem('postLoginTarget', '/delivery');
+                                localStorage.setItem('intendedOrderType', 'takeaway');
+                                navigate('/auth');
+                                return;
+                            }
+                            setOrderType('takeaway');
+                            navigate('/delivery');
+                        }} 
+                        variant="outline" size="lg"
+                    >
                         🛍️ Order Takeaway
                     </Button>
-                    <Button onClick={() => navigate('/delivery')} variant="outline" size="lg">
+                    <Button 
+                        onClick={() => {
+                            if (!isAuthenticated) {
+                                localStorage.setItem('postLoginTarget', '/delivery');
+                                localStorage.setItem('intendedOrderType', 'delivery');
+                                navigate('/auth');
+                                return;
+                            }
+                            setOrderType('delivery');
+                            navigate('/delivery');
+                        }} 
+                        variant="outline" size="lg"
+                    >
                         🚚 Order Delivery
+                    </Button>
+                    <Button 
+                        onClick={() => {
+                            const element = document.getElementById('ai-assistant');
+                            if (element) {
+                                const offset = 80;
+                                const bodyRect = document.body.getBoundingClientRect().top;
+                                const elementRect = element.getBoundingClientRect().top;
+                                const elementPosition = elementRect - bodyRect;
+                                const offsetPosition = elementPosition - offset;
+                                window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+                            }
+                        }} 
+                        variant="outline" size="lg"
+                    >
+                        🤖 AI Assistant
                     </Button>
                 </div>
 
@@ -152,7 +196,7 @@ function Home() {
                             </p>
                             <Button onClick={() => navigate('/about')} variant="outline">Learn More Our Story</Button>
                         </div>
-                        <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-gold-500/10 border border-white/10 group">
+                        <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 border border-white/10 group">
                             <SafeImage
                                 src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=1200"
                                 alt="Restaurant Interior"
@@ -160,6 +204,31 @@ function Home() {
                             />
                         </div>
                     </div>
+                </div>
+            </section>
+
+            {/* Gallery Preview Section */}
+            <section id="gallery" className="container mx-auto px-4 py-20 border-t border-white/5">
+                <div className="text-center mb-16">
+                    <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Captured Moments</h2>
+                    <p className="text-gray-400">A glimpse into our luxurious dining atmosphere</p>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[
+                        "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800",
+                        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800",
+                        "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=800",
+                        "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&q=80&w=800"
+                    ].map((url, idx) => (
+                        <div key={idx} className="aspect-square rounded-xl overflow-hidden shadow-xl border border-white/5 hover:border-[#D4AF37]/50 transition-all group">
+                            <SafeImage src={url} alt={`Gallery ${idx}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        </div>
+                    ))}
+                </div>
+                
+                <div className="text-center mt-12">
+                    <Button onClick={() => navigate('/gallery')} variant="outline">View Full Gallery</Button>
                 </div>
             </section>
 
@@ -187,7 +256,7 @@ function Home() {
 
                         <div className="flex-1 w-full max-w-sm z-10">
                             <div className="relative group">
-                                <div className="absolute inset-0 bg-gold-500/20 rounded-full blur-2xl animate-pulse"></div>
+                                <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
                                 <SafeImage
                                     src="https://images.unsplash.com/photo-1590846406792-0adc7f938f1d?auto=format&fit=crop&q=80&w=1200"
                                     alt="AI Assistant Placeholder"
@@ -227,7 +296,7 @@ function Home() {
                                         </svg>
                                     </span>
                                 </div>
-                                <div className={`overflow-hidden transition-all duration-500 ${faqOpen === idx ? 'max-h-40 mt-4' : 'max-h-0'}`}>
+                                <div className={`overflow-hidden transition-all duration-500 ${faqOpen === idx ? 'max-h-[500px] mt-4' : 'max-h-0'}`}>
                                     <p className="text-gray-400 leading-relaxed border-t border-white/5 pt-4">
                                         {item.a}
                                     </p>

@@ -72,9 +72,7 @@ function Reservation() {
                     date: formData.date,
                     time: formData.time,
                     guests: formData.guests,
-                    comments: formData.specialRequest,
-                    email: formData.email, // Passing email and phone just in case backend needs it
-                    phone: formData.phone
+                    special_request: formData.specialRequest
                 }),
             });
 
@@ -132,59 +130,21 @@ function Reservation() {
 
                 {/* Reservation Form */}
                 <GlassCard className="animate-slide-up border-[#D4AF37]/20 shadow-xl shadow-[#D4AF37]/5">
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid md:grid-cols-2 gap-6">
-                            {/* Name Input */}
-                            <div>
-                                <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
-                                    Full Name <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    id="name"
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                    placeholder="e.g., Kasun Perera"
-                                    required
-                                />
-                            </div>
-
-                            {/* Email Input */}
-                            <div>
-                                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-                                    Email Address <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    id="email"
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                    placeholder="e.g., kasun@example.com"
-                                    required
-                                />
-                            </div>
+                    {!isAuthenticated ? (
+                        <div className="text-center py-10">
+                            <div className="text-5xl mb-6">🔒</div>
+                            <h3 className="text-xl font-bold text-white mb-4">Login Required</h3>
+                            <p className="text-gray-400 mb-8">You must be logged in to reserve a table.</p>
+                            <Button onClick={() => navigate('/auth')} className="bg-[#D4AF37] text-black px-10">
+                                Login / Register
+                            </Button>
                         </div>
-
-                        {/* Phone Input */}
-                        <div>
-                            <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-2">
-                                Phone Number <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="tel"
-                                id="phone"
-                                name="phone"
-                                value={formData.phone}
-                                onChange={handleChange}
-                                className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                placeholder="e.g., 077 123 4567"
-                                required
-                            />
-                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div className="bg-white/5 p-4 rounded-xl border border-white/10 mb-6">
+                                <p className="text-sm text-gray-400">Reserving as:</p>
+                                <p className="text-[#D4AF37] font-bold">{user.user.name}</p>
+                            </div>
 
                         {/* Date and Time Row */}
                         <div className="grid md:grid-cols-2 gap-6">
@@ -266,6 +226,7 @@ function Reservation() {
                             {loading ? 'Processing...' : 'Confirm Reservation'}
                         </Button>
                     </form>
+                    )}
                 </GlassCard>
 
                 {/* Info Section */}

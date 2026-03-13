@@ -5,58 +5,93 @@ import pool from '../config/db.js';
  */
 export const createDeliveryOrder = async (req, res) => {
     try {
-        const { customer_name, phone, address, items, total_price, notes, payment_status, transaction_id } = req.body;
+        const { customer_id, customer_name, phone, address, items, total_price, notes, payment_status, transaction_id } = req.body;
 
-        // Requirement 10: Backend must verify payment_status === "paid" before saving
         if (payment_status !== 'paid') {
             return res.status(400).json({ message: 'Payment failed. Order not saved.' });
         }
 
-        const [result] = await pool.query(
-            `INSERT INTO delivery_orders 
-            (customer_name, phone, address, items, total_price, notes, payment_method, payment_status, transaction_id, order_status) 
-            VALUES (?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending')`,
-            [customer_name, phone, address, JSON.stringify(items), total_price, notes || '', transaction_id]
-        );
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
 
-        res.status(201).json({ 
-            message: '✅ Payment Successful! Your order has been placed successfully. We will contact you shortly.', 
-            orderId: result.insertId 
-        });
+            const [result] = await connection.query(
+                `INSERT INTO delivery_orders 
+                (customer_id, customer_name, phone, address, items, total_price, notes, payment_method, payment_status, transaction_id, order_status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending')`,
+                [customer_id || null, customer_name, phone, address, JSON.stringify(items), total_price, notes || '', transaction_id]
+            );
+
+            // Loyalty Points Logic: 1 point per Rs. 100
+            if (customer_id) {
+                const pointsEarned = Math.floor(total_price / 100);
+                await connection.query(
+                    'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
+                    [pointsEarned, customer_id]
+                );
+            }
+
+            await connection.commit();
+            res.status(201).json({ 
+                message: '✅ Payment Successful! Your order has been placed successfully.', 
+                orderId: result.insertId 
+            });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
 
     } catch (error) {
         console.error('Create delivery order error:', error);
-        res.status(500).json({ message: '❌ Payment Failed. Your order was not completed. Please try again.', error: error.message });
+        res.status(500).json({ message: '❌ Checkout Failed. Please try again.', error: error.message });
     }
 };
 
-/**
- * Handle Takeaway Order Creation
- */
 export const createTakeawayOrder = async (req, res) => {
     try {
-        const { customer_name, phone, pickup_time, items, total_price, notes, payment_status, transaction_id } = req.body;
+        const { customer_id, customer_name, phone, pickup_time, items, total_price, notes, payment_status, transaction_id } = req.body;
 
-        // Requirement 10: Backend must verify payment_status === "paid"
         if (payment_status !== 'paid') {
             return res.status(400).json({ message: 'Payment failed. Order not saved.' });
         }
 
-        const [result] = await pool.query(
-            `INSERT INTO takeaway_orders 
-            (customer_name, phone, pickup_time, items, total_price, notes, payment_method, payment_status, transaction_id, order_status) 
-            VALUES (?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending')`,
-            [customer_name, phone, pickup_time, JSON.stringify(items), total_price, notes || '', transaction_id]
-        );
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
 
-        res.status(201).json({ 
-            message: '✅ Payment Successful! Your order has been placed successfully. We will contact you shortly.', 
-            orderId: result.insertId 
-        });
+            const [result] = await connection.query(
+                `INSERT INTO takeaway_orders 
+                (customer_id, customer_name, phone, pickup_time, items, total_price, notes, payment_method, payment_status, transaction_id, order_status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending')`,
+                [customer_id || null, customer_name, phone, pickup_time, JSON.stringify(items), total_price, notes || '', transaction_id]
+            );
+
+            // Loyalty Points Logic
+            if (customer_id) {
+                const pointsEarned = Math.floor(total_price / 100);
+                await connection.query(
+                    'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
+                    [pointsEarned, customer_id]
+                );
+            }
+
+            await connection.commit();
+            res.status(201).json({ 
+                message: '✅ Payment Successful! Your order has been placed successfully.', 
+                orderId: result.insertId 
+            });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
 
     } catch (error) {
         console.error('Create takeaway order error:', error);
-        res.status(500).json({ message: '❌ Payment Failed. Your order was not completed. Please try again.', error: error.message });
+        res.status(500).json({ message: '❌ Checkout Failed. Please try again.', error: error.message });
     }
 };
 
@@ -87,3 +122,88 @@ export const getCustomerOrders = async (req, res) => {
         res.status(500).json({ message: 'Failed to fetch orders' });
     }
 };
+
+export const cancelDeliveryOrder = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const customerId = req.user.userId;
+
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query(
+            'SELECT * FROM delivery_orders WHERE id = ? AND customer_id = ?',
+            [id, customerId]
+        );
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (rows[0].order_status === 'CANCELLED') {
+            await connection.rollback();
+            return res.status(400).json({ message: 'Order already cancelled' });
+        }
+
+        const statusNotes = reason ? `Cancelled: ${reason}` : 'Cancelled by user';
+        await connection.query('UPDATE delivery_orders SET order_status = "CANCELLED", status_notes = ? WHERE id = ?', [statusNotes, id]);
+        await connection.query(
+            'INSERT INTO cancel_deliveries (customer_id, order_id, cancellation_reason) VALUES (?, ?, ?)',
+            [customerId, id, reason || 'User requested cancellation']
+        );
+
+        await connection.commit();
+        res.json({ message: '✅ Order cancelled successfully' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Cancel delivery error:', error);
+        res.status(500).json({ message: 'Failed to cancel order' });
+    } finally {
+        connection.release();
+    }
+};
+
+export const cancelTakeawayOrder = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const customerId = req.user.userId;
+
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query(
+            'SELECT * FROM takeaway_orders WHERE id = ? AND customer_id = ?',
+            [id, customerId]
+        );
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (rows[0].order_status === 'CANCELLED') {
+            await connection.rollback();
+            return res.status(400).json({ message: 'Order already cancelled' });
+        }
+
+        const statusNotes = reason ? `Cancelled: ${reason}` : 'Cancelled by user';
+        await connection.query('UPDATE takeaway_orders SET order_status = "CANCELLED", status_notes = ? WHERE id = ?', [statusNotes, id]);
+        await connection.query(
+            'INSERT INTO cancel_takeaways (customer_id, order_id, cancellation_reason) VALUES (?, ?, ?)',
+            [customerId, id, reason || 'User requested cancellation']
+        );
+
+        await connection.commit();
+        res.json({ message: '✅ Order cancelled successfully' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Cancel takeaway error:', error);
+        res.status(500).json({ message: 'Failed to cancel order' });
+    } finally {
+        connection.release();
+    }
+};
+

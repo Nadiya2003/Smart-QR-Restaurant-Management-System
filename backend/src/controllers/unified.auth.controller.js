@@ -28,24 +28,14 @@ const ROLE_TABLE_MAP = {
 export const register = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { name, full_name, email, password, role = 'CUSTOMER', phone, jobRole } = req.body;
+        const { name, full_name, email, password, phone, profile_image } = req.body;
         const finalName = name || full_name;
 
         if (!finalName || !email || !password) {
             return res.status(400).json({ message: 'All fields are required' });
         }
 
-        const normalizedRole = role.toUpperCase();
-        // jobRole might be passed as 'role' from some frontends
-        let staffRoleName = (jobRole || role).toLowerCase();
-        
-        // If the role passed is a specific staff role, normalizedRole should be STAFF
-        const isStaffRole = ROLE_TABLE_MAP.hasOwnProperty(staffRoleName);
-        const effectiveUserType = (normalizedRole === 'ADMIN' || normalizedRole === 'STAFF' || isStaffRole) ? 'STAFF' : 'CUSTOMER';
-        
-        if (normalizedRole === 'ADMIN') staffRoleName = 'admin';
-
-        const [exCust] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
+        const [exCust] = await pool.query('SELECT id FROM online_customers WHERE email = ?', [email]);
         const [exStaff] = await pool.query('SELECT id FROM staff_users WHERE email = ?', [email]);
 
         if (exCust.length > 0 || exStaff.length > 0) {
@@ -55,57 +45,40 @@ export const register = async (req, res) => {
         await connection.beginTransaction();
 
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        if (effectiveUserType === 'STAFF') {
-            // Find correct role_id from staff_roles table
-            const [roleRows] = await connection.query('SELECT id FROM staff_roles WHERE role_name = ?', [staffRoleName]);
-            const roleId = roleRows.length > 0 ? roleRows[0].id : (normalizedRole === 'ADMIN' ? 1 : 4); // Default to steward (4) if not found
-
-            const [result] = await connection.query(
-                'INSERT INTO staff_users (full_name, email, phone, password, role_id, is_active, permissions) VALUES (?, ?, ?, ?, ?, 0, ?)',
-                [finalName, email, phone || null, hashedPassword, roleId, JSON.stringify([])]
-            );
-            const newId = result.insertId;
-
-            // Insert into role-specific table if it's not the master admin
-            const roleTable = ROLE_TABLE_MAP[staffRoleName];
-            if (roleTable) {
-                await connection.query(`INSERT INTO ${roleTable} (staff_id) VALUES (?)`, [newId]);
-            }
-
-            await connection.commit();
-
-            return res.status(201).json({
-                message: `Registration as ${staffRoleName} successful. Wait for admin activation.`,
-                userId: newId,
-                role: normalizedRole === 'ADMIN' ? 'ADMIN' : 'STAFF',
-                jobRole: staffRoleName
-            });
-        } else {
-            const [result] = await connection.query(
-                'INSERT INTO customers (name, email, phone, password_hash) VALUES (?, ?, ?, ?)',
-                [finalName, email, phone || null, hashedPassword]
-            );
-            const newId = result.insertId;
-
-            try {
-                const permissionValues = DEFAULT_CUSTOMER_PERMISSIONS.map(key => [newId, key, true]);
-                await connection.query(
-                    'INSERT INTO customer_permissions (customer_id, permission_key, allowed) VALUES ?',
-                    [permissionValues]
-                );
-            } catch (permErr) {
-                console.warn('Failed to assign permissions:', permErr.message);
-            }
-
-            await connection.commit();
-
-            return res.status(201).json({
-                message: 'Registration successful',
-                userId: newId,
-                role: 'CUSTOMER'
-            });
+        
+        // Handle profile image: upload > text input > default
+        let finalProfileImage = '/assets/default-customer-avatar.png';
+        if (req.file) {
+            finalProfileImage = `/uploads/profile-images/${req.file.filename}`;
+        } else if (profile_image) {
+            finalProfileImage = profile_image;
         }
+
+        const [result] = await connection.query(
+            'INSERT INTO online_customers (name, email, phone, password, profile_image, loyalty_points) VALUES (?, ?, ?, ?, ?, 0)',
+            [finalName, email, phone || null, hashedPassword, finalProfileImage]
+        );
+        const newId = result.insertId;
+
+        try {
+            const permissionValues = DEFAULT_CUSTOMER_PERMISSIONS.map(key => [newId, key, true]);
+            await connection.query(
+                'INSERT INTO customer_permissions (customer_id, permission_key, allowed) VALUES ?',
+                [permissionValues]
+            );
+        } catch (permErr) {
+            console.warn('Failed to assign permissions:', permErr.message);
+        }
+
+        await connection.commit();
+
+        return res.status(201).json({
+            message: 'Registration successful',
+            userId: newId,
+            role: 'CUSTOMER',
+            profile_image: finalProfileImage,
+            loyalty_points: 0
+        });
     } catch (error) {
         if (connection) await connection.rollback();
         console.error('Registration error:', error);
@@ -132,7 +105,7 @@ export const login = async (req, res) => {
 
         let user = null;
         let role = null;
-        let passwordField = 'password_hash';
+        let passwordField = 'password';
 
         // Check Staff (JOIN staff_roles for 3NF)
         if (portal === 'STAFF' || portal === 'ADMIN' || !portal) {
@@ -153,11 +126,11 @@ export const login = async (req, res) => {
 
         // Check Customer
         if (!user && (portal === 'CUSTOMER' || !portal)) {
-            const [cust] = await pool.query('SELECT * FROM customers WHERE email = ?', [loginEmail]);
+            const [cust] = await pool.query('SELECT * FROM online_customers WHERE email = ?', [loginEmail]);
             if (cust.length > 0) {
                 user = cust[0];
                 role = 'CUSTOMER';
-                passwordField = 'password_hash';
+                passwordField = 'password';
             }
         }
 
@@ -213,7 +186,7 @@ export const getProfile = async (req, res) => {
 
         let user = null;
         if (role === 'CUSTOMER') {
-            const [rows] = await pool.query('SELECT id, name, email, phone, loyalty_points, created_at FROM customers WHERE id = ?', [userId]);
+            const [rows] = await pool.query('SELECT id, name, email, phone, profile_image, loyalty_points, created_at FROM online_customers WHERE id = ?', [userId]);
             if (rows.length > 0) user = rows[0];
         } else {
             const [rows] = await pool.query(`
@@ -244,9 +217,9 @@ export const forgotPassword = async (req, res) => {
 
         // Check if user exists in customers or staff_users
         let targetTable = null;
-        const [cust] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
+        const [cust] = await pool.query('SELECT id FROM online_customers WHERE email = ?', [email]);
         if (cust.length > 0) {
-            targetTable = 'customers';
+            targetTable = 'online_customers';
         } else {
             const [staff] = await pool.query('SELECT id FROM staff_users WHERE email = ?', [email]);
             if (staff.length > 0) targetTable = 'staff_users';
@@ -266,7 +239,12 @@ export const forgotPassword = async (req, res) => {
             [otp, expiry, email]
         );
 
-        // Send Email
+        // For development/testing: Print to console
+        console.log(`\n=========================================`);
+        console.log(`🔑 PASSWORD RESET OTP FOR: ${email}`);
+        console.log(`👉 CODE: ${otp}`);
+        console.log(`=========================================\n`);
+
         const mailOptions = {
             from: process.env.EMAIL_FROM || 'noreply@restaurant.com',
             to: email,
@@ -287,12 +265,24 @@ export const forgotPassword = async (req, res) => {
             `
         };
 
-        await transporter.sendMail(mailOptions);
-
-        res.json({ message: 'OTP sent to your email successfully.' });
+        try {
+            await transporter.sendMail(mailOptions);
+            res.json({ message: 'OTP sent to your email successfully.' });
+        } catch (mailError) {
+            console.error('Email Dispatch Error:', mailError.message);
+            // If email fails but we've logged it to console, we can still tell the user it's processed (in dev)
+            // or provide a more specific error.
+            if (process.env.NODE_ENV === 'development' || !process.env.EMAIL_USER || process.env.EMAIL_USER.includes('your-email')) {
+                return res.json({ 
+                    message: 'OTP generated (Email delivery skipped/failed). Use the code from server console.',
+                    dev_hint: 'Check terminal for the OTP code.'
+                });
+            }
+            throw mailError; // Re-throw to be caught by the outer catch if in production
+        }
     } catch (error) {
         console.error('Forgot password error:', error);
-        res.status(500).json({ message: 'Failed to send OTP' });
+        res.status(500).json({ message: 'Failed to process request. Please check server logs.' });
     }
 };
 
@@ -303,7 +293,7 @@ export const verifyOTP = async (req, res) => {
 
         // Check customers
         let [userRows] = await pool.query(
-            'SELECT id, reset_otp, reset_otp_expiry FROM customers WHERE email = ?',
+            'SELECT id, reset_otp, reset_otp_expiry FROM online_customers WHERE email = ?',
             [email]
         );
 
@@ -347,10 +337,10 @@ export const resetPassword = async (req, res) => {
         let targetTable = null;
         let passwordField = 'password_hash';
 
-        let [rows] = await pool.query('SELECT id, reset_otp, reset_otp_expiry FROM customers WHERE email = ?', [email]);
+        let [rows] = await pool.query('SELECT id, reset_otp, reset_otp_expiry FROM online_customers WHERE email = ?', [email]);
         if (rows.length > 0) {
-            targetTable = 'customers';
-            passwordField = 'password_hash';
+            targetTable = 'online_customers';
+            passwordField = 'password';
         } else {
             [rows] = await pool.query('SELECT id, reset_otp, reset_otp_expiry FROM staff_users WHERE email = ?', [email]);
             if (rows.length > 0) {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import SafeImage from '../components/SafeImage';
@@ -10,6 +10,35 @@ function Contact() {
     useEffect(() => {
         window.scrollTo(0, 0);
     }, []);
+
+    const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
+    const [loading, setLoading] = useState(false);
+    const [status, setStatus] = useState(null);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setStatus(null);
+        try {
+            const res = await fetch('http://localhost:5000/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setStatus({ type: 'success', text: data.message });
+                setFormData({ name: '', email: '', subject: '', message: '' });
+            } else {
+                setStatus({ type: 'error', text: data.message });
+            }
+        } catch (err) {
+            setStatus({ type: 'error', text: 'Connection failed. Please try again later.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen px-4 py-16">
             <div className="container mx-auto">
@@ -33,7 +62,7 @@ function Contact() {
                                     <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">📍</div>
                                     <div>
                                         <h3 className="font-bold text-white">Location</h3>
-                                        <p className="text-gray-400">123 Heritage Lane, Colombo 07, Sri Lanka</p>
+                                        <p className="text-gray-400">No 151, Kandy Road, Yakkala, Gampaha, Sri Lanka</p>
                                     </div>
                                 </div>
 
@@ -41,8 +70,7 @@ function Contact() {
                                     <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">📞</div>
                                     <div>
                                         <h3 className="font-bold text-white">Phone</h3>
-                                        <p className="text-gray-400">+94 77 123 4567</p>
-                                        <p className="text-gray-400">+94 11 234 5678</p>
+                                        <p className="text-gray-400">+94 70 426 0260</p>
                                     </div>
                                 </div>
 
@@ -50,8 +78,8 @@ function Contact() {
                                     <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">✉️</div>
                                     <div>
                                         <h3 className="font-bold text-white">Email</h3>
-                                        <p className="text-gray-400">info@melissasfoodcourt.lk</p>
-                                        <p className="text-gray-400">reservations@melissasfoodcourt.lk</p>
+                                        <p className="text-gray-400">info@melissasfoodcourt.com</p>
+                                        <p className="text-gray-400">reservations@melissasfoodcourt.com</p>
                                     </div>
                                 </div>
 
@@ -81,30 +109,65 @@ function Contact() {
                     {/* Contact Form */}
                     <GlassCard className="p-8 border-[#D4AF37]/20 h-fit">
                         <h2 className="text-2xl font-bold text-white mb-8">Send a Message</h2>
-                        <form className="space-y-6">
+                        {status && (
+                            <div className={`mb-6 p-4 rounded-xl border ${status.type === 'success' ? 'bg-green-500/10 border-green-500 text-green-400' : 'bg-red-500/10 border-red-500 text-red-400'}`}>
+                                {status.text}
+                            </div>
+                        )}
+                        <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="grid md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">Your Name</label>
-                                    <input type="text" className="input-glass w-full" placeholder="John Doe" />
+                                    <input 
+                                        type="text" 
+                                        required
+                                        className="input-glass w-full" 
+                                        placeholder="John Doe"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                                    <input type="email" className="input-glass w-full" placeholder="john@example.com" />
+                                    <input 
+                                        type="email" 
+                                        required
+                                        className="input-glass w-full" 
+                                        placeholder="john@example.com"
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    />
                                 </div>
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Subject</label>
-                                <input type="text" className="input-glass w-full" placeholder="General Inquiry" />
+                                <input 
+                                    type="text" 
+                                    className="input-glass w-full" 
+                                    placeholder="General Inquiry"
+                                    value={formData.subject}
+                                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                                />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Message</label>
-                                <textarea className="input-glass w-full h-32 resize-none" placeholder="Your message here..."></textarea>
+                                <textarea 
+                                    required
+                                    className="input-glass w-full h-32 resize-none" 
+                                    placeholder="Your message here..."
+                                    value={formData.message}
+                                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                                ></textarea>
                             </div>
 
-                            <Button className="w-full bg-[#D4AF37] hover:bg-[#E6C86E] text-black">
-                                Send Message
+                            <Button 
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-[#D4AF37] hover:bg-[#E6C86E] text-black"
+                            >
+                                {loading ? 'Sending...' : 'Send Message'}
                             </Button>
                         </form>
                     </GlassCard>

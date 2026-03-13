@@ -35,75 +35,57 @@ function AIChat() {
 
     const getAIResponse = (input) => {
         const text = input.toLowerCase();
-               // Reservations
-        if (text.includes('reservation') || text.includes('reserve') || text.includes('book a table') || text.includes('booking')) {
-            return "You can book a table through our Reservations page or call us at +94 77 123 4567. We recommend booking 24h in advance for weekdays and 3-5 days for weekends! 📅";
+        
+        if (text.includes('recommend') || text.includes('popular') || text.includes('suggest') || text.includes('best') || text.includes('special')) {
+            return "Our house favorites include the Signature Spicy Chicken Kottu, Creamy Seafood Fettuccine, and our Traditional Sri Lankan Crab Curry. For light bites, our Italian Bruschetta is highly rated! 🍛🍝";
         }
         
-        // Menu & Diet
         if (text.includes('menu') || text.includes('food') || text.includes('eat') || text.includes('dish')) {
-            return "Our fusion menu includes Sri Lankan favorites (like Chicken Kottu) and Italian classics (like Seafood Fettuccine). We also have plenty of Vegetarian, Vegan, and Gluten-Free options! 🍝🍛";
-        }
-        if (text.includes('veg') || text.includes('vegan') || text.includes('gluten')) {
-            return "Yes! We offer a variety of vegetarian and vegan Sri Lankan curries. Our Italian section also has gluten-free pasta options. Just let our staff know! 🌱";
+            return "We serve a unique fusion of Sri Lankan and Italian cuisine. From authentic Rice & Curry to handmade Pizzas and Pastas. You can view the full menu on our dedicated Menu page! 🍕🍛";
         }
 
-        // Opening Hours
+        if (text.includes('sri lankan') || text.includes('local')) {
+            return "Our Sri Lankan menu features authentic Kottu, Lamprais, Hoppers (during dinner), and a variety of spicy curries using locally sourced spices. 🌶️🍛";
+        }
+
+        if (text.includes('italian') || text.includes('pasta') || text.includes('pizza')) {
+            return "We offer authentic thin-crust Italian pizzas, creamy pastas like Carbonara and Alfredo, and classic starters like Caprese Salad. 🍕🍝";
+        }
+
+        if (text.includes('reservation') || text.includes('reserve') || text.includes('book') || text.includes('table')) {
+            return "Table bookings are available online! Simply login to your account and go to the 'Reservation' section. We confirm bookings instantly! 📅";
+        }
+        
         if (text.includes('hour') || text.includes('open') || text.includes('time') || text.includes('close')) {
-            return "We are open every single day from 11:00 AM to 11:00 PM. We hope to see you soon! 🕚";
+            return "We are open daily from 10:00 AM to 11:00 PM. Our kitchen usually takes the last order by 10:30 PM. 🕚";
         }
 
-        // Delivery & Takeaway
-        if (text.includes('delivery') || text.includes('order online') || text.includes('takeaway') || text.includes('pickup')) {
-            return "We deliver within 10km (Colombo 1-15, Dehiwala, Rajagiriya). Delivery usually takes 30-45 mins. You can order directly on our 'Order Online' page! 🚚";
+        if (text.includes('delivery') || text.includes('order') || text.includes('takeaway') || text.includes('shipping')) {
+            return "We offer island-wide delivery in Colombo districts (10km radius) and local takeaway. Order directly through our 'Order Online' section and pay securely! 🚚🛍️";
         }
 
-        // Location & Parking
-        if (text.includes('location') || text.includes('where') || text.includes('address') || text.includes('find')) {
-            return "Find us at 123 Heritage Lane, Colombo 07. We have a dedicated parking area with free valet service during peak hours! 📍🚗";
+        if (text.includes('loyalty') || text.includes('point') || text.includes('reward') || text.includes('member')) {
+            return "Members earn 1 loyalty point for every Rs. 100 spent! You can check your current points in your profile dropdown. Points can be used for future discounts! ✨💰";
         }
 
-        // Payments
-        if (text.includes('pay') || text.includes('payment') || text.includes('cash') || text.includes('card')) {
-            return "We accept Cash, all major Credit/Debit cards (Visa, MasterCard, Amex), and secure online payments via PayHere. 💳";
+        if (text.includes('human') || text.includes('call') || text.includes('contact') || text.includes('support') || text.includes('phone')) {
+            return "You can reach our team directly at +94 77 123 4567 or email us at nadeesha0532@gmail.com. We're happy to help! 📞✉️";
         }
 
-        // Atmosphere / Family
-        if (text.includes('family') || text.includes('kid') || text.includes('child')) {
-            return "We are very family-friendly! We have high chairs and a special kids' menu to keep the little ones happy. 👨‍👩‍👧‍👦";
-        }
-        if (text.includes('outdoor') || text.includes('garden') || text.includes('terrace')) {
-            return "Yes, we have a beautiful garden terrace for outdoor dining. It's a customer favorite during the evenings! 🌿";
+        if (text.includes('where') || text.includes('location') || text.includes('address') || text.includes('map')) {
+            return "We are located at 123 Heritage Lane, Colombo 07. Valet parking is available for all our dining guests! 📍🚗";
         }
 
-        // Special Offers / events
-        if (text.includes('offer') || text.includes('discount') || text.includes('deal')) {
-            return "Get 10% OFF your first online order! Also, don't miss our Happy Hour every Friday from 5 PM to 7 PM. 🥂";
-        }
-        if (text.includes('event') || text.includes('party') || text.includes('celebrate')) {
-            return "From birthdays to corporate parties, we host them all! Contact us via the 'Contact' page for event packages and catering options. 🎉";
-        }
-
-        // Help / FAQ
-        if (text.includes('help') || text.includes('faq') || text.includes('question')) {
-            return "I can answer almost anything about Melissas Food Court. Ask about: menu, reservations, delivery, hours, parking, or payments!";
-        }
-
-        return "Good question! For very specific inquiries, check our FAQ page or give us a call at +94 77 123 4567. Our team is always happy to help! 📞";
+        return "I can help you with menu details, reservations, delivery info, and loyalty rewards! Could you please rephrase your question? 🤖";
     };
 
-    const handleSend = (e) => {
-        if (e) e.preventDefault();
-        if (!inputText.trim()) return;
-
-        const userMsg = { id: Date.now(), sender: 'user', text: inputText };
+    const processMessage = (text) => {
+        const userMsg = { id: Date.now(), sender: 'user', text };
         setMessages((prev) => [...prev, userMsg]);
-        setInputText('');
         setIsTyping(true);
 
-        // Simulate AI response
         setTimeout(() => {
-            const aiResponse = getAIResponse(userMsg.text);
+            const aiResponse = getAIResponse(text);
             const aiMsg = {
                 id: Date.now() + 1,
                 sender: 'ai',
@@ -111,29 +93,21 @@ function AIChat() {
             };
             setMessages((prev) => [...prev, aiMsg]);
             setIsTyping(false);
-        }, 1000);
+        }, 800);
+    };
+
+    const handleSend = (e) => {
+        if (e) e.preventDefault();
+        const text = inputText.trim();
+        if (!text || isTyping) return;
+
+        setInputText('');
+        processMessage(text);
     };
 
     const handleQuickQuestion = (question) => {
-        setInputText(question);
-        // We set a brief timeout to allow the state to update before sending
-        setTimeout(() => {
-            const userMsg = { id: Date.now(), sender: 'user', text: question };
-            setMessages((prev) => [...prev, userMsg]);
-            setInputText('');
-            setIsTyping(true);
-
-            setTimeout(() => {
-                const aiResponse = getAIResponse(question);
-                const aiMsg = {
-                    id: Date.now() + 1,
-                    sender: 'ai',
-                    text: aiResponse,
-                };
-                setMessages((prev) => [...prev, aiMsg]);
-                setIsTyping(false);
-            }, 800);
-        }, 0);
+        if (isTyping) return;
+        processMessage(question);
     };
 
     return (

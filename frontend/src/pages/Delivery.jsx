@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 function Delivery() {
     const navigate = useNavigate();
     const { cart, total, clearCart, serviceCharge, subtotal, orderType, setOrderType } = useCart();
-    const { user, isAuthenticated } = useAuth();
+    const { user, isAuthenticated, refreshUser } = useAuth();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -22,6 +22,7 @@ function Delivery() {
     const [error, setError] = useState('');
     const [showPayment, setShowPayment] = useState(false);
     const [paymentSuccess, setPaymentSuccess] = useState(false);
+    const [orderId, setOrderId] = useState(null);
 
     const [details, setDetails] = useState({
         fullName: user?.user?.name || '',
@@ -32,8 +33,30 @@ function Delivery() {
         notes: ''
     });
 
+    const [cardDetails, setCardDetails] = useState({
+        number: '',
+        name: '',
+        expiry: '',
+        cvv: ''
+    });
+
     const handleInputChange = (e) => {
         setDetails({ ...details, [e.target.name]: e.target.value });
+    };
+
+    const handleCardChange = (e) => {
+        let value = e.target.value;
+        if (e.target.name === 'number') {
+            value = value.replace(/\W/gi, '').replace(/(.{4})/g, '$1 ').trim().substring(0, 19);
+        }
+        if (e.target.name === 'expiry') {
+            value = value.replace(/\W/gi, '').replace(/(.{2})/g, '$1/').trim().substring(0, 5);
+            if (value.endsWith('/')) value = value.substring(0, value.length - 1);
+        }
+        if (e.target.name === 'cvv') {
+            value = value.replace(/\D/g, '').substring(0, 3);
+        }
+        setCardDetails({ ...cardDetails, [e.target.name]: value });
     };
 
     const handleProceedToPayment = (e) => {
@@ -69,6 +92,11 @@ function Delivery() {
     };
 
     const processPayment = async () => {
+        if (!cardDetails.number || cardDetails.number.length < 16) {
+            setError('Valid card number is required');
+            return;
+        }
+
         setLoading(true);
         setError('');
 
@@ -83,12 +111,13 @@ function Delivery() {
             const endpoint = orderType === 'delivery' ? '/api/orders/delivery' : '/api/orders/takeaway';
             
             const payload = {
+                customer_id: user?.user?.id,
                 customer_name: details.fullName,
                 phone: details.phone,
                 items: cart,
                 total_price: total,
                 notes: details.notes,
-                payment_status: 'paid', // Req 10: backend verifies this
+                payment_status: 'paid',
                 transaction_id: transactionId
             };
 
@@ -110,7 +139,9 @@ function Delivery() {
             const data = await response.json();
 
             if (response.ok) {
+                setOrderId(data.orderId);
                 setPaymentSuccess(true);
+                await refreshUser();
                 clearCart();
             } else {
                 setError(data.message || 'Payment processing failed');
@@ -127,66 +158,140 @@ function Delivery() {
 
     if (paymentSuccess) {
         return (
-            <div className="min-h-[80vh] flex items-center justify-center px-4">
-                <GlassCard className="max-w-md w-full text-center p-12 border-[#D4AF37]/30 shadow-2xl">
-                    <div className="text-6xl mb-6">✅</div>
-                    <h2 className="text-3xl font-bold text-white mb-4">Payment Successful!</h2>
-                    <p className="text-gray-400 mb-8">
-                        Your order has been placed successfully.<br/>
-                        We will contact you shortly.
+            <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
+                <GlassCard className="max-w-md w-full text-center p-12 border-[#D4AF37]/30 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#D4AF37] to-[#B8860B]"></div>
+                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl animate-bounce">
+                        ✅
+                    </div>
+                    <h2 className="text-3xl font-bold text-white mb-2">Payment Successful!</h2>
+                    <div className="bg-[#D4AF37]/10 rounded-xl p-4 mb-6 border border-[#D4AF37]/20">
+                        <p className="text-[#D4AF37] text-sm uppercase tracking-wider mb-1">Order ID</p>
+                        <p className="text-white text-2xl font-mono font-bold">#MFC-{orderId || Math.floor(Math.random() * 90000) + 10000}</p>
+                    </div>
+                    <p className="text-gray-400 mb-8 px-4">
+                        Your order has been placed successfully. Estimated preparation time is <span className="text-white font-bold">25-35 minutes</span>.
                     </p>
-                    <Button onClick={() => navigate('/account')} className="w-full bg-[#D4AF37] text-black">
-                        View My Orders
-                    </Button>
+                    <div className="space-y-3">
+                        <Button onClick={() => navigate('/menu')} className="w-full bg-[#D4AF37] text-black font-bold">
+                            Order More
+                        </Button>
+                        <Button onClick={() => navigate('/account')} variant="outline" className="w-full border-white/10 text-gray-400">
+                            Track Order Status
+                        </Button>
+                    </div>
                 </GlassCard>
             </div>
         );
     }
 
     if (showPayment) {
+        const banks = [
+            { name: 'Commercial', logoCls: 'bg-[#0054A6]/10 text-[#0054A6]' },
+            { name: 'Sampath', logoCls: 'bg-[#ED1C24]/10 text-[#ED1C24]' },
+            { name: 'HNB', logoCls: 'bg-[#FDB913]/10 text-[#FDB913]' },
+            { name: 'BOC', logoCls: 'bg-[#FFCC00]/10 text-[#000000]' },
+            { name: 'People\'s Bank', logoCls: 'bg-[#800000]/10 text-[#800000]' },
+            { name: 'Seylan', logoCls: 'bg-[#000000]/10 text-[#E31E24]' },
+            { name: 'NDB', logoCls: 'bg-[#003B71]/10 text-[#003B71]' },
+            { name: 'NTB', logoCls: 'bg-[#EE4122]/10 text-[#EE4122]' }
+        ];
+
         return (
-            <div className="min-h-[80vh] flex items-center justify-center px-4">
-                <GlassCard className="max-w-2xl w-full p-8 border-[#D4AF37]/30">
-                    <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
-                        <span className="text-[#D4AF37]">02.</span> Online Payment
-                    </h2>
+            <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
+                <GlassCard className="max-w-2xl w-full p-8 border-[#D4AF37]/30 shadow-2xl">
+                    <div className="flex justify-between items-center mb-10">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                            <span className="text-[#D4AF37]">02.</span> Secure Checkout
+                        </h2>
+                        <div className="flex gap-2">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" className="h-4" alt="Visa" />
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" className="h-4" alt="Mastercard" />
+                        </div>
+                    </div>
                     
-                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mb-8">
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-gray-400">Merchant</span>
-                            <span className="text-white font-bold">Melissa's Food Court</span>
+                    <div className="grid md:grid-cols-2 gap-10">
+                        {/* Summary Section */}
+                        <div className="space-y-6">
+                            <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-4">Payment Summary</p>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-400">Order Amount</span>
+                                        <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-400">Taxes & Fees</span>
+                                        <span className="text-white">Rs. {serviceCharge.toLocaleString()}</span>
+                                    </div>
+                                    <div className="pt-3 border-t border-white/10 flex justify-between items-center text-xl font-bold">
+                                        <span className="text-white">Total</span>
+                                        <span className="text-[#D4AF37]">Rs. {total.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold px-1">Supported SL Banks</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {banks.map(bank => (
+                                        <div key={bank.name} className={`text-[10px] px-3 py-2 rounded-lg border border-white/5 font-bold truncate flex items-center gap-2 ${bank.logoCls}`}>
+                                            <span className="w-1 h-3 rounded-full bg-current"></span>
+                                            {bank.name}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-gray-400">Order Type</span>
-                            <span className="text-[#D4AF37] font-bold uppercase">{orderType}</span>
-                        </div>
-                        <div className="border-t border-white/10 pt-4 flex justify-between items-center text-xl font-bold">
-                            <span className="text-white">Amount to Pay</span>
-                            <span className="text-[#D4AF37]">Rs. {total.toLocaleString()}</span>
-                        </div>
-                    </div>
 
-                    <div className="space-y-4 mb-8">
-                        <p className="text-sm text-gray-400 text-center italic">
-                            Redirecting to secure payment gateway...
-                        </p>
-                        <div className="flex justify-center gap-4">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" className="h-8 opacity-50" alt="Visa" />
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" className="h-8 opacity-50" alt="Mastercard" />
-                        </div>
-                    </div>
+                        {/* Card Form */}
+                        <div className="space-y-5">
+                            <div>
+                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Card Number</label>
+                                <input 
+                                    type="text" name="number" value={cardDetails.number} onChange={handleCardChange}
+                                    className="input-glass w-full text-lg tracking-widest font-mono" placeholder="4532 1122 8899 7766" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Cardholder Name</label>
+                                <input 
+                                    type="text" name="name" value={cardDetails.name} onChange={handleCardChange}
+                                    className="input-glass w-full" placeholder="NAME ON CARD" 
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Expiry</label>
+                                    <input 
+                                        type="text" name="expiry" value={cardDetails.expiry} onChange={handleCardChange}
+                                        className="input-glass w-full text-center font-mono" placeholder="MM/YY" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">CVV</label>
+                                    <input 
+                                        type="password" name="cvv" value={cardDetails.cvv} onChange={handleCardChange}
+                                        className="input-glass w-full text-center font-mono" placeholder="***" 
+                                    />
+                                </div>
+                            </div>
 
-                    <div className="flex gap-4">
-                        <Button variant="outline" onClick={() => setShowPayment(false)} className="flex-1">
-                            Go Back
-                        </Button>
-                        <Button 
-                            onClick={processPayment} 
-                            disabled={loading} 
-                            className="flex-1 bg-[#D4AF37] text-black shadow-lg shadow-[#D4AF37]/20"
-                        >
-                            {loading ? 'Processing...' : 'Proceed to Payment'}
-                        </Button>
+                            <Button 
+                                onClick={processPayment} 
+                                disabled={loading} 
+                                className="w-full bg-[#D4AF37] text-black font-bold h-14 text-lg mt-4 shadow-xl shadow-[#D4AF37]/20"
+                            >
+                                {loading ? 'Authorizing...' : 'Pay with Card'}
+                            </Button>
+                            
+                            <button 
+                                onClick={() => setShowPayment(false)}
+                                className="w-full text-sm text-gray-500 hover:text-white transition-colors"
+                            >
+                                Cancel and return
+                            </button>
+                        </div>
                     </div>
                 </GlassCard>
             </div>
@@ -197,7 +302,7 @@ function Delivery() {
         <div className="min-h-[calc(100vh-80px)] px-4 py-12">
             <div className="container mx-auto max-w-5xl">
                 <h1 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#D4AF37] to-[#E6C86E] text-transparent bg-clip-text mb-12">
-                    Online Ordering System
+                    Online Order Portal
                 </h1>
 
                 {error && (
@@ -229,7 +334,7 @@ function Delivery() {
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-8">
-                    {/* Details Form or Select Food Button */}
+                    {/* Details Form */}
                     <div className="lg:col-span-2 space-y-8">
                         {cart.length === 0 ? (
                             <GlassCard className="text-center py-20 border-dashed border-white/20">
@@ -319,7 +424,7 @@ function Delivery() {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <h4 className="text-white font-bold text-lg mb-1">Payment Method</h4>
-                                            <p className="text-[#D4AF37] font-semibold text-sm">Online Payment Only</p>
+                                            <p className="text-[#D4AF37] font-semibold text-sm">SECURE ONLINE PAYMENT</p>
                                         </div>
                                         <div className="flex gap-2">
                                             <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" className="h-5 opacity-70" alt="Visa" />
@@ -353,9 +458,6 @@ function Delivery() {
                                         <span className="text-[#D4AF37] font-semibold">Rs. {(item.price * item.quantity).toLocaleString()}</span>
                                     </div>
                                 ))}
-                                {cart.length === 0 && (
-                                    <p className="text-center text-gray-500 py-4 text-sm italic">Nothing in cart yet</p>
-                                )}
                             </div>
 
                             <div className="space-y-3 bg-white/5 p-4 rounded-xl">
@@ -375,16 +477,12 @@ function Delivery() {
 
                             <Button
                                 onClick={handleProceedToPayment}
-                                className="w-full mt-8 bg-[#D4AF37] hover:bg-[#E6C86E] text-black shadow-xl shadow-[#D4AF37]/20"
+                                className="w-full mt-8 bg-[#D4AF37] hover:bg-[#E6C86E] text-black shadow-xl shadow-[#D4AF37]/20 font-bold"
                                 size="lg"
                                 disabled={cart.length === 0}
                             >
                                 Proceed to Payment
                             </Button>
-                            
-                            <p className="mt-4 text-center text-[10px] text-gray-500 px-4 uppercase tracking-widest font-bold">
-                                SECURE ONLINE PAYMENT
-                            </p>
                         </GlassCard>
                     </div>
                 </div>

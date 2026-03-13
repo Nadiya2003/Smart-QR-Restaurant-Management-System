@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 
 function Auth() {
     const navigate = useNavigate();
     const { login } = useAuth();
+    const { setOrderType } = useCart();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -16,7 +18,6 @@ function Auth() {
     const [mode, setMode] = useState('login');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
-
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
@@ -24,20 +25,16 @@ function Auth() {
         password: '',
         confirmPassword: '',
         otp: '',
-        role: 'CUSTOMER', // Default
-        jobRole: 'steward'
+        profile_image: ''
     });
 
-    const roles = [
-        { value: 'CUSTOMER', label: '👤 Customer / User' },
-        { value: 'ADMIN', label: '🛡️ Administrator' },
-        { value: 'MANAGER', label: '👔 Manager' },
-        { value: 'CASHIER', label: '💰 Cashier' },
-        { value: 'STEWARD', label: '🍽️ Steward / Waiter' },
-        { value: 'KITCHEN_STAFF', label: '👨‍🍳 Kitchen Staff' },
-        { value: 'BAR_STAFF', label: '🍸 Bar Staff' },
-        { value: 'DELIVERY_RIDER', label: '🛵 Delivery Rider' },
-    ];
+    const [selectedFile, setSelectedFile] = useState(null);
+
+    const handleFileChange = (e) => {
+        setSelectedFile(e.target.files[0]);
+    };
+
+
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -59,7 +56,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://192.168.1.3:5000/api/auth/login', {
+            const res = await fetch('http://localhost:5000/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -68,7 +65,15 @@ function Auth() {
             if (res.ok) {
                 login(data);
                 showAlert('success', 'Login successful!');
-                navigate('/');
+                
+                const target = localStorage.getItem('postLoginTarget') || '/';
+                const intendedType = localStorage.getItem('intendedOrderType');
+                if (intendedType) setOrderType(intendedType);
+                
+                localStorage.removeItem('postLoginTarget');
+                localStorage.removeItem('intendedOrderType');
+                
+                navigate(target);
             } else {
                 showAlert('error', data.message || 'Login failed');
             }
@@ -89,24 +94,24 @@ function Auth() {
 
         setLoading(true);
         try {
-            const payload = {
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                password: formData.password,
-                role: formData.role === 'CUSTOMER' ? 'CUSTOMER' : (formData.role === 'ADMIN' ? 'ADMIN' : 'STAFF'),
-                jobRole: formData.role !== 'CUSTOMER' && formData.role !== 'ADMIN' ? formData.role.toLowerCase() : (formData.role === 'ADMIN' ? 'admin' : null)
-            };
+            const fd = new FormData();
+            fd.append('name', formData.name);
+            fd.append('email', formData.email);
+            fd.append('phone', formData.phone);
+            fd.append('password', formData.password);
+            if (selectedFile) {
+                fd.append('profile_image', selectedFile);
+            } else if (formData.profile_image) {
+                fd.append('profile_image', formData.profile_image);
+            }
 
-            const res = await fetch('http://192.168.1.3:5000/api/auth/register', {
+            const res = await fetch('http://localhost:5000/api/auth/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: fd
             });
             const data = await res.json();
             if (res.ok) {
-                const msg = formData.role === 'CUSTOMER' ? 'Registration successful! Please login.' : 'Staff registration successful! Wait for admin approval.';
-                showAlert('success', msg);
+                showAlert('success', 'Registration successful! Please login.');
                 setMode('login');
             } else {
                 showAlert('error', data.message || 'Registration failed');
@@ -124,7 +129,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://192.168.1.3:5000/api/auth/forgot-password', {
+            const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email })
@@ -151,7 +156,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://192.168.1.3:5000/api/auth/reset-password', {
+            const res = await fetch('http://localhost:5000/api/auth/reset-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -200,9 +205,9 @@ function Auth() {
 
                 {/* LOGIN */}
                 {mode === 'login' && (
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required />
-                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="Password" required />
+                    <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required autoComplete="off" />
+                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="Password" required autoComplete="new-password" />
                         <div className="text-right">
                             <button type="button" onClick={() => setMode('forgot')} className="text-sm text-[#D4AF37] hover:underline">Forgot Password?</button>
                         </div>
@@ -212,29 +217,34 @@ function Auth() {
 
                 {/* REGISTER */}
                 {mode === 'register' && (
-                    <form onSubmit={handleRegister} className="space-y-4">
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} className="input-glass w-full" placeholder="Full Name" required />
-                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="input-glass w-full" placeholder="Phone Number" required />
-                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required />
+                    <form onSubmit={handleRegister} className="space-y-4" autoComplete="off">
+                        <input type="text" name="name" value={formData.name} onChange={handleChange} className="input-glass w-full" placeholder="Full Name" required autoComplete="off" />
+                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="input-glass w-full" placeholder="Phone Number" required autoComplete="off" />
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required autoComplete="off" />
                         
-                        <div className="relative">
-                            <select 
-                                name="role" 
-                                value={formData.role} 
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 pl-1 uppercase tracking-widest font-bold">Profile Image</label>
+                            <input 
+                                type="file" 
+                                name="profile_image_file" 
+                                onChange={handleFileChange} 
+                                className="input-glass w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#D4AF37]/20 file:text-[#D4AF37] hover:file:bg-[#D4AF37]/30" 
+                                accept="image/*"
+                            />
+                            <p className="text-[10px] text-gray-500 pl-1 italic">Or provide an image URL below</p>
+                            <input 
+                                type="text" 
+                                name="profile_image" 
+                                value={formData.profile_image} 
                                 onChange={handleChange} 
-                                className="input-glass w-full appearance-none cursor-pointer"
-                            >
-                                {roles.map(role => (
-                                    <option key={role.value} value={role.value} className="bg-[#1a1a1a] text-white">
-                                        {role.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                className="input-glass w-full text-xs" 
+                                placeholder="https://example.com/avatar.jpg" 
+                                autoComplete="off"
+                            />
                         </div>
 
-                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="Password" required />
-                        <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input-glass w-full" placeholder="Confirm Password" required />
+                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="Password" required autoComplete="new-password" />
+                        <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input-glass w-full" placeholder="Confirm Password" required autoComplete="new-password" />
                         <Button type="submit" className="w-full mt-4" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>
                     </form>
                 )}

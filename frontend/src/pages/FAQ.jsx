@@ -1,103 +1,95 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
+import Button from '../components/Button';
 
 /**
  * FAQ Page - Frequently Asked Questions
  * Covers reservations, restaurant info, menu, orders, payments, events, and support.
  */
 function FAQ() {
+    const [openIndex, setOpenIndex] = useState(null);
+    const [showAll, setShowAll] = useState(false);
+
     useEffect(() => {
         window.scrollTo(0, 0);
     }, []);
-    const faqData = [
-        {
-            category: "Reservation Questions",
-            questions: [
-                { q: "Do I need to make a reservation?", a: "While we welcome walk-ins, we highly recommend making a reservation, especially during weekends and holidays, to ensure you have a table waiting for you." },
-                { q: "How can I reserve a table?", a: "You can reserve a table through our website's 'Reservations' page, or by calling us directly at +94 77 123 4567." },
-                { q: "Can I book a table online?", a: "Yes! Our online reservation system is available 24/7. Simply go to the 'Reservations' page and fill out the form." },
-                { q: "Can I reserve a table for a large group?", a: "Absolutely. For groups larger than 10 people, we recommend calling us at least 48 hours in advance so we can arrange the best seating for your party." },
-                { q: "How far in advance should I book?", a: "We recommend booking at least 24 hours in advance for weekdays and 3-5 days in advance for weekends or special occasions." }
-            ]
-        },
-        {
-            category: "Restaurant Info",
-            questions: [
-                { q: "What are your opening hours?", a: "We are open daily from 11:00 AM to 11:00 PM." },
-                { q: "Where is the restaurant located?", a: "We are located at 123 Heritage Lane, Colombo 07, Sri Lanka." },
-                { q: "Do you have parking facilities?", a: "Yes, we have a dedicated parking area for our customers with valet service available during peak hours." },
-                { q: "Is the restaurant family friendly?", a: "Yes, Melissas Food Court is a family-friendly establishment. We have high chairs and a special kids' menu available." },
-                { q: "Do you have outdoor seating?", a: "Yes, we have a beautiful garden terrace for those who prefer outdoor dining." }
-            ]
-        },
-        {
-            category: "Menu Questions",
-            questions: [
-                { q: "Can I see the menu?", a: "Our full menu is available on the 'Menu' page of this website. We offer a fusion of Sri Lankan and Italian cuisine." },
-                { q: "Do you offer vegetarian options?", a: "Yes, we have a wide variety of vegetarian Sri Lankan curries and Italian pasta dishes." },
-                { q: "Do you offer vegan meals?", a: "Many of our Sri Lankan vegetable curries are naturally vegan. Please inform your server of your preferences." },
-                { q: "Do you have gluten-free dishes?", a: "Yes, we offer gluten-free pasta and many of our rice-based Sri Lankan dishes are gluten-free." },
-                { q: "What are your most popular dishes?", a: "Our signature Chicken Kottu and Seafood Fettuccine are customer favorites!" }
-            ]
-        },
-        {
-            category: "Orders & Delivery",
-            questions: [
-                { q: "Do you offer food delivery?", a: "Yes, we offer delivery within a 10km radius of our restaurant." },
-                { q: "What areas do you deliver to?", a: "We deliver to Colombo 1-15, Dehiwala, and Rajagiriya." },
-                { q: "What is the delivery time?", a: "Usually between 30 to 45 minutes depending on your location and traffic." },
-                { q: "How can I place an online order?", a: "Go to our 'Order Online' page, select your items, and proceed to checkout." },
-                { q: "Can I track my order?", a: "Yes, once your order is placed, you can track its status in the 'Account' section." }
-            ]
-        },
-        {
-            category: "Payments",
-            questions: [
-                { q: "What payment methods do you accept?", a: "We accept Cash, Credit/Debit cards (Visa, MasterCard, Amex), and online payments via PayHere." },
-                { q: "Can I pay online?", a: "Yes, you can pay securely online when placing your order through our website." },
-                { q: "Do you accept credit cards?", a: "Yes, all major credit cards are accepted both in-restaurant and for delivery." }
-            ]
-        }
+
+    const allQuestions = [
+        { q: "What are your opening hours?", a: "We are open from 10:00 AM to 11:00 PM every day." },
+        { q: "Do you offer takeaway and delivery?", a: "Yes, we provide both takeaway and delivery services through the Order Online section." },
+        { q: "Can I reserve a table online?", a: "Yes, you can reserve a table through the Reservation page after logging in." },
+        { q: "What payment methods do you accept?", a: "We accept online payments including credit/debit cards." },
+        { q: "Do you have vegetarian options?", a: "Yes, we offer several vegetarian dishes in our menu." },
+        { q: "Do I need to login to reserve?", a: "Yes, for security and tracking, you must have an account and be logged in to make a table reservation." },
+        { q: "Can I reserve for large groups?", a: "Absolutely. For groups larger than 10 people, we recommend calling us at least 48 hours in advance." },
+        { q: "Is there a reservation fee?", a: "No, online reservations are completely free. You only pay for the food you order at the restaurant." },
+        { q: "What is your delivery radius?", a: "We deliver within a 10km radius of our restaurant, covering major parts of the city." },
+        { q: "How long does delivery take?", a: "Standard delivery time is between 30 to 45 minutes, depending on traffic and order volume." }
     ];
 
+    const displayedQuestions = showAll ? allQuestions : allQuestions.slice(0, 5);
+
     return (
-        <div className="min-h-screen px-4 py-16">
-            <div className="container mx-auto max-w-4xl">
+        <div className="min-h-screen px-4 py-20 bg-[#0a0a0a]">
+            <div className="container mx-auto max-w-3xl">
                 <div className="text-center mb-16 animate-fade-in">
                     <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-[#D4AF37] via-[#E6C86E] to-[#D4AF37] text-transparent bg-clip-text mb-6">
-                        Frequently Asked Questions
+                        Support Center
                     </h1>
                     <p className="text-gray-400 text-lg max-w-2xl mx-auto">
                         Everything you need to know about dining at Melissas Food Court.
                     </p>
                 </div>
 
-                <div className="space-y-12">
-                    {faqData.map((section, idx) => (
-                        <div key={idx} className="animate-slide-up" style={{ animationDelay: `${idx * 100}ms` }}>
-                            <h2 className="text-2xl font-bold text-[#D4AF37] mb-6 border-l-4 border-[#D4AF37] pl-4">
-                                {section.category}
-                            </h2>
-                            <div className="grid gap-4">
-                                {section.questions.map((faq, fidx) => (
-                                    <GlassCard key={fidx} className="hover:border-[#D4AF37]/50 transition-colors">
-                                        <h3 className="text-lg font-bold text-white mb-2">{faq.q}</h3>
-                                        <p className="text-gray-400 leading-relaxed">{faq.a}</p>
-                                    </GlassCard>
-                                ))}
+                <div className="space-y-4">
+                    {displayedQuestions.map((faq, idx) => (
+                        <GlassCard 
+                            key={idx} 
+                            className={`cursor-pointer transition-all duration-300 border-white/5 hover:border-[#D4AF37]/30 ${openIndex === idx ? 'ring-1 ring-[#D4AF37]/50 bg-white/5' : ''}`}
+                            onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
+                        >
+                            <div className="flex justify-between items-center px-2">
+                                <h3 className={`text-lg font-bold transition-colors ${openIndex === idx ? 'text-[#D4AF37]' : 'text-white'}`}>
+                                    {faq.q}
+                                </h3>
+                                <span className={`text-[#D4AF37] transition-transform duration-500 ${openIndex === idx ? 'rotate-180' : ''}`}>
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </span>
                             </div>
-                        </div>
+                            <div className={`overflow-hidden transition-all duration-500 ${openIndex === idx ? 'max-h-[500px] mt-6 opacity-100' : 'max-h-0 opacity-0'}`}>
+                                <p className="text-gray-400 leading-relaxed border-t border-white/5 pt-6 text-base px-2">
+                                    {faq.a}
+                                </p>
+                            </div>
+                        </GlassCard>
                     ))}
                 </div>
 
-                <div className="mt-20 text-center animate-fade-in">
-                    <p className="text-gray-400 mb-6">Still have questions?</p>
-                    <a 
-                        href="/contact" 
-                        className="inline-block bg-[#D4AF37] hover:bg-[#E6C86E] text-black font-bold py-3 px-8 rounded-xl transition-all hover:scale-105"
-                    >
-                        Contact Support
-                    </a>
+                {!showAll && (
+                    <div className="text-center mt-12 animate-fade-in">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => setShowAll(true)}
+                            className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10"
+                        >
+                            Show More Questions
+                        </Button>
+                    </div>
+                )}
+
+                <div className="mt-20 text-center animate-fade-in bg-white/5 p-10 rounded-3xl border border-white/10">
+                    <h3 className="text-2xl font-bold text-white mb-4">Still have questions?</h3>
+                    <p className="text-gray-400 mb-8">Can't find the answer you're looking for? Please chat with our friendly team.</p>
+                    <div className="flex flex-wrap justify-center gap-4">
+                        <Button onClick={() => window.location.href = '/contact'} className="bg-[#D4AF37] text-black">
+                            Contact Support
+                        </Button>
+                        <Button variant="outline" onClick={() => window.location.href = '/ai-chat'}>
+                            Chat with AI
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

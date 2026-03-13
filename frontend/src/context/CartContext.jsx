@@ -4,8 +4,13 @@ const CartContext = createContext();
 
 export function CartProvider({ children }) {
     const [cart, setCart] = useState(() => {
-        const savedCart = localStorage.getItem('cart');
-        return savedCart ? JSON.parse(savedCart) : [];
+        try {
+            const savedCart = localStorage.getItem('cart');
+            return savedCart ? JSON.parse(savedCart) : [];
+        } catch (e) {
+            console.error("Corrupted cart data", e);
+            return [];
+        }
     });
 
     const [orderType, setOrderType] = useState(() => {
