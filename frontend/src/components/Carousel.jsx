@@ -15,11 +15,11 @@ function Carousel({ images = [] }) {
 
     // Default placeholder images if none provided
     const defaultImages = [
-        { url: '/artifacts/carousel_interior_1773389727502.png', alt: 'Restaurant Interior' },
-        { url: '/artifacts/carousel_food_dishes_1773389744131.png', alt: 'Fusion Food Dishes' },
-        { url: '/artifacts/carousel_dining_tables_1773389760411.png', alt: 'Elegant Dining' },
-        { url: '/artifacts/carousel_chef_cooking_1773389776402.png', alt: 'Professional Chef' },
-        { url: '/artifacts/carousel_customer_dining_1773389791984.png', alt: 'Happy Customers Dining' },
+        { url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=1200', alt: 'Restaurant Interior' },
+        { url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=1200', alt: 'Fusion Food Dishes' },
+        { url: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=1200', alt: 'Elegant Dining' },
+        { url: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=1200', alt: 'Professional Chef' },
+        { url: 'https://images.unsplash.com/photo-1550966841-3ee296061849?auto=format&fit=crop&q=80&w=1200', alt: 'Happy Customers Dining' },
     ];
 
     const slides = images.length > 0 ? images : defaultImages;

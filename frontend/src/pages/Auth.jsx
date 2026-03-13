@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import GlassCard from '../components/GlassCard';
@@ -7,6 +7,10 @@ import Button from '../components/Button';
 function Auth() {
     const navigate = useNavigate();
     const { login } = useAuth();
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
 
     // Modes: 'login', 'register', 'forgot', 'reset'
     const [mode, setMode] = useState('login');

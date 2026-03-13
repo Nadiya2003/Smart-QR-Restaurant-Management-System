@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
@@ -12,6 +12,10 @@ import { useAuth } from '../context/AuthContext';
 function Reservation() {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
 
     // Form state
     const [formData, setFormData] = useState({

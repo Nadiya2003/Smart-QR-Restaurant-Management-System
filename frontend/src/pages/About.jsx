@@ -1,17 +1,22 @@
 import GlassCard from '../components/GlassCard';
+import { useEffect } from 'react';
 import SafeImage from '../components/SafeImage';
 
 /**
  * About Page - Story and mission
  */
 function About() {
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     return (
         <div className="min-h-screen">
             {/* Hero Section */}
             <section className="relative h-[60vh] flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
                     <SafeImage 
-                        src="/artifacts/carousel_interior_1773389727502.png" 
+                        src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=1200" 
                         alt="Restaurant Background" 
                         className="w-full h-full object-cover blur-sm brightness-50"
                     />
@@ -50,7 +55,7 @@ function About() {
                     <div className="relative animate-fade-in">
                         <div className="absolute inset-0 bg-[#D4AF37]/20 blur-3xl rounded-full -z-10"></div>
                         <SafeImage 
-                            src="/artifacts/gallery_chef_2_1773390495869.png" 
+                            src="https://images.unsplash.com/photo-1577214286171-e716613693f9?auto=format&fit=crop&q=80&w=1200" 
                             alt="Our Founder" 
                             className="rounded-3xl shadow-2xl border border-white/10"
                         />

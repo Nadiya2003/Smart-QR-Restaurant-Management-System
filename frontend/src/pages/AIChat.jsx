@@ -16,6 +16,11 @@ function AIChat() {
             text: 'Hello! I am your Melissas Food Court assistant. How can I help you today? 🤖\nI can answer questions about reservations, our menu, opening hours, delivery, and more!',
         },
     ]);
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     const [inputText, setInputText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef(null);

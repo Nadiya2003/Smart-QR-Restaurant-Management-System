@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import SafeImage from '../components/SafeImage';
@@ -6,6 +7,9 @@ import SafeImage from '../components/SafeImage';
  * Contact Page - Location, contact form, and maps
  */
 function Contact() {
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
     return (
         <div className="min-h-screen px-4 py-16">
             <div className="container mx-auto">

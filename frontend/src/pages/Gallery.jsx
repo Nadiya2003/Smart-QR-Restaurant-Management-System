@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 import SafeImage from '../components/SafeImage';
 
@@ -11,16 +11,20 @@ import SafeImage from '../components/SafeImage';
  * - Responsive design
  */
 function Gallery() {
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     const galleryImages = [
-        { id: 1, src: '/artifacts/carousel_interior_1773389727502.png', category: 'Interior', title: 'Grand Dining Hall' },
-        { id: 2, src: '/artifacts/gallery_dish_1_1773390449991.png', category: 'Food', title: 'Signature Rice & Curry' },
-        { id: 3, src: '/artifacts/carousel_dining_tables_1773389760411.png', category: 'Interior', title: 'Window View' },
-        { id: 4, src: '/artifacts/gallery_dish_2_1773390465706.png', category: 'Food', title: 'Seafood Fettuccine' },
-        { id: 5, src: '/artifacts/gallery_interior_2_1773390480803.png', category: 'Interior', title: 'Garden Terrace' },
-        { id: 6, src: '/artifacts/gallery_chef_2_1773390495869.png', category: 'Kitchen', title: 'The Art of Plating' },
-        { id: 7, src: '/artifacts/carousel_food_dishes_1773389744131.png', category: 'Food', title: 'Sri Lankan Spices' },
-        { id: 8, src: '/artifacts/carousel_chef_cooking_1773389776402.png', category: 'Kitchen', title: 'Open Kitchen' },
-        { id: 9, src: '/artifacts/carousel_customer_dining_1773389791984.png', category: 'Interior', title: 'Cozy Moments' },
+        { id: 1, src: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=1200', category: 'Interior', title: 'Grand Dining Hall' },
+        { id: 2, src: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=1200', category: 'Food', title: 'Signature Rice & Curry' },
+        { id: 3, src: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=1200', category: 'Interior', title: 'Window View' },
+        { id: 4, src: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&q=80&w=1200', category: 'Food', title: 'Seafood Fettuccine' },
+        { id: 5, src: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=1200', category: 'Interior', title: 'Garden Terrace' },
+        { id: 6, src: 'https://images.unsplash.com/photo-1577214286171-e716613693f9?auto=format&fit=crop&q=80&w=1200', category: 'Kitchen', title: 'The Art of Plating' },
+        { id: 7, src: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200', category: 'Food', title: 'Sri Lankan Spices' },
+        { id: 8, src: 'https://images.unsplash.com/photo-1550966841-3ee296061849?auto=format&fit=crop&q=80&w=1200', category: 'Kitchen', title: 'Open Kitchen' },
+        { id: 9, src: 'https://images.unsplash.com/photo-1590846406792-0adc7f938f1d?auto=format&fit=crop&q=80&w=1200', category: 'Interior', title: 'Cozy Moments' },
     ];
 
     const [selectedImage, setSelectedImage] = useState(null);

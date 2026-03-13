@@ -7,7 +7,7 @@ import { useState } from 'react';
  * @param {string} className - CSS classes
  * @param {string} fallbackSrc - Optional custom fallback image
  */
-const SafeImage = ({ src, alt, className, fallbackSrc = '/images/placeholder.png', ...props }) => {
+const SafeImage = ({ src, alt, className, fallbackSrc = 'https://via.placeholder.com/800x600?text=Melissas+Food+Court', ...props }) => {
     const [imgSrc, setImgSrc] = useState(src || fallbackSrc);
 
     const handleError = () => {

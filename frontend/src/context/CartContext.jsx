@@ -8,9 +8,17 @@ export function CartProvider({ children }) {
         return savedCart ? JSON.parse(savedCart) : [];
     });
 
+    const [orderType, setOrderType] = useState(() => {
+        return localStorage.getItem('orderType') || 'delivery';
+    });
+
     useEffect(() => {
         localStorage.setItem('cart', JSON.stringify(cart));
     }, [cart]);
+
+    useEffect(() => {
+        localStorage.setItem('orderType', orderType);
+    }, [orderType]);
 
     const addToCart = (item) => {
         setCart(prevCart => {
@@ -58,7 +66,9 @@ export function CartProvider({ children }) {
             clearCart,
             subtotal,
             serviceCharge,
-            total
+            total,
+            orderType,
+            setOrderType
         }}>
             {children}
         </CartContext.Provider>

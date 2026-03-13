@@ -1,12 +1,11 @@
 import express from 'express';
-import { createOrder, getCustomerOrders } from '../controllers/order.controller.js';
+import { createDeliveryOrder, createTakeawayOrder, getCustomerOrders } from '../controllers/order.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public/Protected based on usage. 
-// Frontend calls this passing token.
-router.post('/', protect, createOrder);
-router.get('/customer/:id', protect, getCustomerOrders);
+router.post('/delivery', protect, createDeliveryOrder);
+router.post('/takeaway', protect, createTakeawayOrder);
+router.get('/customer', protect, getCustomerOrders);
 
 export default router;

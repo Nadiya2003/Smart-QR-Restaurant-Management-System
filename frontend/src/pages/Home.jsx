@@ -10,6 +10,10 @@ import SafeImage from '../components/SafeImage';
  * Updated with GOLD theme (#D4AF37)
  */
 function Home() {
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     const navigate = useNavigate();
     const location = useLocation();
     const [faqOpen, setFaqOpen] = useState(null);
@@ -42,10 +46,12 @@ function Home() {
         { q: "Do you have vegetarian options?", a: "Yes, we have a wide variety of vegetarian Sri Lankan curries and Italian pasta dishes." }
     ];
 
-    const galleryPreview = [
-        { id: 1, src: '/artifacts/carousel_interior_1773389727502.png', title: 'Luxury Interior' },
-        { id: 2, src: '/artifacts/gallery_dish_1_1773390449991.png', title: 'Signature Sri Lankan' },
-        { id: 4, src: '/artifacts/gallery_dish_2_1773390465706.png', title: 'Seafood Classics' },
+    const carouselImages = [
+        { url: "/images/1.jpg", alt: "Luxury Interior" },
+        { url: "/images/2.jpg", alt: "Signature Sri Lankan" },
+        { url: "/images/3.jpg", alt: "Seafood Classics" },
+        { url: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200", alt: "Authentic Flavours" },
+        { url: "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=1200", alt: "Elegant Dining" },
     ];
 
     return (
@@ -82,7 +88,7 @@ function Home() {
 
                 {/* Photo Carousel */}
                 <div className="mb-16 animate-fade-in">
-                    <Carousel />
+                    <Carousel images={carouselImages} />
                 </div>
 
                 {/* Feature Cards */}
@@ -131,7 +137,7 @@ function Home() {
                         </h2>
                         <div className="w-24 h-1 bg-[#D4AF37] mx-auto rounded-full"></div>
                     </div>
-                    
+
                     <div className="grid md:grid-cols-2 gap-12 items-center">
                         <div className="space-y-6">
                             <p className="text-gray-300 text-lg leading-relaxed">
@@ -147,8 +153,8 @@ function Home() {
                             <Button onClick={() => navigate('/about')} variant="outline">Learn More Our Story</Button>
                         </div>
                         <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-gold-500/10 border border-white/10 group">
-                            <SafeImage 
-                                src="/artifacts/carousel_interior_1773389727502.png" 
+                            <SafeImage
+                                src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=1200"
                                 alt="Restaurant Interior"
                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                             />
@@ -157,46 +163,19 @@ function Home() {
                 </div>
             </section>
 
-            {/* Gallery Preview Section */}
-            <section id="gallery" className="bg-black/20 py-20 border-t border-white/5">
-                <div className="container mx-auto px-4">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Atmosphere</h2>
-                        <p className="text-gray-400">Capture the essence of our fusion experience</p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                        {galleryPreview.map((item) => (
-                            <div key={item.id} className="relative group overflow-hidden rounded-2xl aspect-[4/3] border border-white/5">
-                                <SafeImage 
-                                    src={item.src} 
-                                    alt={item.title} 
-                                    className="transition-transform duration-500 group-hover:scale-110"
-                                />
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                                    <p className="text-[#D4AF37] font-bold text-lg">{item.title}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="text-center">
-                        <Button onClick={() => navigate('/gallery')} variant="outline">View Full Gallery</Button>
-                    </div>
-                </div>
-            </section>
 
             {/* AI Assistant Landing Section */}
             <section id="ai-assistant" className="py-20 border-t border-white/5">
                 <div className="container mx-auto px-4">
                     <GlassCard className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12 p-8 md:p-16 border-[#D4AF37]/20 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-[#D4AF37]/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
-                        
+
                         <div className="flex-1 space-y-6 z-10 text-center md:text-left">
                             <h2 className="text-3xl md:text-5xl font-bold text-white leading-tight">
                                 Meet Your <span className="text-[#D4AF37]">Smart Assistant</span>
                             </h2>
                             <p className="text-gray-400 text-lg">
-                                Have questions about our dishes, opening times, or need help with a booking? 
+                                Have questions about our dishes, opening times, or need help with a booking?
                                 Our AI-powered assistant is here 24/7 to help you with everything you need.
                             </p>
                             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
@@ -205,12 +184,12 @@ function Home() {
                                 </Button>
                             </div>
                         </div>
-                        
+
                         <div className="flex-1 w-full max-w-sm z-10">
                             <div className="relative group">
                                 <div className="absolute inset-0 bg-gold-500/20 rounded-full blur-2xl animate-pulse"></div>
-                                <SafeImage 
-                                    src="/artifacts/carousel_chef_cooking_1773389776402.png" 
+                                <SafeImage
+                                    src="https://images.unsplash.com/photo-1590846406792-0adc7f938f1d?auto=format&fit=crop&q=80&w=1200"
                                     alt="AI Assistant Placeholder"
                                     className="rounded-2xl border border-white/10 shadow-2xl relative z-10 grayscale group-hover:grayscale-0 transition-all duration-500"
                                 />
@@ -233,8 +212,8 @@ function Home() {
 
                     <div className="space-y-4">
                         {homeFAQ.map((item, idx) => (
-                            <GlassCard 
-                                key={idx} 
+                            <GlassCard
+                                key={idx}
                                 className={`cursor-pointer transition-all duration-300 border-white/5 hover:border-[#D4AF37]/30 ${faqOpen === idx ? 'ring-1 ring-[#D4AF37]/50' : ''}`}
                                 onClick={() => setFaqOpen(faqOpen === idx ? null : idx)}
                             >
@@ -256,7 +235,7 @@ function Home() {
                             </GlassCard>
                         ))}
                     </div>
-                    
+
                     <div className="text-center mt-12">
                         <Button onClick={() => navigate('/faq')} variant="outline">View All FAQs</Button>
                     </div>

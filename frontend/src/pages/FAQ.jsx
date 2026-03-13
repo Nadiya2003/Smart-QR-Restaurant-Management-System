@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 
 /**
@@ -5,6 +6,9 @@ import GlassCard from '../components/GlassCard';
  * Covers reservations, restaurant info, menu, orders, payments, events, and support.
  */
 function FAQ() {
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
     const faqData = [
         {
             category: "Reservation Questions",
