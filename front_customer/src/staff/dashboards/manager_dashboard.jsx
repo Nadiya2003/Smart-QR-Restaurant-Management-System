@@ -43,17 +43,17 @@ const ManagerDashboard = () => {
             };
 
             // Fetch notifications
-            const notifResponse = await fetch('http://localhost:5000/api/staff/notifications', { headers });
+            const notifResponse = await fetch('http://192.168.1.3:5000/api/staff/notifications', { headers });
             const notifData = await notifResponse.json();
             setNotifications(notifData.notifications || []);
 
             // Fetch dashboard stats
-            const statsResponse = await fetch('http://localhost:5000/api/staff/dashboard/stats', { headers });
+            const statsResponse = await fetch('http://192.168.1.3:5000/api/staff/dashboard/stats', { headers });
             const statsData = await statsResponse.json();
             setStats(statsData.stats || stats);
 
             // Fetch recent orders
-            const ordersResponse = await fetch('http://localhost:5000/api/staff/orders', { headers });
+            const ordersResponse = await fetch('http://192.168.1.3:5000/api/staff/orders', { headers });
             const ordersData = await ordersResponse.json();
             setOrders(ordersData.orders || []);
 
@@ -67,7 +67,7 @@ const ManagerDashboard = () => {
     const handleMarkRead = async (notificationId) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/notifications/${notificationId}/read`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/notifications/${notificationId}/read`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,

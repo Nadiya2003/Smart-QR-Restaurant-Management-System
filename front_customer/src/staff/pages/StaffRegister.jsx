@@ -1,7 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+
+const ROLES = [
+    { value: 'manager', label: '👔 Manager', color: 'text-purple-400' },
+    { value: 'cashier', label: '💰 Cashier', color: 'text-green-400' },
+    { value: 'steward', label: '🪑 Steward', color: 'text-blue-400' },
+    { value: 'delivery_rider', label: '🏍️ Delivery Rider', color: 'text-orange-400' },
+    { value: 'inventory_manager', label: '📦 Inventory Manager', color: 'text-yellow-400' },
+    { value: 'supplier', label: '🚚 Supplier', color: 'text-cyan-400' },
+    { value: 'kitchen_staff', label: '👨‍🍳 Kitchen Staff', color: 'text-red-400' },
+    { value: 'bar_staff', label: '🍹 Bar Staff', color: 'text-pink-400' },
+];
 
 /**
  * StaffRegister - Registration page for new staff members
@@ -20,28 +31,33 @@ const StaffRegister = () => {
     const [successMessage, setSuccessMessage] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const roles = [
-        { value: 'manager', label: '👔 Manager', color: 'text-purple-400' },
-        { value: 'cashier', label: '💰 Cashier', color: 'text-green-400' },
-        { value: 'steward', label: '🪑 Steward', color: 'text-blue-400' },
-        { value: 'delivery_rider', label: '🏍️ Delivery Rider', color: 'text-orange-400' },
-        { value: 'inventory_manager', label: '📦 Inventory Manager', color: 'text-yellow-400' },
-        { value: 'supplier', label: '🚚 Supplier', color: 'text-cyan-400' },
-        { value: 'kitchen_staff', label: '👨‍🍳 Kitchen Staff', color: 'text-red-400' },
-        { value: 'bar_staff', label: '🍹 Bar Staff', color: 'text-pink-400' },
-    ];
+    // Clean up timeout on unmount
+    useEffect(() => {
+        let timeoutId;
+        if (successMessage) {
+            timeoutId = setTimeout(() => {
+                navigate('/staff/login');
+            }, 3500);
+        }
+        return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [successMessage, navigate]);
 
     const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value,
-        });
-        setError('');
-        setSuccessMessage('');
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value,
+        }));
+        if (error) setError('');
+        if (successMessage) setSuccessMessage('');
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (loading) return;
+        
         setLoading(true);
         setError('');
         setSuccessMessage('');
@@ -80,7 +96,7 @@ const StaffRegister = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/api/staff/register', {
+            const response = await fetch('http://192.168.1.3:5000/api/staff/register', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -100,16 +116,11 @@ const StaffRegister = () => {
             }
 
             setSuccessMessage('Registration successful! Please wait for Admin to activate your account.');
-
-            // Redirect to login after 3 seconds
-            setTimeout(() => {
-                navigate('/staff/login');
-            }, 3500);
-
         } catch (err) {
             setError(err.message);
-        } finally {
             setLoading(false);
+        } finally {
+            // Loading is set to false in catch/success paths to be precise
         }
     };
 
@@ -117,14 +128,15 @@ const StaffRegister = () => {
         <div className="min-h-screen bg-[#121212] flex items-center justify-center p-4">
             {/* Background Effects */}
             <div className="fixed inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#FFD700]/10 rounded-full blur-[120px] animate-pulse"></div>
-                <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-[#FFA500]/10 rounded-full blur-[120px] animate-pulse delay-1000"></div>
+                <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#FFD700]/5 rounded-full blur-[120px]"></div>
+                <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-[#FFA500]/5 rounded-full blur-[120px]"></div>
             </div>
 
             <div className="w-full max-w-md relative z-10">
                 {/* Header */}
                 <div className="text-center mb-8">
                     <img
+                        id="staff-register-logo"
                         src="/logo.png"
                         alt="Melissa's Food Court Logo"
                         className="h-24 w-auto mx-auto mb-4 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)] object-contain"
@@ -137,65 +149,64 @@ const StaffRegister = () => {
 
                 {/* Register Form */}
                 <GlassCard>
-                    <form onSubmit={handleSubmit} className="space-y-5">
+                    <form id="staff-register-form" onSubmit={handleSubmit} className="space-y-5">
                         {/* Success Message */}
                         {successMessage && (
-                            <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium animate-pulse">
+                            <div id="register-success-msg" className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium">
                                 {successMessage}
                             </div>
                         )}
 
                         {/* Error Message */}
                         {error && (
-                            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+                            <div id="register-error-msg" className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
                                 {error}
                             </div>
                         )}
 
                         {/* Name Field */}
                         <div>
-                            <label className="block text-white/80 mb-2 font-medium">Name</label>
+                            <label htmlFor="staff-name" className="block text-white/80 mb-2 font-medium">Name</label>
                             <input
+                                id="staff-name"
                                 type="text"
                                 name="name"
                                 value={formData.name}
                                 onChange={handleChange}
                                 required
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
-                          placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 
-                          focus:outline-none transition-all"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all"
                                 placeholder="John Doe"
+                                autoComplete="name"
                             />
                         </div>
 
                         {/* Email Field */}
                         <div>
-                            <label className="block text-white/80 mb-2 font-medium">Email</label>
+                            <label htmlFor="staff-email" className="block text-white/80 mb-2 font-medium">Email</label>
                             <input
+                                id="staff-email"
                                 type="email"
                                 name="email"
                                 value={formData.email}
                                 onChange={handleChange}
                                 required
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
-                          placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 
-                          focus:outline-none transition-all"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all"
                                 placeholder="staff@restaurant.com"
+                                autoComplete="email"
                             />
                         </div>
 
                         {/* Role Selection */}
                         <div>
-                            <label className="block text-white/80 mb-2 font-medium">Role</label>
+                            <label htmlFor="staff-role" className="block text-white/80 mb-2 font-medium">Role</label>
                             <div className="relative">
                                 <select
+                                    id="staff-role"
                                     name="role"
                                     value={formData.role}
                                     onChange={handleChange}
                                     required
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
-                            focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all
-                            appearance-none cursor-pointer"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all appearance-none cursor-pointer"
                                     style={{
                                         backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFD700%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%22.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
                                         backgroundRepeat: 'no-repeat',
@@ -205,7 +216,7 @@ const StaffRegister = () => {
                                     }}
                                 >
                                     <option value="" className="bg-[#1a1a1a] text-white/50">Select your role...</option>
-                                    {roles.map((role) => (
+                                    {ROLES.map((role) => (
                                         <option key={role.value} value={role.value} className="bg-[#1a1a1a] text-white">
                                             {role.label}
                                         </option>
@@ -216,38 +227,39 @@ const StaffRegister = () => {
 
                         {/* Password */}
                         <div>
-                            <label className="block text-white/80 mb-2 font-medium">Password</label>
+                            <label htmlFor="staff-password" className="block text-white/80 mb-2 font-medium">Password</label>
                             <input
+                                id="staff-password"
                                 type="password"
                                 name="password"
                                 value={formData.password}
                                 onChange={handleChange}
                                 required
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
-                          placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 
-                          focus:outline-none transition-all"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all"
                                 placeholder="••••••••"
+                                autoComplete="new-password"
                             />
                         </div>
 
                         {/* Confirm Password */}
                         <div>
-                            <label className="block text-white/80 mb-2 font-medium">Confirm Password</label>
+                            <label htmlFor="staff-confirm-password" className="block text-white/80 mb-2 font-medium">Confirm Password</label>
                             <input
+                                id="staff-confirm-password"
                                 type="password"
                                 name="confirmPassword"
                                 value={formData.confirmPassword}
                                 onChange={handleChange}
                                 required
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
-                          placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 
-                          focus:outline-none transition-all"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/40 focus:bg-white/10 focus:border-[#FFD700]/50 focus:outline-none transition-all"
                                 placeholder="••••••••"
+                                autoComplete="new-password"
                             />
                         </div>
 
                         {/* Submit Button */}
                         <Button
+                            id="staff-register-submit"
                             type="submit"
                             variant="primary"
                             fullWidth
@@ -261,6 +273,7 @@ const StaffRegister = () => {
                             <p className="text-white/60 text-sm">
                                 Already have an account?{' '}
                                 <button
+                                    id="staff-register-to-login"
                                     type="button"
                                     onClick={() => navigate('/staff/login')}
                                     className="text-[#FFD700] hover:text-[#FFA500] transition-colors font-medium"

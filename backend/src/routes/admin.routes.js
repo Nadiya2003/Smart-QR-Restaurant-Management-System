@@ -4,8 +4,10 @@ import {
     getAllStaff,
     toggleStaffStatus,
     updateStaffPermissions,
+    updateStaffRole,
     getAllCustomers,
     updateCustomerPermissions,
+    toggleCustomerStatus,
     getAllOrders,
     updateOrderStatus,
     getAllReservations,
@@ -45,10 +47,12 @@ router.post('/staff/:id/deactivate',
 
 router.put('/staff/:id/status', preventSelfModification, logAccess('STAFF_STATUS_CHANGE'), toggleStaffStatus);
 router.put('/staff/:id/permissions', updateStaffPermissions);
+router.put('/staff/:id/role', updateStaffRole);
 
 // Customers
 router.get('/customers', getAllCustomers);
 router.put('/customers/:id/permissions', updateCustomerPermissions);
+router.put('/customers/:id/status', toggleCustomerStatus);
 
 // Orders
 router.get('/orders', getAllOrders);

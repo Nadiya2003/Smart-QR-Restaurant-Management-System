@@ -35,7 +35,7 @@ function CustomerDashboard() {
       const steward = JSON.parse(localStorage.getItem('selectedSteward') || '{}');
       const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-      const response = await fetch('http://localhost:5000/api/orders', {
+      const response = await fetch('http://192.168.1.3:5000/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -76,7 +76,7 @@ function CustomerDashboard() {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/orders/customer/${auth.id}`, {
+      const response = await fetch(`http://192.168.1.3:5000/api/orders/customer/${auth.id}`, {
         headers: { 'Authorization': `Bearer ${auth.token}` }
       });
 

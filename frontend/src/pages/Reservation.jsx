@@ -17,9 +17,11 @@ function Reservation() {
     const [formData, setFormData] = useState({
         name: user?.user?.name || '',
         phone: user?.user?.phone || '',
+        email: user?.user?.email || '',
         date: '',
         time: '',
         guests: '2',
+        specialRequest: '',
     });
 
     const [loading, setLoading] = useState(false);
@@ -46,7 +48,7 @@ function Reservation() {
         }
 
         // Validation
-        if (!formData.name || !formData.date || !formData.time) {
+        if (!formData.name || !formData.date || !formData.time || !formData.email) {
             setError('Please fill in all required fields');
             return;
         }
@@ -65,7 +67,10 @@ function Reservation() {
                 body: JSON.stringify({
                     date: formData.date,
                     time: formData.time,
-                    guests: formData.guests
+                    guests: formData.guests,
+                    comments: formData.specialRequest,
+                    email: formData.email, // Passing email and phone just in case backend needs it
+                    phone: formData.phone
                 }),
             });
 
@@ -78,6 +83,7 @@ function Reservation() {
                     date: '',
                     time: '',
                     guests: '2',
+                    specialRequest: '',
                 });
                 // Hide success message after 5 seconds
                 setTimeout(() => setShowSuccess(false), 5000);
@@ -97,7 +103,7 @@ function Reservation() {
             <div className="container mx-auto max-w-2xl">
                 {/* Header */}
                 <div className="text-center mb-8 animate-fade-in">
-                    <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+                    <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#D4AF37] to-[#E6C86E] text-transparent bg-clip-text mb-4">
                         Reserve Your Table
                     </h1>
                     <p className="text-gray-400 text-lg">
@@ -121,29 +127,48 @@ function Reservation() {
                 )}
 
                 {/* Reservation Form */}
-                <GlassCard className="animate-slide-up">
+                <GlassCard className="animate-slide-up border-[#D4AF37]/20 shadow-xl shadow-[#D4AF37]/5">
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        {/* Name Input */}
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
-                                Full Name <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                id="name"
-                                name="name"
-                                value={formData.name}
-                                onChange={handleChange}
-                                className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                placeholder="e.g., Kasun Perera"
-                                required
-                            />
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {/* Name Input */}
+                            <div>
+                                <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
+                                    Full Name <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="name"
+                                    name="name"
+                                    value={formData.name}
+                                    onChange={handleChange}
+                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                    placeholder="e.g., Kasun Perera"
+                                    required
+                                />
+                            </div>
+
+                            {/* Email Input */}
+                            <div>
+                                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                                    Email Address <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                    placeholder="e.g., kasun@example.com"
+                                    required
+                                />
+                            </div>
                         </div>
 
                         {/* Phone Input */}
                         <div>
                             <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-2">
-                                Phone Number
+                                Phone Number <span className="text-red-400">*</span>
                             </label>
                             <input
                                 type="tel"
@@ -153,6 +178,7 @@ function Reservation() {
                                 onChange={handleChange}
                                 className="input-glass w-full focus:ring-[#D4AF37]/50"
                                 placeholder="e.g., 077 123 4567"
+                                required
                             />
                         </div>
 
@@ -211,12 +237,28 @@ function Reservation() {
                                 <option value="6">6 Guests</option>
                                 <option value="7">7 Guests</option>
                                 <option value="8">8 Guests</option>
-                                <option value="9+">9+ Guests</option>
+                                <option value="9">9 Guests</option>
+                                <option value="10+">10+ Guests</option>
                             </select>
                         </div>
 
+                        {/* Special Request */}
+                        <div>
+                            <label htmlFor="specialRequest" className="block text-sm font-medium text-gray-300 mb-2">
+                                Special Request (Optional)
+                            </label>
+                            <textarea
+                                id="specialRequest"
+                                name="specialRequest"
+                                value={formData.specialRequest}
+                                onChange={handleChange}
+                                className="input-glass w-full h-24 focus:ring-[#D4AF37]/50 resize-none"
+                                placeholder="e.g., Birthday celebration, window seat, allergies..."
+                            ></textarea>
+                        </div>
+
                         {/* Submit Button */}
-                        <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                        <Button type="submit" className="w-full bg-[#D4AF37] hover:bg-[#E6C86E] text-black" size="lg" disabled={loading}>
                             {loading ? 'Processing...' : 'Confirm Reservation'}
                         </Button>
                     </form>
@@ -225,8 +267,8 @@ function Reservation() {
                 {/* Info Section */}
                 <div className="mt-8 text-center border-t border-white/5 pt-8">
                     <p className="text-gray-400">
-                        For large groups (9+ guests) or special arrangements,
-                        please call us at{' '}
+                        For groups larger than 10 or special event arrangements,
+                        please contact us directly at{' '}
                         <span className="text-[#D4AF37] font-medium">+94 77 123 4567</span>
                     </p>
                 </div>
@@ -234,5 +276,6 @@ function Reservation() {
         </div>
     );
 }
+
 
 export default Reservation;

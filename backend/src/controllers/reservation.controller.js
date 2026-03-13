@@ -3,7 +3,7 @@ import { notifyRoles } from './staff.notification.controller.js';
 
 export const createReservation = async (req, res) => {
     try {
-        const { date, time, guests, table_number } = req.body;
+        const { date, time, guests, table_number, comments } = req.body;
         // userId is in req.user from protect middleware
         const customer_id = req.user.userId;
 
@@ -13,18 +13,28 @@ export const createReservation = async (req, res) => {
 
         // Combine date and time for MySQL DATETIME
         const reservation_time = `${date} ${time}`;
-        const targetTableNum = table_number || Math.floor(Math.random() * 20) + 1;
-
-        // Find Table ID
-        const [tables] = await pool.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [targetTableNum]);
-        if (tables.length === 0) {
-            return res.status(400).json({ message: 'Invalid table number' });
+        
+        // Find an available table or just use table_number if provided
+        // For now, we'll pick the first available table if non-specific
+        let tableId;
+        if (table_number) {
+            const [tables] = await pool.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [table_number]);
+            if (tables.length === 0) return res.status(400).json({ message: 'Invalid table number' });
+            tableId = tables[0].id;
+        } else {
+            const [tables] = await pool.query('SELECT id FROM restaurant_tables WHERE status = "available" LIMIT 1');
+            if (tables.length === 0) {
+                // If no "available" tables, just pick one (mocking availability)
+                const [allTables] = await pool.query('SELECT id FROM restaurant_tables LIMIT 1');
+                tableId = allTables[0].id;
+            } else {
+                tableId = tables[0].id;
+            }
         }
-        const tableId = tables[0].id;
 
         const [result] = await pool.query(
-            'INSERT INTO reservations (customer_id, table_id, reservation_time, guest_count, status) VALUES (?, ?, ?, ?, ?)',
-            [customer_id, tableId, reservation_time, guests, 'PENDING']
+            'INSERT INTO reservations (customer_id, table_id, reservation_time, guest_count, status, comments) VALUES (?, ?, ?, ?, ?, ?)',
+            [customer_id, tableId, reservation_time, guests, 'PENDING', comments || '']
         );
 
         // Notify Admin and Manager

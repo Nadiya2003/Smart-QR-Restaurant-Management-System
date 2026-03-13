@@ -105,6 +105,37 @@ export const updateStaffPermissions = async (req, res) => {
     }
 };
 
+export const updateStaffRole = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const { role_name } = req.body;
+
+        // 1. Get role ID
+        const [roleRows] = await connection.query('SELECT id FROM staff_roles WHERE role_name = ?', [role_name]);
+        if (roleRows.length === 0) {
+            return res.status(400).json({ message: 'Invalid role name' });
+        }
+        const roleId = roleRows[0].id;
+
+        // 2. Update staff_users
+        await connection.query('UPDATE staff_users SET role_id = ? WHERE id = ?', [roleId, id]);
+
+        // 3. Handle role-specific table (Optional/Advanced: move data if needed, but for now just ensure entry exists)
+        // This part is tricky because of the schema, but at minimum the role_id change works for auth.
+        
+        await connection.commit();
+        res.json({ message: `Role updated to ${role_name}` });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Update staff role error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
 // --- Customer Management ---
 export const getAllCustomers = async (req, res) => {
     try {
@@ -142,6 +173,31 @@ export const updateCustomerPermissions = async (req, res) => {
         res.json({ message: 'Customer permissions updated' });
     } catch (err) {
         console.error('Update customer permissions error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const toggleCustomerStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body; // 'active', 'inactive'
+        const newIsActive = status === 'active' ? 1 : 0;
+
+        await pool.query('UPDATE customers SET is_active = ? WHERE id = ?', [newIsActive, id]);
+        
+        // Audit log
+        try {
+            const performerId = req.user?.userId || 0;
+            const actionType = status === 'active' ? 'CUSTOMER_ACTIVATED' : 'CUSTOMER_DEACTIVATED';
+            await pool.query(
+                'INSERT INTO audit_logs (action_type, target_user_id, performed_by, details) VALUES (?, ?, ?, ?)',
+                [actionType, id, performerId, `Customer account status changed to ${status}`]
+            );
+        } catch (e) {}
+
+        res.json({ message: `Customer status updated to ${status}` });
+    } catch (err) {
+        console.error('Toggle customer status error:', err);
         res.status(500).json({ message: 'Server Error' });
     }
 };

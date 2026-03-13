@@ -19,10 +19,12 @@ const AdminDashboard = () => {
     const [staffList, setStaffList] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [orders, setOrders] = useState([]);
+    const [reservations, setReservations] = useState([]);
+    const [auditLogs, setAuditLogs] = useState([]);
     const [menus, setMenus] = useState([]);
     const [categories, setCategories] = useState([]);
 
-    const [view, setView] = useState('overview'); // overview, staff, customers, orders
+    const [view, setView] = useState('overview'); // overview, staff, customers, orders, reservations, audit-logs
     const [loading, setLoading] = useState(true);
 
     // Modal State
@@ -35,6 +37,15 @@ const AdminDashboard = () => {
     const [catModalOpen, setCatModalOpen] = useState(false);
     const [newMenu, setNewMenu] = useState({ name: '', description: '', price: '', category_id: '', image: '' });
     const [newCategory, setNewCategory] = useState({ name: '', description: '', image: '' });
+
+    // Role Modal State
+    const [roleModalOpen, setRoleModalOpen] = useState(false);
+    const [selectedRole, setSelectedRole] = useState('');
+
+    const STAFF_ROLES = [
+        'admin', 'manager', 'cashier', 'steward', 'kitchen_staff', 
+        'bar_staff', 'delivery_rider', 'inventory_manager', 'supplier'
+    ];
 
     useEffect(() => {
         fetchData();
@@ -56,11 +67,13 @@ const AdminDashboard = () => {
                 fetch('http://localhost:5000/api/admin/staff', { headers }),
                 fetch('http://localhost:5000/api/admin/customers', { headers }),
                 fetch('http://localhost:5000/api/admin/orders', { headers }),
+                fetch('http://localhost:5000/api/admin/reservations', { headers }),
+                fetch('http://localhost:5000/api/admin/audit-logs', { headers }),
                 fetch('http://localhost:5000/api/menu', { headers }),
                 fetch('http://localhost:5000/api/menu/categories/all', { headers })
             ]);
 
-            const [statsRes, staffRes, custRes, ordRes, menuRes, catRes] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+            const [statsRes, staffRes, custRes, ordRes, resRes, auditRes, menuRes, catRes] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
             if (statsRes && statsRes.ok) {
                 const s = await statsRes.json();
@@ -69,12 +82,7 @@ const AdminDashboard = () => {
 
             if (staffRes && staffRes.ok) {
                 const st = await staffRes.json();
-                const mappedStaff = (st.staff || []).map(staff => ({
-                    ...staff,
-                    status: staff.is_active ? 'active' : 'inactive',
-                    name: staff.name || staff.full_name
-                }));
-                setStaffList(mappedStaff);
+                setStaffList(st.staff || []);
             }
 
             if (custRes && custRes.ok) {
@@ -85,6 +93,16 @@ const AdminDashboard = () => {
             if (ordRes && ordRes.ok) {
                 const o = await ordRes.json();
                 setOrders(o.orders || []);
+            }
+
+            if (resRes && resRes.ok) {
+                const r = await resRes.json();
+                setReservations(r.reservations || []);
+            }
+
+            if (auditRes && auditRes.ok) {
+                const a = await auditRes.json();
+                setAuditLogs(a.logs || []);
             }
 
             if (menuRes && menuRes.ok) {
@@ -103,12 +121,15 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleToggleStatus = async (id, currentStatus) => {
+    const handleToggleStatus = async (id, currentIsActive, type = 'staff') => {
         const token = localStorage.getItem('adminToken');
-        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        const newStatus = currentIsActive ? 'inactive' : 'active';
+        const endpoint = type === 'staff' 
+            ? `http://localhost:5000/api/admin/staff/${id}/status`
+            : `http://localhost:5000/api/admin/customers/${id}/status`;
 
         try {
-            const response = await fetch(`http://localhost:5000/api/admin/staff/${id}/status`, {
+            const response = await fetch(endpoint, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -131,6 +152,36 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleUpdateRole = async () => {
+        const token = localStorage.getItem('adminToken');
+        try {
+            const res = await fetch(`http://192.168.1.3:5000/api/admin/staff/${selectedUser.id}/role`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ role_name: selectedRole })
+            });
+            if (res.ok) {
+                alert('Role Updated!');
+                setRoleModalOpen(false);
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(data.message || 'Failed to update role');
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const openRoleModal = (user) => {
+        setSelectedUser(user);
+        setSelectedRole(user.role);
+        setRoleModalOpen(true);
+    };
+
     const openPermModal = (user, type) => {
         setSelectedUser({ ...user, type });
         setUserPerms(user.permissions || []);
@@ -148,8 +199,8 @@ const AdminDashboard = () => {
     const savePermissions = async () => {
         const token = localStorage.getItem('adminToken');
         const endpoint = selectedUser.type === 'STAFF'
-            ? `http://localhost:5000/api/admin/staff/${selectedUser.id}/permissions`
-            : `http://localhost:5000/api/admin/customers/${selectedUser.id}/permissions`; // Check route
+            ? `http://192.168.1.3:5000/api/admin/staff/${selectedUser.id}/permissions`
+            : `http://192.168.1.3:5000/api/admin/customers/${selectedUser.id}/permissions`; // Check route
 
         try {
             await fetch(endpoint, {
@@ -171,7 +222,7 @@ const AdminDashboard = () => {
         e.preventDefault();
         const token = localStorage.getItem('adminToken');
         try {
-            const res = await fetch('http://localhost:5000/api/menu/categories', {
+            const res = await fetch('http://192.168.1.3:5000/api/menu/categories', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(newCategory)
@@ -193,7 +244,7 @@ const AdminDashboard = () => {
         e.preventDefault();
         const token = localStorage.getItem('adminToken');
         try {
-            const res = await fetch('http://localhost:5000/api/menu', {
+            const res = await fetch('http://192.168.1.3:5000/api/menu', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(newMenu)
@@ -220,13 +271,13 @@ const AdminDashboard = () => {
                 <div className="w-64 bg-[#101010] border-r border-gold-500/20 p-6 flex flex-col">
                     <h1 className="text-2xl font-bold text-gold-500 mb-8 tracking-wider">OVERSEER</h1>
                     <nav className="space-y-2 flex-1">
-                        {['Menus', 'staff', 'customers', 'orders'].map(item => (
+                        {['overview', 'Menus', 'staff', 'customers', 'orders', 'reservations', 'audit-logs'].map(item => (
                             <button
                                 key={item}
                                 onClick={() => setView(item)}
                                 className={`w-full text-left px-4 py-3 rounded transition-all capitalize ${view === item ? 'bg-gold-500 text-black font-bold' : 'text-gray-400 hover:bg-white/5'}`}
                             >
-                                {item}
+                                {item.replace('-', ' ')}
                             </button>
                         ))}
                     </nav>
@@ -306,11 +357,14 @@ const AdminDashboard = () => {
                                                 {staff.status === 'active' ? 'Deactivate' : 'Activate'}
                                             </Button>
                                             <Button onClick={() => openPermModal(staff, 'STAFF')} className="text-xs">
-                                                Permissions
-                                            </Button>
-                                        </div>
-                                    </GlassCard>
-                                ))
+                                                 Permissions
+                                             </Button>
+                                             <Button onClick={() => openRoleModal(staff)} className="text-xs" variant="secondary">
+                                                 Role
+                                             </Button>
+                                         </div>
+                                     </GlassCard>
+                                 ))
                             )}
                         </div>
                     )}
@@ -322,14 +376,91 @@ const AdminDashboard = () => {
                                     <div>
                                         <p className="font-bold">{cust.name}</p>
                                         <p className="text-sm text-gray-400">{cust.email}</p>
+                                        <p className="text-xs text-gold-500">Points: {cust.loyalty_points || 0}</p>
                                     </div>
-                                    <div>
+                                    <div className="flex items-center gap-4">
+                                        <div className={`px-3 py-1 rounded text-xs font-bold uppercase ${cust.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                                            {cust.is_active ? 'ACTIVE' : 'INACTIVE'}
+                                        </div>
+                                        <Button
+                                            onClick={() => handleToggleStatus(cust.id, cust.is_active, 'customer')}
+                                            className="text-xs"
+                                            variant={cust.is_active ? 'secondary' : 'primary'}
+                                        >
+                                            {cust.is_active ? 'Deactivate' : 'Activate'}
+                                        </Button>
                                         <Button onClick={() => openPermModal(cust, 'CUSTOMER')} className="text-xs">
                                             Manage Access
                                         </Button>
                                     </div>
                                 </GlassCard>
                             ))}
+                        </div>
+                    )}
+
+                    {view === 'reservations' && (
+                        <div className="space-y-4">
+                            {reservations.length === 0 ? <p className="text-gray-500 text-center py-8">No reservations found.</p> : (
+                                reservations.map(res => (
+                                    <GlassCard key={res.id} className="border-l-4 border-blue-500">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold text-lg">{res.customer_name}</p>
+                                                <p className="text-sm text-gray-400">{res.customer_email} | {res.customer_phone}</p>
+                                                <div className="mt-3 grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-[10px] text-gray-500 uppercase">Date & Time</p>
+                                                        <p className="text-sm text-white">{new Date(res.reservation_time).toLocaleString()}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-gray-500 uppercase">Table & Guests</p>
+                                                        <p className="text-sm text-white">Table #{res.table_number} | {res.guest_count} Guests</p>
+                                                    </div>
+                                                </div>
+                                                {res.comments && (
+                                                    <div className="mt-3 bg-white/5 p-2 rounded">
+                                                        <p className="text-[10px] text-gray-500 uppercase">Special Request</p>
+                                                        <p className="text-sm text-gray-300 italic">"{res.comments}"</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                                    res.status === 'CONFIRMED' ? 'bg-green-900 text-green-300' : 
+                                                    res.status === 'PENDING' ? 'bg-yellow-900 text-yellow-300' : 'bg-red-900 text-red-300'
+                                                }`}>
+                                                    {res.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </GlassCard>
+                                ))
+                            )}
+                        </div>
+                    )}
+
+                    {view === 'audit-logs' && (
+                        <div className="bg-white/5 rounded-xl overflow-hidden border border-white/10">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-[#101010] text-[#D4AF37] uppercase text-[10px] tracking-widest">
+                                    <tr>
+                                        <th className="p-4">Time</th>
+                                        <th className="p-4">Action</th>
+                                        <th className="p-4">Performer</th>
+                                        <th className="p-4">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {auditLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-4 text-gray-400">{new Date(log.created_at).toLocaleString()}</td>
+                                            <td className="p-4 font-bold">{log.action_type.replace(/_/g, ' ')}</td>
+                                            <td className="p-4">{log.performed_by_name || 'System'}</td>
+                                            <td className="p-4 text-xs text-gray-500">{log.details}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     )}
 
@@ -388,6 +519,30 @@ const AdminDashboard = () => {
                     )}
                 </div>
             </div>
+
+            {/* Role Modal */}
+            {roleModalOpen && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#151515] border border-gold-500/30 rounded-lg p-6 max-w-sm w-full">
+                        <h3 className="text-xl font-bold mb-4 text-white">Update Job Role for {selectedUser?.name}</h3>
+                        <div className="space-y-3 mb-6">
+                            {STAFF_ROLES.map(role => (
+                                <button
+                                    key={role}
+                                    onClick={() => setSelectedRole(role)}
+                                    className={`w-full text-left px-4 py-2 rounded border uppercase text-sm font-bold tracking-widest ${selectedRole === role ? 'bg-gold-500 text-black border-gold-500' : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                                >
+                                    {role.replace('_', ' ')}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setRoleModalOpen(false)}>Cancel</Button>
+                            <Button variant="primary" onClick={handleUpdateRole}>Save Role</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Permission Modal */}
             {permModalOpen && (

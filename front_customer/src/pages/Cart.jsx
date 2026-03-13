@@ -94,7 +94,7 @@ function Cart() {
                                 <GlassCard key={item.id} className="p-6">
                                     <div className="flex items-center gap-6">
                                         <img
-                                            src={item.image ? `http://localhost:5000/food/${item.image}` : '/placeholder-food.png'}
+                                            src={item.image ? `http://192.168.1.3:5000/food/${item.image}` : '/placeholder-food.png'}
                                             alt={item.name}
                                             className="w-24 h-24 object-cover rounded-lg"
                                         />

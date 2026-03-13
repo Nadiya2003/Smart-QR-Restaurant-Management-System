@@ -40,7 +40,7 @@ function Payments() {
 
     setLoadingHistory(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/orders/customer/${auth.id}`, {
+      const res = await fetch(`http://192.168.1.3:5000/api/orders/customer/${auth.id}`, {
         headers: { 'Authorization': `Bearer ${auth.token}` }
       });
       if (res.ok) {
@@ -81,7 +81,7 @@ function Payments() {
       }
 
       // Create Order
-      const orderResponse = await fetch('http://localhost:5000/api/orders', {
+      const orderResponse = await fetch('http://192.168.1.3:5000/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,7 +107,7 @@ function Payments() {
       // If Card/Cash, send notification
       if (notificationType) {
         try {
-          await fetch('http://localhost:5000/api/staff/notifications/send', {
+          await fetch('http://192.168.1.3:5000/api/staff/notifications/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -156,7 +156,7 @@ function Payments() {
   const handleSubmitRating = async () => {
     const auth = JSON.parse(localStorage.getItem('customerAuth'));
     try {
-      const res = await fetch('http://localhost:5000/api/customer/rate', {
+      const res = await fetch('http://192.168.1.3:5000/api/customer/rate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

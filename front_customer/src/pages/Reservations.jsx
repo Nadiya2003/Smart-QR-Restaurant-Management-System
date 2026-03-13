@@ -21,7 +21,7 @@ function Reservations() {
 
   const fetchReservations = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/reservations/my', {
+      const response = await fetch('http://192.168.1.3:5000/api/reservations/my', {
         headers: {
           'Authorization': `Bearer ${customerData.token}`
         }

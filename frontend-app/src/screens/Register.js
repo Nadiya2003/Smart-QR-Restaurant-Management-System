@@ -40,28 +40,28 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
             const res = await fetch(apiConfig.STAFF.ROLES);
             if (res.ok) {
                 const data = await res.json();
-                setRoles(data.roles || []);
+                if (data.roles && data.roles.length > 0) {
+                    setRoles(data.roles);
+                } else {
+                    throw new Error('No roles returned');
+                }
             } else {
-                // Fallback roles if API fails
-                setRoles([
-                    { id: 1, role_name: 'manager', description: 'Restaurant Manager' },
-                    { id: 2, role_name: 'cashier', description: 'Cashier' },
-                    { id: 3, role_name: 'steward', description: 'Steward/Waiter' },
-                    { id: 4, role_name: 'kitchen_staff', description: 'Kitchen Staff' },
-                    { id: 5, role_name: 'bar_staff', description: 'Bar Staff' },
-                    { id: 6, role_name: 'delivery_rider', description: 'Delivery Rider' },
-                ]);
+                throw new Error('API failed');
             }
         } catch (error) {
-            console.error('Failed to fetch roles:', error);
-            setRoles([
-                { id: 1, role_name: 'manager', description: 'Restaurant Manager' },
-                { id: 2, role_name: 'cashier', description: 'Cashier' },
-                { id: 3, role_name: 'steward', description: 'Steward/Waiter' },
-                { id: 4, role_name: 'kitchen_staff', description: 'Kitchen Staff' },
-                { id: 5, role_name: 'bar_staff', description: 'Bar Staff' },
-                { id: 6, role_name: 'delivery_rider', description: 'Delivery Rider' },
-            ]);
+            console.warn('Using fallback roles:', error.message);
+            const fallbackRoles = [
+                { id: 1, role_name: 'admin', description: 'System Administrator' },
+                { id: 2, role_name: 'manager', description: 'Restaurant Manager' },
+                { id: 3, role_name: 'cashier', description: 'Cashier' },
+                { id: 4, role_name: 'steward', description: 'Steward/Waiter' },
+                { id: 5, role_name: 'kitchen_staff', description: 'Kitchen Staff' },
+                { id: 6, role_name: 'bar_staff', description: 'Bar Staff' },
+                { id: 7, role_name: 'delivery_rider', description: 'Delivery Rider' },
+                { id: 8, role_name: 'inventory_manager', description: 'Inventory Manager' },
+                { id: 9, role_name: 'supplier', description: 'Supplier/Vendor' },
+            ];
+            setRoles(fallbackRoles);
         } finally {
             setLoadingRoles(false);
         }
@@ -69,12 +69,15 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
 
     const getRoleIcon = (roleName) => {
         const icons = {
+            'admin': '🛡️',
             'manager': '👔',
-            'cashier': '💳',
-            'steward': '🍽️',
+            'cashier': '💰',
+            'steward': '🪑',
             'kitchen_staff': '👨‍🍳',
-            'bar_staff': '🍸',
+            'bar_staff': '🍹',
             'delivery_rider': '🛵',
+            'inventory_manager': '📦',
+            'supplier': '🚚',
         };
         return icons[roleName] || '👤';
     };
@@ -89,8 +92,12 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
             setError('Please enter your full name');
             return;
         }
-        if (!email.trim()) {
-            setError('Please enter your email');
+        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setError('Please enter a valid email address');
+            return;
+        }
+        if (phone.trim() && !/^(?:\+94|0)7[0-9]{8}$/.test(phone.trim())) {
+            setError('Please enter a valid Sri Lankan phone number (e.g., 07XXXXXXXX)');
             return;
         }
         if (!password.trim()) {

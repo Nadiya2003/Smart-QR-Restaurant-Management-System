@@ -39,7 +39,7 @@ export const registerStaff = async (req, res) => {
 
         if (roleRows.length === 0) {
             return res.status(400).json({
-                message: `Invalid role: "${role}". Valid roles: manager, cashier, steward, kitchen_staff, bar_staff, delivery_rider`
+                message: `Invalid role: "${role}". Valid roles: manager, cashier, steward, kitchen_staff, bar_staff, delivery_rider, inventory_manager, supplier`
             });
         }
 

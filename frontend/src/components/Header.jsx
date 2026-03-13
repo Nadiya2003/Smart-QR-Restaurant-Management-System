@@ -1,33 +1,75 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 /**
  * Header Component - Sticky navigation with glassmorphism
- * Features:
- * - Responsive mobile menu with hamburger toggle
- * - Glassmorphism effect with backdrop blur
- * - Active link highlighting in GOLD
- * - Smooth animations
  */
 import { useAuth } from '../context/AuthContext';
+import SafeImage from './SafeImage';
 
 function Header() {
     const { user, logout, isAuthenticated } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const location = useLocation();
+    const [activeSection, setActiveSection] = useState('home');
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (location.pathname !== '/') return;
+            
+            const sections = ['home', 'about', 'ai-assistant', 'faq'];
+            const scrollPos = window.scrollY + 100;
+
+            for (const section of sections) {
+                const element = document.getElementById(section);
+                if (element) {
+                    const offset = element.offsetTop;
+                    const height = element.offsetHeight;
+                    if (scrollPos >= offset && scrollPos < offset + height) {
+                        setActiveSection(section);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [location.pathname]);
 
     // Navigation links configuration
     const navLinks = [
-        { name: 'Home', path: '/' },
+        { name: 'Home', path: '/', isScroll: true, targetId: 'home' },
         { name: 'Menu', path: '/menu' },
-        { name: 'Reservation', path: '/reservation' },
-        { name: 'Delivery', path: '/delivery' },
-        { name: 'AI Assistant', path: '/ai-chat' },
+        { name: 'Reservations', path: '/reservation' },
+        { name: 'Order Online', path: '/delivery' },
+        { name: 'AI Assistant', path: '/#ai-assistant', isScroll: true, targetId: 'ai-assistant' },
+        { name: 'About', path: '/#about', isScroll: true, targetId: 'about' },
+        { name: 'Contact', path: '/contact' },
     ];
 
-    if (!isAuthenticated) {
-        navLinks.push({ name: 'Login', path: '/auth' });
-    }
+    const handleNavClick = (e, link) => {
+        if (link.isScroll) {
+            e.preventDefault();
+            if (location.pathname === '/') {
+                const element = document.getElementById(link.targetId);
+                if (element) {
+                    const offset = 80; // Header height
+                    const bodyRect = document.body.getBoundingClientRect().top;
+                    const elementRect = element.getBoundingClientRect().top;
+                    const elementPosition = elementRect - bodyRect;
+                    const offsetPosition = elementPosition - offset;
+
+                    window.scrollTo({
+                        top: link.targetId === 'home' ? 0 : offsetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            } else {
+                window.location.href = `/${link.targetId === 'home' ? '' : '#' + link.targetId}`;
+            }
+            setIsMenuOpen(false);
+        }
+    };
 
     // Check if a link is active
     const isActive = (path) => location.pathname === path;
@@ -38,7 +80,7 @@ function Header() {
                 <div className="flex items-center justify-between">
                     {/* Logo */}
                     <Link to="/" className="flex items-center gap-3 group">
-                        <img
+                        <SafeImage
                             src="/logo.png"
                             alt="Melissas Food Court Logo"
                             className="h-10 md:h-12 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
@@ -50,16 +92,23 @@ function Header() {
 
                     {/* Desktop Navigation */}
                     <div className="hidden md:flex items-center gap-8">
-                        {navLinks.map((link) => (
-                            <Link
-                                key={link.path}
-                                to={link.path}
-                                className={`text-sm font-medium transition-all duration-300 hover:text-[#D4AF37] ${isActive(link.path) ? 'text-[#D4AF37]' : 'text-gray-300'
-                                    }`}
-                            >
-                                {link.name}
-                            </Link>
-                        ))}
+                        {navLinks.map((link) => {
+                            const isCurrentActive = link.isScroll && location.pathname === '/' 
+                                ? activeSection === link.targetId 
+                                : isActive(link.path);
+                                
+                            return (
+                                <Link
+                                    key={link.name}
+                                    to={link.path}
+                                    onClick={(e) => handleNavClick(e, link)}
+                                    className={`text-sm font-medium transition-all duration-300 hover:text-[#D4AF37] ${isCurrentActive ? 'text-[#D4AF37]' : 'text-gray-300'
+                                        }`}
+                                >
+                                    {link.name}
+                                </Link>
+                            );
+                        })}
                         {isAuthenticated && (
                             <>
                                 <Link
@@ -109,17 +158,26 @@ function Header() {
                 {isMenuOpen && (
                     <div className="md:hidden mt-4 pb-4 animate-slide-up">
                         <div className="flex flex-col gap-4">
-                            {navLinks.map((link) => (
-                                <Link
-                                    key={link.path}
-                                    to={link.path}
-                                    onClick={() => setIsMenuOpen(false)}
-                                    className={`text-base font-medium transition-all duration-300 hover:text-[#D4AF37] ${isActive(link.path) ? 'text-[#D4AF37]' : 'text-gray-300'
-                                        }`}
-                                >
-                                    {link.name}
-                                </Link>
-                            ))}
+                            {navLinks.map((link) => {
+                                const isCurrentActive = link.isScroll && location.pathname === '/' 
+                                    ? activeSection === link.targetId 
+                                    : isActive(link.path);
+
+                                return (
+                                    <Link
+                                        key={link.name}
+                                        to={link.path}
+                                        onClick={(e) => {
+                                            handleNavClick(e, link);
+                                            setIsMenuOpen(false);
+                                        }}
+                                        className={`text-base font-medium transition-all duration-300 hover:text-[#D4AF37] ${isCurrentActive ? 'text-[#D4AF37]' : 'text-gray-300'
+                                            }`}
+                                    >
+                                        {link.name}
+                                    </Link>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

@@ -33,7 +33,7 @@ const StaffResetPassword = () => {
         setError('');
 
         try {
-            const response = await fetch('http://localhost:5000/api/auth/reset-password', {
+            const response = await fetch('http://192.168.1.3:5000/api/auth/reset-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

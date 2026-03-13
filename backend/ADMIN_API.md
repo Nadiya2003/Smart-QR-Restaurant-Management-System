@@ -42,7 +42,7 @@ All admin endpoints are now fully compatible with the 3NF database schema.
 
 ### Staff Users
 - **OLD**: `role` (string), `sub_role` (string), `is_active` (boolean)
-- **NEW**: `role_id` (FK to staff_roles), `status` (ENUM: 'active', 'inactive', 'suspended')
+- **NEW**: `role_id` (FK to staff_roles), `is_active` (TINYINT: 0=inactive, 1=active)
 - **Joins**: staff_users → staff_roles (to get role_name)
 
 ### Orders
@@ -66,7 +66,7 @@ All admin endpoints require:
 - User must have role='ADMIN' or be hardcoded Admin user
 
 ## Hardcoded Admin Login
-- Username: `Admin`
+- Username: `Nadeesha`
 - Password: `Nmk@6604`
 
 ## Error Handling

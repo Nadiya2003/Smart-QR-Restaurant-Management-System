@@ -1,3 +1,4 @@
+import SafeImage from './SafeImage';
 import Button from './Button';
 
 /**
@@ -9,11 +10,11 @@ function MenuItemCard({ item, onAddToCart }) {
         <div className="glass-card p-0 overflow-hidden hover:scale-105 transition-transform duration-300">
             {/* Food Image */}
             <div className="h-48 bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center overflow-hidden">
-                {item.image ? (
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                ) : (
-                    <div className="text-white/30 text-6xl">🍽️</div>
-                )}
+                <SafeImage 
+                    src={item.image} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover" 
+                />
             </div>
 
             {/* Card Content */}

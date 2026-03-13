@@ -18,7 +18,7 @@ function MenuItems() {
         }
 
         // Fetch menu items
-        fetch('http://localhost:5000/api/menu')
+        fetch('http://192.168.1.3:5000/api/menu')
             .then(res => res.json())
             .then(data => {
                 const filtered = data.filter(item => item.category === category);
@@ -113,7 +113,7 @@ function MenuItems() {
                                 {/* Image */}
                                 <div className="h-48 overflow-hidden bg-white/5">
                                     <img
-                                        src={item.image ? `http://localhost:5000/food/${item.image}` : '/placeholder-food.png'}
+                                        src={item.image ? `http://192.168.1.3:5000/food/${item.image}` : '/placeholder-food.png'}
                                         alt={item.name}
                                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                     />

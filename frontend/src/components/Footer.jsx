@@ -1,13 +1,8 @@
 import { Link } from 'react-router-dom';
+import SafeImage from './SafeImage';
 
 /**
  * Footer Component - Modern, multi-column footer with gold theme
- * Features:
- * - Brand section with logo and about trace
- * - Quick navigation links
- * - Contact information
- * - Opening hours
- * - Social media links (emojis)
  */
 function Footer() {
     const currentYear = new Date().getFullYear();
@@ -19,7 +14,7 @@ function Footer() {
                     {/* Brand Section */}
                     <div className="flex flex-col gap-6">
                         <Link to="/" className="flex items-center gap-3 group">
-                            <img
+                            <SafeImage
                                 src="/logo.png"
                                 alt="Melissas Food Court Logo"
                                 className="h-10 w-auto object-contain transition-transform duration-300 group-hover:scale-105"

@@ -81,15 +81,27 @@ const AdminDashboard = () => {
         fetchData();
     };
 
-    const toggleStaffStatus = async (staffId, currentStatus) => {
-        const action = currentStatus === 1 ? 'deactivate' : 'activate';
+    const toggleStatus = async (id, currentStatus, type = 'staff') => {
+        const action = currentStatus === 1 || currentStatus === true ? 'deactivate' : 'activate';
+        const baseUrl = type === 'staff' ? apiConfig.ADMIN.STAFF : apiConfig.ADMIN.CUSTOMERS;
+        
         try {
-            const res = await fetch(`${apiConfig.ADMIN.STAFF}/${staffId}/${action}`, {
-                method: 'POST',
+            // For customers, we use the status endpoint as per web
+            const endpoint = type === 'staff' 
+                ? `${baseUrl}/${id}/${action}` 
+                : `${baseUrl}/${id}/status`;
+            
+            const method = type === 'staff' ? 'POST' : 'PUT';
+            const body = type === 'customer' ? JSON.stringify({ status: action === 'activate' ? 'active' : 'inactive' }) : null;
+
+            const res = await fetch(endpoint, {
+                method,
                 headers,
+                body
             });
+
             if (res.ok) {
-                Alert.alert('Success', `Staff ${action}d successfully`);
+                Alert.alert('Success', `${type.charAt(0).toUpperCase() + type.slice(1)} ${action}d successfully`);
                 fetchData();
             } else {
                 const data = await res.json();
@@ -198,10 +210,10 @@ const AdminDashboard = () => {
                         </View>
                         <TouchableOpacity
                             style={[styles.actionButton, { backgroundColor: staff.is_active ? '#FEE2E2' : '#D1FAE5' }]}
-                            onPress={() => toggleStaffStatus(staff.id, staff.is_active)}
+                            onPress={() => toggleStatus(staff.id, staff.is_active, 'staff')}
                         >
                             <Text style={[styles.actionButtonText, { color: staff.is_active ? '#DC2626' : '#059669' }]}>
-                                {staff.is_active ? 'Deactivate' : 'Activate'}
+                                {staff.is_active ? 'Deactivate Account' : 'Activate Account'}
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -238,9 +250,22 @@ const AdminDashboard = () => {
                                     <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
                                         <Text style={[styles.badgeText, { color: '#D97706' }]}>⭐ {customer.loyalty_points || 0} pts</Text>
                                     </View>
+                                    <View style={[styles.badge, { backgroundColor: customer.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
+                                        <Text style={[styles.badgeText, { color: customer.is_active ? '#059669' : '#DC2626' }]}>
+                                            {customer.is_active ? 'Active' : 'Inactive'}
+                                        </Text>
+                                    </View>
                                 </View>
                             </View>
                         </View>
+                        <TouchableOpacity
+                            style={[styles.actionButton, { backgroundColor: customer.is_active ? '#FEE2E2' : '#D1FAE5' }]}
+                            onPress={() => toggleStatus(customer.id, customer.is_active, 'customer')}
+                        >
+                            <Text style={[styles.actionButtonText, { color: customer.is_active ? '#DC2626' : '#059669' }]}>
+                                {customer.is_active ? 'Suspend Access' : 'Grant Access'}
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 ))
             )}

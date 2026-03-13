@@ -42,9 +42,9 @@ const CashierDashboard = () => {
             };
 
             const [notifRes, paymentsRes, ordersRes] = await Promise.all([
-                fetch('http://localhost:5000/api/staff/notifications', { headers }),
-                fetch('http://localhost:5000/api/staff/payments', { headers }),
-                fetch('http://localhost:5000/api/staff/orders?status=completed', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/notifications', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/payments', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/orders?status=completed', { headers }),
             ]);
 
             const notifData = await notifRes.json();
@@ -76,7 +76,7 @@ const CashierDashboard = () => {
     const handleProcessPayment = async (orderId) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/payments/process`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/payments/process`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -94,7 +94,7 @@ const CashierDashboard = () => {
     const handleMarkRead = async (notificationId) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/notifications/${notificationId}/read`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/notifications/${notificationId}/read`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` },
             });

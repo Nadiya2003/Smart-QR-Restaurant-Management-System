@@ -71,7 +71,7 @@ export const createOrder = async (req, res) => {
         }
 
         // 7. Reward Loyalty (Logic remains similar)
-        if (reqPaymentStatus === 'PAID' && customerId) {
+        if (reqPaymentStatusStr === 'PAID' && customerId) {
             const pointsToGain = Math.floor(total / 10);
             if (pointsToGain > 0) {
                 await connection.query(

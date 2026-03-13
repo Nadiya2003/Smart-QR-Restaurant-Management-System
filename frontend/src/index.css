@@ -46,6 +46,10 @@
   .chat-bubble-ai {
     @apply bg-white/5 border border-white/10 text-gray-100 rounded-2xl rounded-tl-md px-4 py-3 mr-auto max-w-md;
   }
+
+  .btn-quick {
+    @apply whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-sm hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] transition-all text-gray-300 hover:text-white;
+  }
 }
 
 /* Custom scrollbar */

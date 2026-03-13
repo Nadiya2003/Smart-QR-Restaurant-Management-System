@@ -12,13 +12,26 @@ export const authenticateStaff = async (req, res, next) => {
         const token = authHeader.split(' ')[1];
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        const userId = decoded.userId || decoded.staffId;
+
+        // Special handling for hardcoded Admin (Nadeesha)
+        if (userId === 0 && decoded.role === 'ADMIN') {
+            req.staff = {
+                id: 0,
+                role: 'ADMIN',
+                subRole: 'manager', // Admin acts as super-manager
+                fullName: 'Nadeesha',
+                email: 'Nadeesha'
+            };
+            return next();
+        }
 
         const [staff] = await pool.query(
             `SELECT su.*, sr.role_name
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
              WHERE su.id = ?`,
-            [decoded.userId || decoded.staffId]
+            [userId]
         );
 
         if (staff.length === 0) {

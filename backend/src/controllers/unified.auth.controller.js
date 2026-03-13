@@ -28,14 +28,22 @@ const ROLE_TABLE_MAP = {
 export const register = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { name, email, password, role = 'CUSTOMER', phone, jobRole } = req.body;
+        const { name, full_name, email, password, role = 'CUSTOMER', phone, jobRole } = req.body;
+        const finalName = name || full_name;
 
-        if (!name || !email || !password) {
+        if (!finalName || !email || !password) {
             return res.status(400).json({ message: 'All fields are required' });
         }
 
         const normalizedRole = role.toUpperCase();
-        const staffRoleName = (jobRole || 'steward').toLowerCase();
+        // jobRole might be passed as 'role' from some frontends
+        let staffRoleName = (jobRole || role).toLowerCase();
+        
+        // If the role passed is a specific staff role, normalizedRole should be STAFF
+        const isStaffRole = ROLE_TABLE_MAP.hasOwnProperty(staffRoleName);
+        const effectiveUserType = (normalizedRole === 'ADMIN' || normalizedRole === 'STAFF' || isStaffRole) ? 'STAFF' : 'CUSTOMER';
+        
+        if (normalizedRole === 'ADMIN') staffRoleName = 'admin';
 
         const [exCust] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
         const [exStaff] = await pool.query('SELECT id FROM staff_users WHERE email = ?', [email]);
@@ -48,18 +56,18 @@ export const register = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        if (normalizedRole === 'STAFF' || normalizedRole === 'ADMIN') {
-            // Find correct role_id
+        if (effectiveUserType === 'STAFF') {
+            // Find correct role_id from staff_roles table
             const [roleRows] = await connection.query('SELECT id FROM staff_roles WHERE role_name = ?', [staffRoleName]);
-            const roleId = roleRows.length > 0 ? roleRows[0].id : 1;
+            const roleId = roleRows.length > 0 ? roleRows[0].id : (normalizedRole === 'ADMIN' ? 1 : 4); // Default to steward (4) if not found
 
             const [result] = await connection.query(
                 'INSERT INTO staff_users (full_name, email, phone, password, role_id, is_active, permissions) VALUES (?, ?, ?, ?, ?, 0, ?)',
-                [name, email, phone || null, hashedPassword, roleId, JSON.stringify([])]
+                [finalName, email, phone || null, hashedPassword, roleId, JSON.stringify([])]
             );
             const newId = result.insertId;
 
-            // Insert into role-specific table
+            // Insert into role-specific table if it's not the master admin
             const roleTable = ROLE_TABLE_MAP[staffRoleName];
             if (roleTable) {
                 await connection.query(`INSERT INTO ${roleTable} (staff_id) VALUES (?)`, [newId]);
@@ -68,14 +76,15 @@ export const register = async (req, res) => {
             await connection.commit();
 
             return res.status(201).json({
-                message: `Staff registration (${staffRoleName}) successful. Wait for admin activation.`,
+                message: `Registration as ${staffRoleName} successful. Wait for admin activation.`,
                 userId: newId,
-                role: normalizedRole
+                role: normalizedRole === 'ADMIN' ? 'ADMIN' : 'STAFF',
+                jobRole: staffRoleName
             });
         } else {
             const [result] = await connection.query(
                 'INSERT INTO customers (name, email, phone, password_hash) VALUES (?, ?, ?, ?)',
-                [name, email, phone || null, hashedPassword]
+                [finalName, email, phone || null, hashedPassword]
             );
             const newId = result.insertId;
 

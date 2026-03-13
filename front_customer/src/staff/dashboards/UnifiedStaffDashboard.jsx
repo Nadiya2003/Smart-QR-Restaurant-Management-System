@@ -164,7 +164,7 @@ const StaffListWidget = () => {
         const fetchTeam = async () => {
             try {
                 const token = localStorage.getItem('staffToken');
-                const res = await fetch('http://localhost:5000/api/staff/auth/team', {
+                const res = await fetch('http://192.168.1.3:5000/api/staff/auth/team', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const data = await res.json();

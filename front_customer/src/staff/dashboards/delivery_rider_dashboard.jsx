@@ -34,8 +34,8 @@ const DeliveryRiderDashboard = () => {
             const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
             const [notifRes, ordersRes] = await Promise.all([
-                fetch('http://localhost:5000/api/staff/notifications', { headers }),
-                fetch('http://localhost:5000/api/staff/orders?type=delivery', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/notifications', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/orders?type=delivery', { headers }),
             ]);
 
             const notifData = await notifRes.json();
@@ -64,7 +64,7 @@ const DeliveryRiderDashboard = () => {
     const handleUpdateDeliveryStatus = async (orderId, newStatus) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/orders/${orderId}/status`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus }),
@@ -78,7 +78,7 @@ const DeliveryRiderDashboard = () => {
     const handleMarkRead = async (notificationId) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/notifications/${notificationId}/read`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/notifications/${notificationId}/read`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` },
             });

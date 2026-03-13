@@ -11,7 +11,7 @@ const testStaffEndpoint = async () => {
         const managerRoleId = managerRoles.length > 0 ? managerRoles[0].id : null;
 
         const [staff] = await pool.query(
-            `SELECT u.id, u.full_name as name, u.email, u.status, u.created_at,
+            `SELECT u.id, u.full_name as name, u.email, u.is_active, u.created_at,
                     r.role_name as role
              FROM staff_users u
              JOIN staff_roles r ON u.role_id = r.id

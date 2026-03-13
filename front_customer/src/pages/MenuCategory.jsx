@@ -10,7 +10,7 @@ function MenuCategory() {
 
     useEffect(() => {
         // Fetch categories from backend
-        fetch('http://localhost:5000/api/menu')
+        fetch('http://192.168.1.3:5000/api/menu')
             .then(res => res.json())
             .then(items => {
                 // Extract unique categories

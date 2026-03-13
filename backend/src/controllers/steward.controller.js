@@ -18,8 +18,9 @@ export const getAllStewards = async (req, res) => {
                 (
                     SELECT COUNT(*) 
                     FROM orders o 
+                    JOIN order_statuses os ON o.status_id = os.id
                     WHERE o.steward_id = s.id 
-                    AND o.status_id NOT IN (5, 6) -- 5: COMPLETED, 6: CANCELLED
+                    AND os.name NOT IN ('COMPLETED', 'CANCELLED')
                 ) as activeOrders
             FROM stewards s
             JOIN staff_users u ON s.staff_id = u.id
@@ -32,7 +33,7 @@ export const getAllStewards = async (req, res) => {
         const stewards = rows.map(row => ({
             id: row.id,
             name: row.name,
-            avatar: row.avatar ? `http://localhost:5000/stewards/${row.avatar}` : '/stewards/default.png',
+            avatar: row.avatar ? `http://192.168.1.3:5000/stewards/${row.avatar}` : '/stewards/default.png',
             rating: Number(Number(row.rating).toFixed(1)),
             activeOrders: row.activeOrders,
             status: row.activeOrders < 5 ? 'active' : 'busy'

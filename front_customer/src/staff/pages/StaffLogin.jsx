@@ -43,7 +43,7 @@ const StaffLogin = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/api/staff/login', {
+            const response = await fetch('http://192.168.1.3:5000/api/staff/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

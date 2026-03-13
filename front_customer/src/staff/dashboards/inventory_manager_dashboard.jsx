@@ -34,8 +34,8 @@ const InventoryManagerDashboard = () => {
             const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
             const [notifRes, inventoryRes] = await Promise.all([
-                fetch('http://localhost:5000/api/staff/notifications', { headers }),
-                fetch('http://localhost:5000/api/staff/inventory', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/notifications', { headers }),
+                fetch('http://192.168.1.3:5000/api/staff/inventory', { headers }),
             ]);
 
             const notifData = await notifRes.json();
@@ -60,7 +60,7 @@ const InventoryManagerDashboard = () => {
     const handleUpdateStock = async (itemId, quantity) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/inventory/${itemId}`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/inventory/${itemId}`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ quantity }),
@@ -74,7 +74,7 @@ const InventoryManagerDashboard = () => {
     const handleMarkRead = async (notificationId) => {
         try {
             const token = localStorage.getItem('staffToken');
-            await fetch(`http://localhost:5000/api/staff/notifications/${notificationId}/read`, {
+            await fetch(`http://192.168.1.3:5000/api/staff/notifications/${notificationId}/read`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` },
             });

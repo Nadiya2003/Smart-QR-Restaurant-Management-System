@@ -9,6 +9,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // Debug verification
+/*
 transporter.verify((error, success) => {
     if (error) {
         console.error('Email Service Error:', error);
@@ -16,5 +17,6 @@ transporter.verify((error, success) => {
         console.log('Email Service Ready');
     }
 });
+*/
 
 export default transporter;

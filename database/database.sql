@@ -21,7 +21,6 @@ DROP TABLE IF EXISTS customer_otp_verifications;
 DROP TABLE IF EXISTS staff_notifications;
 DROP TABLE IF EXISTS ratings;
 DROP TABLE IF EXISTS feedback;
-DROP TABLE IF EXISTS reservation_cancellations;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS order_status_history;
 DROP TABLE IF EXISTS order_items;
@@ -29,7 +28,6 @@ DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS table_assignments;
 DROP TABLE IF EXISTS menu_item_suppliers;
-DROP TABLE IF EXISTS supplier_delivery_days;
 DROP TABLE IF EXISTS inventory;
 DROP TABLE IF EXISTS menu_items;
 DROP TABLE IF EXISTS categories;
@@ -453,6 +451,7 @@ CREATE TABLE audit_logs (
 
 -- Staff Roles
 INSERT INTO staff_roles (role_name, description) VALUES
+('admin', 'Super Administrator - System wide access'),
 ('manager', 'Restaurant Manager - Full access'),
 ('cashier', 'Cashier - Handles payments'),
 ('steward', 'Steward/Waiter - Serves customers'),
@@ -468,7 +467,7 @@ INSERT INTO order_types (name) VALUES
 
 -- Order Statuses
 INSERT INTO order_statuses (name) VALUES
-('PENDING'), ('PREPARING'), ('READY'), ('SERVED'), ('COMPLETED'), ('CANCELLED');
+('PENDING'), ('CONFIRMED'), ('PREPARING'), ('READY'), ('SERVED'), ('COMPLETED'), ('CANCELLED');
 
 -- Payment Methods
 INSERT INTO payment_methods (name) VALUES

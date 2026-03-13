@@ -20,7 +20,20 @@ function Auth() {
         password: '',
         confirmPassword: '',
         otp: '',
+        role: 'CUSTOMER', // Default
+        jobRole: 'steward'
     });
+
+    const roles = [
+        { value: 'CUSTOMER', label: '👤 Customer / User' },
+        { value: 'ADMIN', label: '🛡️ Administrator' },
+        { value: 'MANAGER', label: '👔 Manager' },
+        { value: 'CASHIER', label: '💰 Cashier' },
+        { value: 'STEWARD', label: '🍽️ Steward / Waiter' },
+        { value: 'KITCHEN_STAFF', label: '👨‍🍳 Kitchen Staff' },
+        { value: 'BAR_STAFF', label: '🍸 Bar Staff' },
+        { value: 'DELIVERY_RIDER', label: '🛵 Delivery Rider' },
+    ];
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -42,7 +55,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/login', {
+            const res = await fetch('http://192.168.1.3:5000/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -72,19 +85,24 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/register', {
+            const payload = {
+                name: formData.name,
+                email: formData.email,
+                phone: formData.phone,
+                password: formData.password,
+                role: formData.role === 'CUSTOMER' ? 'CUSTOMER' : (formData.role === 'ADMIN' ? 'ADMIN' : 'STAFF'),
+                jobRole: formData.role !== 'CUSTOMER' && formData.role !== 'ADMIN' ? formData.role.toLowerCase() : (formData.role === 'ADMIN' ? 'admin' : null)
+            };
+
+            const res = await fetch('http://192.168.1.3:5000/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: formData.name,
-                    email: formData.email,
-                    phone: formData.phone,
-                    password: formData.password
-                })
+                body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (res.ok) {
-                showAlert('success', 'Registration successful! Please login.');
+                const msg = formData.role === 'CUSTOMER' ? 'Registration successful! Please login.' : 'Staff registration successful! Wait for admin approval.';
+                showAlert('success', msg);
                 setMode('login');
             } else {
                 showAlert('error', data.message || 'Registration failed');
@@ -102,7 +120,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+            const res = await fetch('http://192.168.1.3:5000/api/auth/forgot-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email })
@@ -129,7 +147,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/reset-password', {
+            const res = await fetch('http://192.168.1.3:5000/api/auth/reset-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -194,6 +212,23 @@ function Auth() {
                         <input type="text" name="name" value={formData.name} onChange={handleChange} className="input-glass w-full" placeholder="Full Name" required />
                         <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="input-glass w-full" placeholder="Phone Number" required />
                         <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required />
+                        
+                        <div className="relative">
+                            <select 
+                                name="role" 
+                                value={formData.role} 
+                                onChange={handleChange} 
+                                className="input-glass w-full appearance-none cursor-pointer"
+                            >
+                                {roles.map(role => (
+                                    <option key={role.value} value={role.value} className="bg-[#1a1a1a] text-white">
+                                        {role.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                        </div>
+
                         <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="Password" required />
                         <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input-glass w-full" placeholder="Confirm Password" required />
                         <Button type="submit" className="w-full mt-4" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>

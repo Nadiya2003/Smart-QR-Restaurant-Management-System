@@ -8,6 +8,10 @@ import Delivery from './pages/Delivery';
 import AIChat from './pages/AIChat';
 import Auth from './pages/Auth';
 import Account from './pages/Account';
+import Gallery from './pages/Gallery';
+import Contact from './pages/Contact';
+import About from './pages/About';
+import FAQ from './pages/FAQ';
 
 /**
  * App Component - Main application component
@@ -29,6 +33,10 @@ function App() {
           <Route path="/ai-chat" element={<AIChat />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/gallery" element={<Gallery />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/faq" element={<FAQ />} />
         </Routes>
       </main>
 

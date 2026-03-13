@@ -36,7 +36,7 @@ function PaymentSelection() {
             }
 
             // Create order
-            const orderResponse = await fetch('http://localhost:5000/api/orders', {
+            const orderResponse = await fetch('http://192.168.1.3:5000/api/orders', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ function PaymentSelection() {
             }
 
             // Create order with COD status
-            const orderResponse = await fetch('http://localhost:5000/api/orders', {
+            const orderResponse = await fetch('http://192.168.1.3:5000/api/orders', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ function PaymentSelection() {
             const orderData = await orderResponse.json();
 
             // Send notification to steward
-            await fetch('http://localhost:5000/api/staff/notifications/send', {
+            await fetch('http://192.168.1.3:5000/api/staff/notifications/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

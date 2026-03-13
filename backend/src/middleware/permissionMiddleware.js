@@ -21,13 +21,23 @@ export const checkPermission = (permissionKey) => {
             let hasPermission = false;
 
             if (role !== 'CUSTOMER' && role !== 'ADMIN') {
-                // Check staff_permissions (Any role other than ADMIN/CUSTOMER is STAFF)
+                // Check staff_users.permissions JSON column
                 const [rows] = await pool.query(
-                    'SELECT allowed FROM staff_permissions WHERE staff_id = ? AND permission_key = ?',
-                    [userId, permissionKey]
+                    'SELECT permissions FROM staff_users WHERE id = ?',
+                    [userId]
                 );
-                if (rows.length > 0 && rows[0].allowed) {
-                    hasPermission = true;
+
+                if (rows.length > 0) {
+                    let permissions = [];
+                    try {
+                        permissions = JSON.parse(rows[0].permissions || '[]');
+                    } catch (e) {
+                        permissions = rows[0].permissions ? [rows[0].permissions] : [];
+                    }
+
+                    if (permissions.includes(permissionKey)) {
+                        hasPermission = true;
+                    }
                 }
             } else if (role === 'CUSTOMER') {
                 // Check customer_permissions

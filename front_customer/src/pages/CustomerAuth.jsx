@@ -43,7 +43,7 @@ function CustomerAuth() {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch('http://192.168.1.3:5000/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,6 +79,21 @@ function CustomerAuth() {
       console.error('Login error:', err);
     }
   };
+
+  const [registerRole, setRegisterRole] = useState('CUSTOMER');
+  
+  const roles = [
+    { value: 'CUSTOMER', label: '👤 Customer / User' },
+    { value: 'ADMIN', label: '🛡️ Administrator' },
+    { value: 'MANAGER', label: '👔 Manager' },
+    { value: 'CASHIER', label: '💰 Cashier' },
+    { value: 'STEWARD', label: '🍽️ Steward / Waiter' },
+    { value: 'INVENTORY_MANAGER', label: '📦 Inventory Manager' },
+    { value: 'SUPPLIER', label: '🚚 Supplier' },
+    { value: 'KITCHEN_STAFF', label: '👨‍🍳 Kitchen Staff' },
+    { value: 'BAR_STAFF', label: '🍸 Bar Staff' },
+    { value: 'DELIVERY_RIDER', label: '🛵 Delivery Rider' },
+  ];
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -117,25 +132,30 @@ function CustomerAuth() {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
+      const payload = {
+        name: registerName,
+        email: registerEmail,
+        phone: registerPhone,
+        password: registerPassword,
+        role: registerRole === 'CUSTOMER' ? 'CUSTOMER' : (registerRole === 'ADMIN' ? 'ADMIN' : 'STAFF'),
+        jobRole: registerRole !== 'CUSTOMER' && registerRole !== 'ADMIN' ? registerRole.toLowerCase() : (registerRole === 'ADMIN' ? 'admin' : null)
+      };
+
+      const response = await fetch('http://192.168.1.3:5000/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: registerName,
-          email: registerEmail,
-          phone: registerPhone,
-          password: registerPassword,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess('Registration successful! Please login.');
+        setSuccess(registerRole === 'CUSTOMER' ? 'Registration successful! Please login.' : 'Staff registration successful! Wait for admin approval.');
         setIsLogin(true); // Switch to login view
         setLoginEmail(registerEmail);
+        // Reset fields
         setRegisterName('');
         setRegisterPhone('');
         setRegisterEmail('');
@@ -252,6 +272,22 @@ function CustomerAuth() {
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4AF37] text-sm placeholder:text-gray-500"
                 required
               />
+            </div>
+
+            <div className="relative">
+              <label className="block text-sm font-medium mb-2">Select Role</label>
+              <select 
+                value={registerRole} 
+                onChange={(e) => setRegisterRole(e.target.value)}
+                className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4AF37] text-sm appearance-none cursor-pointer"
+              >
+                {roles.map(role => (
+                  <option key={role.value} value={role.value} className="bg-[#1a1a1a] text-white">
+                    {role.label}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-[38px] pointer-events-none text-gray-500 text-xs">▼</div>
             </div>
 
             <div>

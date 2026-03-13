@@ -16,7 +16,7 @@ function StewardSelect() {
 
   // Fetch stewards from API
   useEffect(() => {
-    fetch('http://localhost:5000/api/stewards')
+    fetch('http://192.168.1.3:5000/api/stewards')
       .then(res => res.json())
       .then(data => {
         if (data.stewards && data.stewards.length > 0) {
