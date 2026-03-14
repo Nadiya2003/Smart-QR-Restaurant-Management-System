@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCustomer } from '../context/CustomerContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+import config from '../config';
 
 function CustomerAuth() {
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ function CustomerAuth() {
     }
 
     try {
-      const response = await fetch('http://192.168.1.3:5000/api/auth/login', {
+      const response = await fetch(`${config.API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +142,7 @@ function CustomerAuth() {
         jobRole: registerRole !== 'CUSTOMER' && registerRole !== 'ADMIN' ? registerRole.toLowerCase() : (registerRole === 'ADMIN' ? 'admin' : null)
       };
 
-      const response = await fetch('http://192.168.1.3:5000/api/auth/register', {
+      const response = await fetch(`${config.API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

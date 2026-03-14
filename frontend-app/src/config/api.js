@@ -36,7 +36,9 @@ export default {
         LOGIN: `${API_URL}/staff/login`,
         REGISTER: `${API_URL}/staff/register`,
         PROFILE: `${API_URL}/staff/profile`,
+        LOGOUT: `${API_URL}/staff/logout`,
         ROLES: `${API_URL}/staff/roles`,
+
     },
     // Admin endpoints
     ADMIN: {
@@ -46,11 +48,23 @@ export default {
         ORDERS: `${API_URL}/admin/orders`,
         RESERVATIONS: `${API_URL}/admin/reservations`,
         AUDIT_LOGS: `${API_URL}/admin/audit-logs`,
+        ATTENDANCE: `${API_URL}/admin/attendance`,
+        PERMISSIONS: `${API_URL}/admin/permissions`,
+        INVENTORY: `${API_URL}/admin/inventory`,
+        SUPPLIERS: `${API_URL}/admin/suppliers`,
+        NOTIFICATIONS: `${API_URL}/admin/notifications`,
+        STAFF_ACTIVITY: `${API_URL}/admin/staff-activity`,
     },
+
     // Menu endpoints
     MENU: {
         ALL: `${API_URL}/menu`,
+        CATEGORIES: `${API_URL}/menu/categories/all`,
+        ITEM: (id) => `${API_URL}/menu/${id}`,
+        CREATE_ITEM: `${API_URL}/menu`,
+        CREATE_CATEGORY: `${API_URL}/menu/categories`,
     },
+
     // Order endpoints
     ORDERS: {
         BASE: `${API_URL}/orders`,

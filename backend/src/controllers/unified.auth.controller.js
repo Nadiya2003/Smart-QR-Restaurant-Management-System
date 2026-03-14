@@ -143,7 +143,10 @@ export const login = async (req, res) => {
 
         // Check status (is_active for both now)
         if (user.is_active === 0) {
-            return res.status(403).json({ message: 'Account is not active.' });
+            return res.status(403).json({ 
+                message: 'Waiting for Admin Permission. Please contact the administrator.',
+                code: 'ACCOUNT_INACTIVE'
+            });
         }
 
         const token = jwt.sign({ userId: user.id, role: role }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });

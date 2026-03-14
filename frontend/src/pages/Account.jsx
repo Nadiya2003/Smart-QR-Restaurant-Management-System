@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import { useNavigate } from 'react-router-dom';
+import config from '../config';
 
 import AccountAvatar from '../assets/default-customer-avatar.png';
 
@@ -34,7 +35,7 @@ function Account() {
                 return;
             }
             // Using localhost as per standard setup
-            const res = await fetch('http://localhost:5000/api/customer/account', {
+            const res = await fetch('${config.API_BASE_URL}/api/customer/account', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -59,9 +60,9 @@ function Account() {
         try {
             const token = localStorage.getItem('token');
             let endpoint = '';
-            if (type === 'reservation') endpoint = `http://localhost:5000/api/reservations/cancel/${id}`;
-            else if (type === 'delivery') endpoint = `http://localhost:5000/api/orders/delivery/cancel/${id}`;
-            else if (type === 'takeaway') endpoint = `http://localhost:5000/api/orders/takeaway/cancel/${id}`;
+            if (type === 'reservation') endpoint = `${config.API_BASE_URL}/api/reservations/cancel/${id}`;
+            else if (type === 'delivery') endpoint = `${config.API_BASE_URL}/api/orders/delivery/cancel/${id}`;
+            else if (type === 'takeaway') endpoint = `${config.API_BASE_URL}/api/orders/takeaway/cancel/${id}`;
 
             const res = await fetch(endpoint, {
                 method: 'PUT',
@@ -136,7 +137,7 @@ function Account() {
                             <div className="text-center relative z-10">
                                 <div className="relative inline-block mb-6">
                                     <img 
-                                        src={profile?.profile_image ? (profile.profile_image.toString().startsWith('http') ? profile.profile_image : `http://localhost:5000${profile.profile_image}`) : AccountAvatar} 
+                                        src={profile?.profile_image ? (profile.profile_image.toString().startsWith('http') ? profile.profile_image : `${config.API_BASE_URL}${profile.profile_image}`) : AccountAvatar} 
                                         alt="Avatar" 
                                         className="w-28 h-28 rounded-full border-4 border-[#D4AF37] object-cover shadow-2xl shadow-[#D4AF37]/20"
                                         onError={(e) => e.target.src = AccountAvatar}

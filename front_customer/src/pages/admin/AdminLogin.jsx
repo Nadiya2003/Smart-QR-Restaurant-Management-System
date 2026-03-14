@@ -1,8 +1,8 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../../components/GlassCard';
 import Button from '../../components/Button';
+import config from '../../config';
 
 const AdminLogin = () => {
     const navigate = useNavigate();
@@ -16,7 +16,7 @@ const AdminLogin = () => {
 
         try {
             // Admin is a staff user with role = 'ADMIN'
-            const response = await fetch('http://192.168.1.3:5000/api/staff/login', {
+            const response = await fetch(`${config.API_BASE_URL}/api/staff/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -30,6 +30,7 @@ const AdminLogin = () => {
             if (response.ok) {
                 if (data.user.role === 'ADMIN') {
                     localStorage.setItem('adminToken', data.token);
+                    localStorage.setItem('adminUser', JSON.stringify(data.user));
                     navigate('/admin/dashboard');
                 } else {
                     setError('Not an admin account');

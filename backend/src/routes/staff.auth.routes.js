@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerStaff, loginStaff, getAllRoles, getColleagues, getStaffProfile } from '../controllers/staff.auth.controller.js';
+import { registerStaff, loginStaff, getAllRoles, getColleagues, getStaffProfile, logoutStaff } from '../controllers/staff.auth.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -10,6 +10,7 @@ router.post('/login', loginStaff);
 router.get('/roles', getAllRoles);  // Public - needed for registration dropdown
 
 // Protected routes
+router.post('/logout', protect, logoutStaff);
 router.get('/profile', protect, getStaffProfile);
 router.get('/auth/team', protect, getColleagues);
 

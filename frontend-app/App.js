@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import Splash from './src/screens/Splash';
 import Login from './src/screens/Login';
@@ -88,9 +91,12 @@ const Main = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StatusBar style="auto" />
-      <Main />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style="auto" />
+        <Main />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
+

@@ -18,7 +18,11 @@ export const getAllStaff = async (req, res) => {
             } catch (e) {
                 permissions = s.permissions ? [s.permissions] : [];
             }
-            return { ...s, permissions };
+            return { 
+                ...s, 
+                status: s.is_active ? 'active' : 'inactive',
+                permissions 
+            };
         });
 
         res.json({ staff: staffWithPermissions });
@@ -145,7 +149,11 @@ export const getAllCustomers = async (req, res) => {
              ORDER BY created_at DESC`
         );
 
-        res.json({ customers });
+        const customersWithStatus = customers.map(c => ({
+            ...c,
+            status: c.is_active ? 'active' : 'inactive'
+        }));
+        res.json({ customers: customersWithStatus });
     } catch (err) {
         console.error('Get all customers error:', err);
         res.status(500).json({ message: 'Server Error' });
@@ -207,8 +215,31 @@ export const getAllOrders = async (req, res) => {
     try {
         const [deliveryOrders] = await pool.query('SELECT *, "DELIVERY" as order_type FROM delivery_orders ORDER BY created_at DESC');
         const [takeawayOrders] = await pool.query('SELECT *, "TAKEAWAY" as order_type FROM takeaway_orders ORDER BY created_at DESC');
+        const [dineInOrders] = await pool.query(`
+            SELECT o.*, "DINE-IN" as order_type, rt.table_number, os.name as status
+            FROM orders o
+            LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+            LEFT JOIN order_statuses os ON o.status_id = os.id
+            ORDER BY o.created_at DESC
+        `);
         
-        const allOrders = [...deliveryOrders, ...takeawayOrders].sort((a, b) => 
+        // Map Dine-in statuses to user preferred names if they don't match
+        const statusMap = {
+            'PENDING': 'Pending',
+            'PREPARING': 'Cooking',
+            'READY': 'Ready to Serve',
+            'SERVED': 'Served',
+            'COMPLETED': 'Finished',
+            'CANCELLED': 'Cancelled',
+            'READY_TO_SERVE': 'Ready to Serve',
+            'FINISHED': 'Finished',
+            'COOKING': 'Cooking'
+        };
+
+        const allOrders = [...deliveryOrders, ...takeawayOrders, ...dineInOrders].map(o => ({
+            ...o,
+            status: statusMap[o.status.toUpperCase()] || o.status
+        })).sort((a, b) => 
             new Date(b.created_at) - new Date(a.created_at)
         );
 
@@ -219,17 +250,58 @@ export const getAllOrders = async (req, res) => {
     }
 };
 
+export const cancelOrder = async (req, res) => {
+    try {
+        const { id, type } = req.params; // type: DELIVERY, TAKEAWAY, DINE-IN
+        const { reason } = req.body;
+
+        const [cancelStatus] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+        const cancelStatusId = cancelStatus[0]?.id;
+
+        if (type === 'DELIVERY') {
+            await pool.query('UPDATE delivery_orders SET status = "CANCELLED", cancellation_reason = ? WHERE id = ?', [reason, id]);
+        } else if (type === 'TAKEAWAY') {
+            await pool.query('UPDATE takeaway_orders SET status = "CANCELLED", cancellation_reason = ? WHERE id = ?', [reason, id]);
+        } else if (type === 'DINE-IN') {
+            if (cancelStatusId) {
+                await pool.query('UPDATE orders SET status_id = ?, cancellation_reason = ? WHERE id = ?', [cancelStatusId, reason, id]);
+            }
+        }
+
+        res.json({ message: 'Order cancelled successfully' });
+    } catch (err) {
+        console.error('Cancel order error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+
 export const updateOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, type } = req.body; // type: DELIVERY, TAKEAWAY, DINE-IN
 
-        const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = ?', [status.toUpperCase()]);
-        if (statusRows.length === 0) {
-            return res.status(400).json({ message: 'Invalid status' });
+        // Reverse map user names to DB names if needed
+        const dbStatusMap = {
+            'Cooking': 'PREPARING',
+            'Ready to Serve': 'READY',
+            'Served': 'SERVED',
+            'Finished': 'COMPLETED',
+            'Cancelled': 'CANCELLED'
+        };
+
+        const dbStatus = dbStatusMap[status] || status.toUpperCase();
+
+        if (type === 'DELIVERY') {
+            await pool.query('UPDATE delivery_orders SET status = ? WHERE id = ?', [status, id]);
+        } else if (type === 'TAKEAWAY') {
+            await pool.query('UPDATE takeaway_orders SET status = ? WHERE id = ?', [status, id]);
+        } else {
+            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = ?', [dbStatus]);
+            if (statusRows.length > 0) {
+                await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusRows[0].id, id]);
+            }
         }
-
-        await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusRows[0].id, id]);
         res.json({ message: 'Order status updated' });
     } catch (err) {
         console.error('Update order status error:', err);
@@ -244,25 +316,112 @@ export const getStats = async (req, res) => {
         const [[{ takeawayCount }]] = await pool.query('SELECT COUNT(*) as takeawayCount FROM takeaway_orders');
         const [[{ customerCount }]] = await pool.query('SELECT COUNT(*) as customerCount FROM online_customers');
         const [[{ staffCount }]] = await pool.query('SELECT COUNT(*) as staffCount FROM staff_users');
-        const [[{ revenue }]] = await pool.query(`
-            SELECT (
+        const [[{ activeStaffCount }]] = await pool.query('SELECT COUNT(*) as activeStaffCount FROM staff_attendance WHERE date = CURDATE() AND logout_time IS NULL');
+        const [[{ newCustomersWeek }]] = await pool.query('SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+        
+        const [ordersToday] = await pool.query(`
+            SELECT COUNT(*) as count FROM (
+                SELECT id FROM delivery_orders WHERE DATE(created_at) = CURDATE()
+                UNION ALL
+                SELECT id FROM takeaway_orders WHERE DATE(created_at) = CURDATE()
+            ) as t
+        `);
+
+        // Revenue Totals
+        const [[{ todayRevenue }]] = await pool.query(`
+             SELECT (
+                COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND DATE(created_at) = CURDATE()), 0) + 
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND DATE(created_at) = CURDATE()), 0)
+            ) as todayRevenue
+        `);
+
+        const [[{ totalRevenue }]] = await pool.query(`
+             SELECT (
                 COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid'), 0) + 
                 COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid'), 0)
-            ) as revenue
+            ) as totalRevenue
+        `);
+
+        const [[{ weekRev }]] = await pool.query(`
+             SELECT (
+                COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0) + 
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0)
+            ) as weekRev
+        `);
+
+        const [[{ monthRev }]] = await pool.query(`
+             SELECT (
+                COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) + 
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0)
+            ) as monthRev
+        `);
+
+        // Category breakdown for Today
+        const [todayCategories] = await pool.query(`
+            SELECT category_name, SUM(total_price) as revenue
+            FROM order_analytics
+            WHERE DATE(created_at) = CURDATE()
+            GROUP BY category_name
         `);
 
         res.json({ 
             stats: {
-                customers: customerCount,
-                staff: staffCount,
+                revenue: totalRevenue || 0,
+                todayRevenue: todayRevenue || 0,
+                weekRevenue: weekRev || 0,
+                monthRevenue: monthRev || 0,
+                totalOrders: deliveryCount + takeawayCount,
                 orders: deliveryCount + takeawayCount,
-                revenue: revenue || 0,
-                pendingOrders: 0, // Simplified for now
-                completedOrders: 0
+                activeStaff: activeStaffCount,
+                staff: staffCount,
+                totalCustomers: customerCount,
+                customers: customerCount,
+                
+                details: {
+                    todayOrders: ordersToday[0].count,
+                    newCustomersWeek: newCustomersWeek[0].count,
+                    todayCategories,
+                    totalRevenue: totalRevenue || 0
+                }
             } 
         });
     } catch (err) {
         console.error('Get stats error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const getRevenueAnalytics = async (req, res) => {
+    try {
+        // Dummy data for graph and breakdown
+        const dailyRevenue = await pool.query(`
+            SELECT DATE(created_at) as date, SUM(total_price) as revenue, COUNT(*) as orders
+            FROM (
+                SELECT created_at, total_price FROM delivery_orders WHERE payment_status = 'paid'
+                UNION ALL
+                SELECT created_at, total_price FROM takeaway_orders WHERE payment_status = 'paid'
+                UNION ALL
+                SELECT created_at, total_amount as total_price FROM orders WHERE payment_status = 'paid'
+            ) combined
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY DATE(created_at) ASC
+        `);
+
+        const typeBreakdown = await pool.query(`
+            SELECT 'Delivery' as type, COALESCE(SUM(total_price), 0) as revenue FROM delivery_orders WHERE payment_status = 'paid'
+            UNION ALL
+            SELECT 'Takeaway' as type, COALESCE(SUM(total_price), 0) as revenue FROM takeaway_orders WHERE payment_status = 'paid'
+            UNION ALL
+            SELECT 'Dine-in' as type, COALESCE(SUM(total_amount), 0) as revenue FROM orders WHERE payment_status = 'paid'
+        `);
+
+        res.json({
+            daily: dailyRevenue[0],
+            breakdown: typeBreakdown[0]
+        });
+    } catch (err) {
+        console.error('Revenue analytics error:', err);
         res.status(500).json({ message: 'Server Error' });
     }
 };

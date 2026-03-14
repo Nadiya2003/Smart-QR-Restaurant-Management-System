@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useAuth } from '../context/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import StaffDashboard from './StaffDashboard';
@@ -14,39 +16,46 @@ const Dashboard = ({ onLogout }) => {
 
     const renderContent = () => {
         const role = (user?.role || '').toUpperCase();
+        
+        // Admin always has access
         if (role === 'ADMIN') {
             return <AdminDashboard />;
         }
-        // All other roles (STAFF, MANAGER, CASHIER, STEWARD, etc.)
+
+        // Staff members must be active to access features
+        if (user?.status !== 'active') {
+            return (
+                <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+                    <Text style={{ fontSize: 50, marginBottom: 20 }}>⏳</Text>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#111827' }}>Waiting for Admin Permission</Text>
+                    <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', marginTop: 10 }}>Your account has been created successfully. Please wait for an administrator to activate your account.</Text>
+                    <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { marginTop: 40, width: '100%' }]}>
+                        <Text style={[styles.logoutText, { textAlign: 'center' }]}>Logout</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        // All other active staff roles
         return <StaffDashboard />;
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.welcomeText}>Welcome,</Text>
-                    <Text style={styles.userName}>{user?.name || 'User'}</Text>
-                    <Text style={styles.roleText}>{(user?.role || 'User').toUpperCase()}</Text>
-                </View>
-                <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-                    <Text style={styles.logoutText}>Logout</Text>
-                </TouchableOpacity>
-            </View>
-
             <View style={styles.content}>
                 {renderContent()}
             </View>
         </SafeAreaView>
     );
+
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F9FAFB',
-        paddingTop: Platform.OS === 'android' ? 30 : 0,
     },
+
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',

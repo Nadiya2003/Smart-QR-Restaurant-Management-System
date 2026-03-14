@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+import config from '../config';
 
 function Auth() {
     const navigate = useNavigate();
@@ -56,7 +57,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/login', {
+            const res = await fetch('${config.API_BASE_URL}/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -105,7 +106,7 @@ function Auth() {
                 fd.append('profile_image', formData.profile_image);
             }
 
-            const res = await fetch('http://localhost:5000/api/auth/register', {
+            const res = await fetch('${config.API_BASE_URL}/api/auth/register', {
                 method: 'POST',
                 body: fd
             });
@@ -129,7 +130,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+            const res = await fetch('${config.API_BASE_URL}/api/auth/forgot-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email })
@@ -156,7 +157,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/api/auth/reset-password', {
+            const res = await fetch('${config.API_BASE_URL}/api/auth/reset-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

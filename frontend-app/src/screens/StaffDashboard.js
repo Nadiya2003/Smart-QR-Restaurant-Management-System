@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 
@@ -86,15 +86,24 @@ const StaffDashboard = () => {
                         Today's goal: Ensure customer satisfaction with every interaction.
                     </Text>
                 </View>
-                <TouchableOpacity
-                    style={[styles.checkInButton, isCheckedIn ? styles.checkedIn : styles.checkedOut]}
-                    onPress={handleCheckIn}
-                >
-                    <Text style={[styles.checkInText, isCheckedIn ? styles.checkedInText : styles.checkedOutText]}>
-                        {isCheckedIn ? '⏹ Check Out' : '▶ Check In'}
-                    </Text>
-                </TouchableOpacity>
+                <View style={{ gap: 10 }}>
+                    <TouchableOpacity
+                        style={[styles.checkInButton, isCheckedIn ? styles.checkedIn : styles.checkedOut]}
+                        onPress={handleCheckIn}
+                    >
+                        <Text style={[styles.checkInText, isCheckedIn ? styles.checkedInText : styles.checkedOutText]}>
+                            {isCheckedIn ? '⏹ Out' : '▶ In'}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => Alert.alert('Logout', 'Are you sure?', [{text: 'Cancel'}, {text: 'Logout', onPress: logout}])}
+                        style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 8, borderRadius: 8, alignItems: 'center' }}
+                    >
+                        <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>LOGOUT</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
+
 
             {/* Permissions Section */}
             {permissions.length > 0 && (

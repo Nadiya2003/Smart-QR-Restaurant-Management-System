@@ -31,6 +31,18 @@ export const createDeliveryOrder = async (req, res) => {
                 );
             }
 
+            // Order Analytics Insertion
+            if (Array.isArray(items)) {
+                for (const item of items) {
+                    await connection.query(
+                        `INSERT INTO order_analytics 
+                        (order_id, order_source, item_id, item_name, category_name, quantity, unit_price, total_price) 
+                        VALUES (?, 'DELIVERY', ?, ?, ?, ?, ?, ?)`,
+                        [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
+                    );
+                }
+            }
+
             await connection.commit();
             res.status(201).json({ 
                 message: '✅ Payment Successful! Your order has been placed successfully.', 
@@ -75,6 +87,18 @@ export const createTakeawayOrder = async (req, res) => {
                     'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
                     [pointsEarned, customer_id]
                 );
+            }
+
+            // Order Analytics Insertion
+            if (Array.isArray(items)) {
+                for (const item of items) {
+                    await connection.query(
+                        `INSERT INTO order_analytics 
+                        (order_id, order_source, item_id, item_name, category_name, quantity, unit_price, total_price) 
+                        VALUES (?, 'TAKEAWAY', ?, ?, ?, ?, ?, ?)`,
+                        [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
+                    );
+                }
             }
 
             await connection.commit();

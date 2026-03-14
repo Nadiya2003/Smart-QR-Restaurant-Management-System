@@ -10,6 +10,7 @@ import orderRoutes from './routes/order.routes.js';
 import stewardRoutes from './routes/steward.routes.js';
 import reservationRoutes from './routes/reservation.routes.js';
 import contactRoutes from './routes/contact.routes.js';
+import reportRoutes from './routes/report.routes.js';
 
 // Legacy/Compatibility (Optional cleanup)
 import staffAuthRoutes from './routes/staff.auth.routes.js';
@@ -67,6 +68,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/stewards', stewardRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

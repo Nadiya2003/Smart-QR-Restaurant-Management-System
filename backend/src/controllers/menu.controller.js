@@ -6,9 +6,10 @@ export const getMenu = async (req, res) => {
             SELECT m.*, c.name as category 
             FROM menu_items m 
             JOIN categories c ON m.category_id = c.id 
-            WHERE m.is_active = TRUE
+            ORDER BY c.name, m.name
         `);
         res.json(items);
+
     } catch (error) {
         console.error('Get menu error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -59,15 +60,44 @@ export const createCategory = async (req, res) => {
 };
 
 export const createMenuItem = async (req, res) => {
-    const { category_id, name, description, price, image } = req.body;
+    const { category_id, name, description, price, image, tags } = req.body;
     try {
+        const tagsJson = tags ? JSON.stringify(tags) : null;
         const [result] = await pool.query(
-            'INSERT INTO menu_items (category_id, name, description, price, image, is_active) VALUES (?, ?, ?, ?, ?, TRUE)',
-            [category_id, name, description, price, image]
+            'INSERT INTO menu_items (category_id, name, description, price, image, tags, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
+            [category_id, name, description, price, image, tagsJson]
         );
-        res.status(201).json({ id: result.insertId, category_id, name, description, price, image, is_active: true });
+        res.status(201).json({ id: result.insertId, category_id, name, description, price, image, tags, is_active: true });
     } catch (error) {
         console.error('Create menu item error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
+export const updateMenuItem = async (req, res) => {
+    const { id } = req.params;
+    const { category_id, name, description, price, image, tags, is_active } = req.body;
+    try {
+        const tagsJson = tags ? JSON.stringify(tags) : null;
+        await pool.query(
+            'UPDATE menu_items SET category_id = ?, name = ?, description = ?, price = ?, image = ?, tags = ?, is_active = ? WHERE id = ?',
+            [category_id, name, description, price, image, tagsJson, is_active, id]
+        );
+        res.json({ message: 'Menu item updated successfully' });
+    } catch (error) {
+        console.error('Update menu item error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+export const deleteMenuItem = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM menu_items WHERE id = ?', [id]);
+        res.json({ message: 'Menu item deleted successfully' });
+    } catch (error) {
+        console.error('Delete menu item error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+

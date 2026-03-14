@@ -12,8 +12,10 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadUser();
+        // loadUser(); // Disabled auto-login as per user request
+        setLoading(false);
     }, []);
+
 
     const loadUser = async () => {
         try {
@@ -97,6 +99,19 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
+        // If it's a staff member, notify backend to record logout time for attendance
+        if (token && user && user.role !== 'CUSTOMER') {
+            try {
+                await fetch(apiConfig.STAFF.LOGOUT, { 
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (e) {
+                console.warn("Backend logout failed:", e.message);
+            }
+        }
+
+
         setUser(null);
         setToken(null);
         try {
@@ -106,6 +121,7 @@ export const AuthProvider = ({ children }) => {
             console.error("Failed to remove user", e);
         }
     };
+
 
     const forgotPassword = async (email) => {
         try {

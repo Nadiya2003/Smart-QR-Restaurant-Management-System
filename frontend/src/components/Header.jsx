@@ -120,7 +120,7 @@ function Header() {
                                     className="flex items-center gap-3 p-1 pr-4 rounded-full bg-white/5 hover:bg-white/10 transition-all border border-[#D4AF37]/30 hover:border-[#D4AF37] group"
                                 >
                                     <img 
-                                        src={user?.user?.profile_image ? (user.user.profile_image.toString().startsWith('http') ? user.user.profile_image : `http://localhost:5000${user.user.profile_image}`) : AccountAvatar} 
+                                        src={user?.user?.profile_image ? (user.user.profile_image.toString().startsWith('http') ? user.user.profile_image : `${config.API_BASE_URL}${user.user.profile_image}`) : AccountAvatar} 
                                         alt="Profile" 
                                         className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]"
                                         onError={(e) => e.target.src = AccountAvatar}

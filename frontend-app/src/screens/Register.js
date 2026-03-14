@@ -28,6 +28,8 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingRoles, setLoadingRoles] = useState(true);
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
+
 
     // Fetch available roles from backend
     useEffect(() => {
@@ -116,6 +118,11 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
             setError('Please select a role');
             return;
         }
+        if (!agreedToTerms) {
+            setError('You must agree to the Terms & Conditions');
+            return;
+        }
+
 
         setError('');
         setIsLoading(true);
@@ -167,8 +174,8 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                         <View style={styles.iconContainer}>
                             <Text style={{ fontSize: 32 }}>👨‍🍳</Text>
                         </View>
-                        <Text style={styles.headerTitle}>Staff Registration</Text>
-                        <Text style={styles.headerSubtitle}>Join Melissa's Food Court team</Text>
+                        <Text style={styles.headerTitle}>Melissa's Food Court</Text>
+                        <Text style={styles.headerSubtitle}>Staff Registration Portal</Text>
                     </View>
 
                     {/* Form */}
@@ -291,6 +298,21 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                                 />
                             </View>
                         </View>
+                        
+                        {/* Terms & Conditions Checkbox */}
+                        <TouchableOpacity 
+                            style={styles.checkboxContainer} 
+                            onPress={() => setAgreedToTerms(!agreedToTerms)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+                                {agreedToTerms && <Text style={styles.checkboxCheckmark}>✓</Text>}
+                            </View>
+                            <Text style={styles.checkboxLabel}>
+                                I agree to the <Text style={styles.termsLink}>Terms & Conditions</Text> and Privacy Policy
+                            </Text>
+                        </TouchableOpacity>
+
 
                         {/* Register Button */}
                         <TouchableOpacity
@@ -517,7 +539,45 @@ const styles = StyleSheet.create({
         color: '#1E40AF',
         lineHeight: 18,
     },
+    // Checkbox Styles
+    checkboxContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+        paddingHorizontal: 4,
+    },
+    checkbox: {
+        width: 22,
+        height: 22,
+        borderWidth: 2,
+        borderColor: '#000000',
+        borderRadius: 6,
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+    },
+    checkboxChecked: {
+        backgroundColor: '#000000',
+    },
+    checkboxCheckmark: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    checkboxLabel: {
+        flex: 1,
+        fontSize: 13,
+        color: '#4B5563',
+        lineHeight: 18,
+    },
+    termsLink: {
+        color: '#000',
+        fontWeight: 'bold',
+        textDecorationLine: 'underline',
+    },
     // Modal styles
+
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',

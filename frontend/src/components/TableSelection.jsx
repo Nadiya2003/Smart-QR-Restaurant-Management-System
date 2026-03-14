@@ -19,7 +19,7 @@ function TableSelection({ areaId, date, time, selectedTableId, onSelectTable }) 
         setLoading(true);
         setError('');
         try {
-            const response = await fetch(`http://localhost:5000/api/reservations/availability?area_id=${areaId}&date=${date}&time=${time}`);
+            const response = await fetch(`${config.API_BASE_URL}/api/reservations/availability?area_id=${areaId}&date=${date}&time=${time}`);
             const data = await response.json();
             if (response.ok) {
                 setTables(data.tables);

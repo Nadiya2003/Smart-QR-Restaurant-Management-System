@@ -4,6 +4,7 @@ import Button from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import config from '../config';
 
 /**
  * Delivery Page - Toggle between Delivery and Takeaway
@@ -127,7 +128,7 @@ function Delivery() {
                 payload.pickup_time = details.pickupTime;
             }
 
-            const response = await fetch(`http://localhost:5000${endpoint}`, {
+            const response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

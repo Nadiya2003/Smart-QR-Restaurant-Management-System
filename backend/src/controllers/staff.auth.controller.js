@@ -159,6 +159,25 @@ export const loginStaff = async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        // Record Attendance (Login)
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const now = new Date();
+            const [atRows] = await pool.query(
+                "SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ?",
+                [user.id, today]
+            );
+            if (atRows.length === 0) {
+                await pool.query(
+                    "INSERT INTO staff_attendance (staff_id, date, login_time, status) VALUES (?, ?, ?, 'PRESENT')",
+                    [user.id, today, now]
+                );
+            }
+        } catch (attErr) {
+            console.error("Attendance login record error:", attErr.message);
+        }
+
+
         res.json({
             message: 'Login successful',
             token,
@@ -251,4 +270,21 @@ export const verifyOTP = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
     res.status(501).json({ message: 'Please use unified reset password' });
+};
+export const logoutStaff = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+
+        await pool.query(
+            "UPDATE staff_attendance SET logout_time = ? WHERE staff_id = ? AND date = ? AND logout_time IS NULL",
+            [now, userId, today]
+        );
+
+        res.json({ message: 'Logout successful and attendance updated' });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ message: 'Logout processing failed' });
+    }
 };
