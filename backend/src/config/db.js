@@ -10,7 +10,8 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'smart_qr_restaurant',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    multipleStatements: true
 });
 
 // Test connection

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
+import TableSelection from '../components/TableSelection';
 
 /**
  * Reservation Page - Table booking form
@@ -15,7 +16,20 @@ function Reservation() {
 
     useEffect(() => {
         window.scrollTo(0, 0);
+        fetchAreas();
     }, []);
+
+    const fetchAreas = async () => {
+        try {
+            const response = await fetch('http://localhost:5000/api/reservations/areas');
+            const data = await response.json();
+            if (response.ok) {
+                setAreas(data.areas);
+            }
+        } catch (err) {
+            console.error('Error fetching areas:', err);
+        }
+    };
 
     // Form state
     const [formData, setFormData] = useState({
@@ -25,8 +39,12 @@ function Reservation() {
         date: '',
         time: '',
         guests: '2',
+        areaId: '',
+        tableId: '',
         specialRequest: '',
     });
+
+    const [areas, setAreas] = useState([]);
 
     const [loading, setLoading] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
@@ -72,6 +90,11 @@ function Reservation() {
                     date: formData.date,
                     time: formData.time,
                     guests: formData.guests,
+                    area_id: formData.areaId,
+                    table_id: formData.tableId,
+                    customer_name: formData.name,
+                    mobile_number: formData.phone,
+                    email: formData.email,
                     special_request: formData.specialRequest
                 }),
             });
@@ -85,6 +108,8 @@ function Reservation() {
                     date: '',
                     time: '',
                     guests: '2',
+                    areaId: '',
+                    tableId: '',
                     specialRequest: '',
                 });
                 // Hide success message after 5 seconds
@@ -117,7 +142,7 @@ function Reservation() {
                 {showSuccess && (
                     <div className="mb-6 bg-green-500/20 border border-green-500 rounded-xl p-4 text-center animate-slide-up">
                         <p className="text-white font-medium">
-                            ✅ Reservation request submitted! We will contact you shortly.
+                            ✅ Reservation Successful! A confirmation email has been sent to your inbox.
                         </p>
                     </div>
                 )}
@@ -141,9 +166,38 @@ function Reservation() {
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="bg-white/5 p-4 rounded-xl border border-white/10 mb-6">
-                                <p className="text-sm text-gray-400">Reserving as:</p>
-                                <p className="text-[#D4AF37] font-bold">{user.user.name}</p>
+                            {/* Name and Phone Row */}
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div>
+                                    <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
+                                        Full Name <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="name"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        placeholder="Your Name"
+                                        className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-2">
+                                        Mobile Number <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        id="phone"
+                                        name="phone"
+                                        value={formData.phone}
+                                        onChange={handleChange}
+                                        placeholder="e.g. 0771234567"
+                                        className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                        required
+                                    />
+                                </div>
                             </div>
 
                         {/* Date and Time Row */}
@@ -205,6 +259,66 @@ function Reservation() {
                                 <option value="10+">10+ Guests</option>
                             </select>
                         </div>
+
+                        {/* Area Selection */}
+                        <div className="space-y-4">
+                            <label className="block text-sm font-medium text-gray-300">
+                                Select Dining Area <span className="text-red-400">*</span>
+                            </label>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {areas.map(area => {
+                                    const isSelected = formData.areaId === area.id;
+                                    return (
+                                        <button
+                                            key={area.id}
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, areaId: area.id, tableId: '' }))}
+                                            className={`
+                                                relative p-4 rounded-xl border transition-all duration-300
+                                                flex flex-col items-center justify-center text-center gap-2
+                                                ${isSelected 
+                                                    ? 'border-[#D4AF37] bg-[#D4AF37]/20 ring-2 ring-[#D4AF37]/30 shadow-lg shadow-[#D4AF37]/10' 
+                                                    : 'border-white/5 bg-white/5 hover:border-white/20 hover:bg-white/10'}
+                                            `}
+                                        >
+                                            <span className={`text-sm font-bold uppercase tracking-wider ${isSelected ? 'text-[#D4AF37]' : 'text-gray-300'}`}>
+                                                {area.area_name}
+                                            </span>
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2">
+                                                    <div className="bg-[#D4AF37] rounded-full p-0.5 shadow-sm">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-black" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Table Layout Viewer */}
+                        {formData.areaId && formData.date && formData.time && (
+                            <div className="space-y-4">
+                                <label className="block text-sm font-medium text-gray-300">
+                                    Select Your Preferred Table <span className="text-red-400">*</span>
+                                </label>
+                                <TableSelection
+                                    areaId={formData.areaId}
+                                    date={formData.date}
+                                    time={formData.time}
+                                    selectedTableId={formData.tableId}
+                                    onSelectTable={(table) => setFormData(prev => ({ ...prev, tableId: table.id }))}
+                                />
+                                {formData.tableId && (
+                                    <p className="text-center text-[#D4AF37] font-semibold animate-pulse">
+                                        Table selected successfully!
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         {/* Special Request */}
                         <div>

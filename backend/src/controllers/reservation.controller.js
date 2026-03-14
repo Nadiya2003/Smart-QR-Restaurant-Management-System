@@ -1,26 +1,155 @@
 import pool from '../config/db.js';
+import transporter from '../config/mailer.js';
 
 export const createReservation = async (req, res) => {
     try {
-        const { date, time, guests, special_request } = req.body;
+        const { date, time, guests, area_id, table_id, customer_name, mobile_number, email, special_request } = req.body;
         const customer_id = req.user.userId;
 
-        if (!date || !time || !guests) {
-            return res.status(400).json({ message: 'All fields (date, time, guests) are required' });
+        if (!date || !time || !guests || !area_id || !table_id) {
+            return res.status(400).json({ message: 'All fields (date, time, guests, area, table) are required' });
+        }
+
+        // Check if table is actually available for that time
+        const [existing] = await pool.query(
+            `SELECT * FROM reservations 
+             WHERE table_id = ? 
+             AND reservation_date = ? 
+             AND reservation_time = ? 
+             AND reservation_status NOT IN ('CANCELLED')`,
+            [table_id, date, time]
+        );
+
+        if (existing.length > 0) {
+            return res.status(400).json({ message: 'This table is already reserved for the selected time slot.' });
         }
 
         const [result] = await pool.query(
-            'INSERT INTO reservations (customer_id, reservation_date, reservation_time, guests, special_request) VALUES (?, ?, ?, ?, ?)',
-            [customer_id, date, time, guests, special_request || '']
+            `INSERT INTO reservations 
+            (customer_id, area_id, table_id, reservation_date, reservation_time, guest_count, customer_name, mobile_number, special_requests) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                customer_id, 
+                area_id, 
+                table_id, 
+                date, 
+                time, 
+                guests, 
+                customer_name || req.user.name || '', 
+                mobile_number || req.user.phone || '', 
+                special_request || ''
+            ]
         );
 
+        // Fetch area and table details for Notification
+        const [[areaInfo]] = await pool.query('SELECT area_name FROM dining_areas WHERE id = ?', [area_id]);
+        const [[tableInfo]] = await pool.query('SELECT table_number FROM restaurant_tables WHERE id = ?', [table_id]);
+
+        // Send confirmation Email
+        const targetEmail = email || req.user.email;
+        if (targetEmail) {
+            const mailOptions = {
+                from: process.env.EMAIL_FROM || 'noreply@restaurant.com',
+                to: targetEmail,
+                subject: 'Reservation Confirmed - Melissa Restaurant',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+                        <div style="background-color: #000; padding: 20px; text-align: center;">
+                            <h1 style="color: #D4AF37; margin: 0; font-size: 28px;">Melissa's Food Court</h1>
+                        </div>
+                        <div style="padding: 30px; background-color: #fff; color: #333;">
+                            <h2 style="color: #28a745; margin-top: 0;">Reservation Confirmed! ✅</h2>
+                            <p>Hello <strong>${customer_name || req.user.name}</strong>,</p>
+                            <p>Your table has been successfully reserved. Here are the details:</p>
+                            
+                            <div style="background-color: #f8f9fa; border-left: 4px solid #D4AF37; padding: 20px; margin: 25px 0;">
+                                <p style="margin: 5px 0;"><strong>Dining Area:</strong> ${areaInfo?.area_name || 'Selected Area'}</p>
+                                <p style="margin: 5px 0;"><strong>Table Number:</strong> #${tableInfo?.table_number || 'TBD'}</p>
+                                <p style="margin: 5px 0;"><strong>Date:</strong> ${date}</p>
+                                <p style="margin: 5px 0;"><strong>Time:</strong> ${time}</p>
+                                <p style="margin: 5px 0;"><strong>Guests:</strong> ${guests}</p>
+                            </div>
+                            
+                            <p>If you need to change or cancel your reservation, please do so via your dashboard or contact us directly.</p>
+                            <p>We look forward to serving you!</p>
+                        </div>
+                        <div style="background-color: #f1f1f1; padding: 15px; text-align: center; font-size: 12px; color: #777;">
+                            <p style="margin: 0;">© 2026 Melissa's Food Court. All rights reserved.</p>
+                        </div>
+                    </div>
+                `
+            };
+
+            try {
+                await transporter.sendMail(mailOptions);
+                console.log(`✅ Confirmation email sent to: ${targetEmail}`);
+            } catch (err) {
+                console.error('❌ Failed to send confirmation email:', err.message);
+            }
+        }
+
         res.status(201).json({
-            message: '✅ Your reservation has been successfully booked.',
+            message: '✅ Your reservation has been successfully booked. A confirmation email has been sent.',
             reservationId: result.insertId
         });
     } catch (error) {
         console.error('Create reservation error:', error);
         res.status(500).json({ message: 'Failed to create reservation', error: error.message });
+    }
+};
+
+export const getDiningAreas = async (req, res) => {
+    try {
+        const [areas] = await pool.query('SELECT * FROM dining_areas');
+        res.json({ areas });
+    } catch (error) {
+        console.error('Get areas error:', error);
+        res.status(500).json({ message: 'Failed to fetch dining areas' });
+    }
+};
+
+export const getTablesWithAvailability = async (req, res) => {
+    try {
+        const { area_id, date, time } = req.query;
+
+        if (!area_id || !date || !time) {
+            return res.status(400).json({ message: 'area_id, date, and time are required' });
+        }
+
+        // 1. Get all tables in this area
+        const [tables] = await pool.query(
+            'SELECT * FROM restaurant_tables WHERE area_id = ?',
+            [area_id]
+        );
+
+        // 2. Get reservations for this date and time
+        const [reservations] = await pool.query(
+            `SELECT table_id FROM reservations 
+             WHERE reservation_date = ? AND reservation_time = ? 
+             AND reservation_status NOT IN ('CANCELLED')`,
+            [date, time]
+        );
+
+        const reservedTableIds = reservations.map(r => r.table_id);
+
+        // 3. Map status
+        const tableStatusData = tables.map(table => {
+            let status = table.status; // 'available' or 'occupied' (from DB)
+
+            if (reservedTableIds.includes(table.id)) {
+                status = 'reserved';
+            }
+
+            return {
+                ...table,
+                current_status: status
+            };
+        });
+
+        res.json({ tables: tableStatusData });
+    } catch (error) {
+        console.error('Get tables availability error:', error);
+        res.status(500).json({ message: 'Failed to fetch table availability' });
     }
 };
 

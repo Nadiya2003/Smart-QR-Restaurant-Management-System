@@ -246,21 +246,32 @@ export const forgotPassword = async (req, res) => {
         console.log(`=========================================\n`);
 
         const mailOptions = {
-            from: process.env.EMAIL_FROM || 'noreply@restaurant.com',
+            from: process.env.EMAIL_FROM || '"Melissa Restaurant" <noreply@restaurant.com>',
             to: email,
-            subject: 'Your Password Reset OTP',
+            subject: 'Security: Your Password Reset OTP',
             html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-                    <h2 style="color: #D4AF37; text-align: center;">Melissa's Food Court</h2>
-                    <p>Hello,</p>
-                    <p>You requested to reset your password. Please use the following One Time Password (OTP) to proceed:</p>
-                    <div style="background-color: #f9f9f9; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #333; margin: 20px 0;">
-                        ${otp}
+                <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                    <div style="background-color: #000; padding: 30px; text-align: center;">
+                        <h1 style="color: #D4AF37; margin: 0; font-size: 28px; letter-spacing: 2px;">MELISSA RESTAURANT</h1>
                     </div>
-                    <p>This OTP will expire in 15 minutes.</p>
-                    <p>If you did not request this, please ignore this email.</p>
-                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                    <p style="font-size: 12px; color: #888; text-align: center;">&copy; 2026 Melissa's Food Court. All rights reserved.</p>
+                    <div style="padding: 40px; background-color: #fff; color: #333; line-height: 1.6;">
+                        <h2 style="color: #333; margin-top: 0; text-align: center;">Reset Your Password</h2>
+                        <p>Hello,</p>
+                        <p>We received a request to reset the password for your account. Please use the verification code below to proceed:</p>
+                        
+                        <div style="background-color: #fcf8e3; border: 1px dashed #D4AF37; padding: 25px; text-align: center; margin: 30px 0; border-radius: 12px;">
+                            <span style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #000;">${otp}</span>
+                        </div>
+                        
+                        <p style="font-size: 14px; color: #666; text-align: center;">
+                            This code is valid for <strong>15 minutes</strong>. <br>
+                            If you did not request this change, please ignore this email or contact support.
+                        </p>
+                    </div>
+                    <div style="background-color: #f9f9f9; padding: 20px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;">
+                        <p style="margin: 0;">Melissa's Food Court & Security Team</p>
+                        <p style="margin: 5px 0;">This is an automated message, please do not reply.</p>
+                    </div>
                 </div>
             `
         };

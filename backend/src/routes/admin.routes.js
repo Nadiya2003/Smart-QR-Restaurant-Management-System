@@ -13,11 +13,18 @@ import {
     getAllReservations,
     updateReservationStatus,
     getStats,
-    getAuditLogs
+    getAuditLogs,
+    getAllAreas,
+    addArea,
+    updateArea,
+    getAllTables,
+    addTable,
+    updateTable,
+    updateTableStatus
 } from '../controllers/admin.controller.js';
 // Admin Middleware (Hardcoded check) -> we can reuse protect middleware but verify role='ADMIN'
 // Assuming protect middleware sets req.user
-import { protect, adminOnly } from '../middleware/authMiddleware.js';
+import { protect, adminOnly, isStaff } from '../middleware/authMiddleware.js';
 import { preventSelfModification, logAccess } from '../middleware/rbac.middleware.js';
 
 const router = express.Router();
@@ -62,7 +69,17 @@ router.put('/orders/:id/status', updateOrderStatus);
 router.get('/reservations', getAllReservations);
 router.put('/reservations/:id/status', updateReservationStatus);
 
+// Table & Area Management (Available to all Staff)
+router.get('/areas', isStaff, getAllAreas);
+router.post('/areas', isStaff, addArea);
+router.put('/areas/:id', isStaff, updateArea);
+
+router.get('/tables', isStaff, getAllTables);
+router.post('/tables', isStaff, addTable);
+router.put('/tables/:id', isStaff, updateTable);
+router.put('/tables/:id/status', isStaff, updateTableStatus);
+
 // Audit Logs
-router.get('/audit-logs', getAuditLogs);
+router.get('/audit-logs', adminOnly, getAuditLogs);
 
 export default router;

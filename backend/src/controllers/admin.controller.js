@@ -296,6 +296,93 @@ export const updateReservationStatus = async (req, res) => {
     }
 };
 
+// --- Table & Area Management ---
+export const getAllAreas = async (req, res) => {
+    try {
+        const [areas] = await pool.query('SELECT * FROM dining_areas ORDER BY id ASC');
+        res.json({ areas });
+    } catch (err) {
+        console.error('Get all areas error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const addArea = async (req, res) => {
+    try {
+        const { area_name, description } = req.body;
+        await pool.query('INSERT INTO dining_areas (area_name, description) VALUES (?, ?)', [area_name, description]);
+        res.status(201).json({ message: 'Dining area added successfully' });
+    } catch (err) {
+        console.error('Add area error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateArea = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { area_name, description } = req.body;
+        await pool.query('UPDATE dining_areas SET area_name = ?, description = ? WHERE id = ?', [area_name, description, id]);
+        res.json({ message: 'Dining area updated' });
+    } catch (err) {
+        console.error('Update area error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const getAllTables = async (req, res) => {
+    try {
+        const [tables] = await pool.query(`
+            SELECT t.*, a.area_name 
+            FROM restaurant_tables t
+            JOIN dining_areas a ON t.area_id = a.id
+            ORDER BY a.area_name, t.table_number
+        `);
+        res.json({ tables });
+    } catch (err) {
+        console.error('Get all tables error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const addTable = async (req, res) => {
+    try {
+        const { area_id, table_number, capacity } = req.body;
+        await pool.query('INSERT INTO restaurant_tables (area_id, table_number, capacity) VALUES (?, ?, ?)', [area_id, table_number, capacity]);
+        res.status(201).json({ message: 'Table added successfully' });
+    } catch (err) {
+        console.error('Add table error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateTable = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { area_id, table_number, capacity, status } = req.body;
+        await pool.query(
+            'UPDATE restaurant_tables SET area_id = ?, table_number = ?, capacity = ?, status = ? WHERE id = ?',
+            [area_id, table_number, capacity, status, id]
+        );
+        res.json({ message: 'Table updated successfully' });
+    } catch (err) {
+        console.error('Update table error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const updateTableStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body; // 'available', 'occupied', 'reserved'
+        await pool.query('UPDATE restaurant_tables SET status = ? WHERE id = ?', [status, id]);
+        res.json({ message: `Table status updated to ${status}` });
+    } catch (err) {
+        console.error('Update table status error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 // --- Audit Logs ---
 export const getAuditLogs = async (req, res) => {
     try {

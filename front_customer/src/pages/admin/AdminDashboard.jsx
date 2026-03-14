@@ -23,6 +23,8 @@ const AdminDashboard = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [menus, setMenus] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [areaList, setAreaList] = useState([]);
+    const [allTables, setAllTables] = useState([]);
 
     const [view, setView] = useState('overview'); // overview, staff, customers, orders, reservations, audit-logs
     const [loading, setLoading] = useState(true);
@@ -70,10 +72,12 @@ const AdminDashboard = () => {
                 fetch('http://localhost:5000/api/admin/reservations', { headers }),
                 fetch('http://localhost:5000/api/admin/audit-logs', { headers }),
                 fetch('http://localhost:5000/api/menu', { headers }),
-                fetch('http://localhost:5000/api/menu/categories/all', { headers })
+                fetch('http://localhost:5000/api/menu/categories/all', { headers }),
+                fetch('http://localhost:5000/api/admin/areas', { headers }),
+                fetch('http://localhost:5000/api/admin/tables', { headers })
             ]);
 
-            const [statsRes, staffRes, custRes, ordRes, resRes, auditRes, menuRes, catRes] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+            const [statsRes, staffRes, custRes, ordRes, resRes, auditRes, menuRes, catRes, areasRes, tablesRes] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
             if (statsRes && statsRes.ok) {
                 const s = await statsRes.json();
@@ -113,6 +117,16 @@ const AdminDashboard = () => {
             if (catRes && catRes.ok) {
                 const c = await catRes.json();
                 setCategories(c || []); // returns array directly
+            }
+
+            if (areasRes && areasRes.ok) {
+                const a = await areasRes.json();
+                setAreaList(a.areas || []);
+            }
+
+            if (tablesRes && tablesRes.ok) {
+                const t = await tablesRes.json();
+                setAllTables(t.tables || []);
             }
         } catch (err) {
             console.error('Failed to load admin data', err);
@@ -262,6 +276,22 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleUpdateTableStatus = async (tableId, newStatus) => {
+        const token = localStorage.getItem('adminToken');
+        try {
+            const res = await fetch(`http://localhost:5000/api/admin/tables/${tableId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ status: newStatus })
+            });
+            if (res.ok) {
+                fetchData();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
     if (loading) return <div className="text-white p-8">Loading Dashboard...</div>;
 
     return (
@@ -271,7 +301,7 @@ const AdminDashboard = () => {
                 <div className="w-64 bg-[#101010] border-r border-gold-500/20 p-6 flex flex-col">
                     <h1 className="text-2xl font-bold text-gold-500 mb-8 tracking-wider">OVERSEER</h1>
                     <nav className="space-y-2 flex-1">
-                        {['overview', 'Menus', 'staff', 'customers', 'orders', 'reservations', 'audit-logs'].map(item => (
+                        {['overview', 'Menus', 'staff', 'customers', 'orders', 'reservations', 'Tables', 'audit-logs'].map(item => (
                             <button
                                 key={item}
                                 onClick={() => setView(item)}
@@ -461,6 +491,49 @@ const AdminDashboard = () => {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {view === 'Tables' && (
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-center bg-zinc-900/50 p-4 rounded-lg border border-gold-500/20">
+                                <h3 className="text-xl font-bold text-white">Table & Area Management</h3>
+                                <div className="space-x-4">
+                                    <Button variant="secondary" onClick={() => alert('Add Area Feature coming soon')}>+ Add Area</Button>
+                                    <Button variant="primary" onClick={() => alert('Add Table Feature coming soon')}>+ Add Table</Button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {areaList.map(area => (
+                                    <GlassCard key={area.id} className="space-y-4">
+                                        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                                            <h4 className="text-lg font-bold text-gold-500">{area.area_name}</h4>
+                                            <span className="text-xs text-gray-500">{allTables.filter(t => t.area_id === area.id).length} Tables</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            {allTables.filter(t => t.area_id === area.id).map(table => (
+                                                <div key={table.id} className={`p-3 rounded border ${table.status === 'occupied' ? 'border-yellow-500/50 bg-yellow-500/5' : table.status === 'reserved' ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5'}`}>
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <span className="font-bold">#{table.table_number}</span>
+                                                        <span className={`w-2 h-2 rounded-full ${table.status === 'available' ? 'bg-green-500' : table.status === 'occupied' ? 'bg-yellow-500' : 'bg-red-500'}`}></span>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 mb-2">{table.capacity} Seats</p>
+                                                    <select 
+                                                        value={table.status}
+                                                        onChange={(e) => handleUpdateTableStatus(table.id, e.target.value)}
+                                                        className="w-full bg-black text-[10px] border border-gray-800 rounded p-1 outline-none text-gray-300"
+                                                    >
+                                                        <option value="available">Available</option>
+                                                        <option value="occupied">Occupied</option>
+                                                        <option value="reserved">Reserved</option>
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </GlassCard>
+                                ))}
+                            </div>
                         </div>
                     )}
 
