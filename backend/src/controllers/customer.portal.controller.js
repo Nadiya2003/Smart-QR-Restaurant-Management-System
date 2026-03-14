@@ -74,12 +74,20 @@ export const getAccountData = async (req, res) => {
             [userId]
         );
 
+        const [dineOrders] = await pool.query(
+            `SELECT id, 'DINE-IN' as type, order_status, created_at, total_price 
+             FROM orders 
+             WHERE customer_id = ?`,
+            [userId]
+        );
+
         // Combine and sort by date descending
-        const allOrders = [...dOrders, ...tOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const allOrders = [...dOrders, ...tOrders, ...dineOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
 
         // 3. Get Reservations
         const [reservations] = await pool.query(
-            `SELECT id, guests, reservation_date, reservation_time, status, created_at 
+            `SELECT id, guest_count as guests, reservation_date, reservation_time, reservation_status as status, created_at 
              FROM reservations 
              WHERE customer_id = ? 
              ORDER BY reservation_date DESC, reservation_time DESC`,

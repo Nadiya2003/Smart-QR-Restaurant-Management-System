@@ -197,7 +197,7 @@ export const cancelReservation = async (req, res) => {
         // 2. Update original status
         const statusNotes = reason ? `Cancelled: ${reason}` : 'Cancelled by user';
         await connection.query(
-            'UPDATE reservations SET status = "CANCELLED", status_notes = ? WHERE id = ?',
+            'UPDATE reservations SET reservation_status = "CANCELLED", status_notes = ? WHERE id = ?',
             [statusNotes, id]
         );
 

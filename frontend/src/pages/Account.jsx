@@ -105,25 +105,14 @@ function Account() {
         </div>
     );
 
-    if (error) return (
-        <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
-            <GlassCard className="max-w-md w-full text-center p-10 border-red-500/20">
-                <div className="text-4xl mb-4">🔐</div>
-                <h2 className="text-2xl font-bold text-white mb-2">Access Limited</h2>
-                <p className="text-gray-400 mb-8">{error}</p>
-                <div className="space-y-4">
-                    <Button onClick={() => navigate('/auth')} className="w-full">
-                        Sign In Again
-                    </Button>
-                    <Button onClick={() => window.location.reload()} variant="outline" className="w-full border-white/10">
-                        Try Refresh
-                    </Button>
-                </div>
-            </GlassCard>
-        </div>
-    );
-
+    // Data extracted with fallbacks
     const { profile, orders, reservations } = accountData || {};
+
+    /**
+     * Note: Full-page error block removed to keep the dashboard accessible.
+     * Errors are now logged to console and could be shown as toast notifications.
+     */
+
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] pt-24 pb-20 px-4">
@@ -175,14 +164,15 @@ function Account() {
                                 </div>
                             </div>
 
-                            {/* LOGOUT BUTTON - Added as requested */}
+                            {/* PREMIUM LOGOUT BUTTON */}
                             <button 
                                 onClick={logout}
-                                className="w-full mt-8 py-4 px-6 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl border border-red-500/30 font-bold text-sm transition-all flex items-center justify-center gap-3 active:scale-95 group/logout"
+                                className="w-full mt-8 py-4 px-6 bg-gradient-to-r from-red-500/10 to-red-600/5 hover:from-red-500/20 hover:to-red-600/10 text-red-500 rounded-xl border border-red-500/30 font-bold text-sm transition-all flex items-center justify-center gap-3 active:scale-95 group/logout shadow-lg"
                             >
-                                <span className="text-lg group-hover/logout:-translate-x-1 transition-transform">🚪</span>
+                                <span className="text-xl group-hover/logout:-translate-x-1 transition-transform">🔒</span>
                                 Secure Sign Out
                             </button>
+
                         </GlassCard>
 
                         {/* Loyalty Card */}
