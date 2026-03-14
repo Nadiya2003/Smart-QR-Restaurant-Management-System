@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
@@ -95,7 +95,7 @@ const AdminDashboard = () => {
     const [reportLoading, setReportLoading] = useState(false);
 
     // Form States
-    const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', description: '', image: '', is_active: true });
+    const [menuForm, setMenuForm] = useState({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
     const [supplierForm, setSupplierForm] = useState({ name: '', contact_number: '', email: '', address: '', products_supplied: '' });
     const [inventoryForm, setInventoryForm] = useState({ item_name: '', quantity: '', unit: '', supplier_id: '' });
 
@@ -185,7 +185,7 @@ const AdminDashboard = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [activeTab, token, attendanceDate, stats]);
+    }, [activeTab, token, attendanceDate]);
 
     useEffect(() => {
         fetchData();
@@ -286,6 +286,74 @@ const AdminDashboard = () => {
         } catch (error) {
             Alert.alert('Error', 'Network error');
         }
+    };
+
+    const handleSaveMenu = async () => {
+        if (!menuForm.name || !menuForm.price || !menuForm.category_id) {
+            Alert.alert('Error', 'Please fill all required fields');
+            return;
+        }
+
+        // Prepare JSON payload instead of FormData to simplify mobile networking logic for now
+        // The mobile API can handle JSON format, we skip image upload for this fast integration
+        const payload = {
+            name: menuForm.name,
+            price: Number(menuForm.price),
+            category_id: menuForm.category_id,
+            description: menuForm.description || '',
+            is_active: menuForm.is_active ? 1 : 0, // Backend expects 'is_active'
+            available: menuForm.is_active ? 1 : 0  // Some systems use 'available'
+        };
+        
+        const url = editingItem ? `${apiConfig.MENU.ALL}/${editingItem.id}` : apiConfig.MENU.ALL;
+        const method = editingItem ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                Alert.alert('Success', `Menu item ${editingItem ? 'updated' : 'created'}`);
+                setShowMenuModal(false);
+                setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                setEditingItem(null);
+                fetchData();
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to save menu item');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
+        }
+    };
+
+    const handleDeleteMenu = async (id) => {
+        Alert.alert('Delete', 'Are you sure you want to delete this menu item?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        const res = await fetch(`${apiConfig.MENU.ALL}/${id}`, {
+                            method: 'DELETE',
+                            headers
+                        });
+                        if (res.ok) {
+                            Alert.alert('Success', 'Menu item deleted');
+                            fetchData();
+                        } else {
+                            Alert.alert('Error', 'Failed to delete item');
+                        }
+                    } catch (error) {
+                        Alert.alert('Error', 'Network error');
+                    }
+                }
+            }
+        ]);
     };    const tabs = [
         { key: 'overview', label: 'Dashboard', icon: '📊' },
         { key: 'users', label: 'Users', icon: '👥' },
@@ -640,7 +708,11 @@ const AdminDashboard = () => {
                     <Text style={styles.sectionTitle}>Menu & Categories</Text>
                     <Text style={styles.sectionSubtitle}>{menuList.length} items available</Text>
                 </View>
-                <TouchableOpacity style={styles.addButtonSmall} onPress={() => Alert.alert('Add Item', 'Open Item form')}>
+                <TouchableOpacity style={styles.addButtonSmall} onPress={() => {
+                    setEditingItem(null);
+                    setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                    setShowMenuModal(true);
+                }}>
                     <Text style={styles.addButtonTextSmall}>+ Item</Text>
                 </TouchableOpacity>
             </View>
@@ -654,7 +726,7 @@ const AdminDashboard = () => {
                 </TouchableOpacity>
                 {categories.map(cat => {
                     const itemCount = menuList.filter(item => item.category === cat.name).length;
-                    const isLow = itemCount < 6;
+                    const isLow = itemCount === 0;
                     return (
                         <TouchableOpacity 
                             key={cat.id} 
@@ -675,7 +747,7 @@ const AdminDashboard = () => {
             {menuList.filter(item => selectedCategory === 'All' || item.category === selectedCategory).map((item) => (
                 <View key={item.id} style={styles.listCard}>
                     <View style={styles.listCardHeader}>
-                        <Image source={{ uri: item.image || 'https://via.placeholder.com/150' }} style={styles.itemImage} />
+                        <Image source={{ uri: item.image ? (item.image.startsWith('http') ? item.image : `${apiConfig.API_BASE_URL}${item.image}`) : 'https://via.placeholder.com/150' }} style={styles.itemImage} />
                         <View style={styles.listCardInfo}>
                             <Text style={styles.listCardName}>{item.name}</Text>
                             <Text style={styles.listCardSub}>{item.category} • Rs. {item.price}</Text>
@@ -693,18 +765,32 @@ const AdminDashboard = () => {
                                         <View key={idx} style={styles.tagBadge}><Text style={styles.tagText}>{tag}</Text></View>
                                     )) : null;
                                 })()}
-                                <View style={[styles.badge, { backgroundColor: item.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
-                                    <Text style={[styles.badgeText, { color: item.is_active ? '#059669' : '#DC2626' }]}>
-                                        {item.is_active ? 'Available' : 'Sold Out'}
+                                <View style={[styles.badge, { backgroundColor: item.status === 1 || item.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
+                                    <Text style={[styles.badgeText, { color: item.status === 1 || item.is_active ? '#059669' : '#DC2626' }]}>
+                                        {item.status === 1 || item.is_active ? 'Available' : 'Sold Out'}
                                     </Text>
                                 </View>
                             </View>
 
                             <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                                <TouchableOpacity style={styles.editBtn}>
+                                <TouchableOpacity 
+                                    style={styles.editBtn} 
+                                    onPress={() => {
+                                        setEditingItem(item);
+                                        const cat = categories.find(c => c.name === item.category);
+                                        setMenuForm({
+                                            name: item.name,
+                                            price: item.price.toString(),
+                                            category_id: cat ? cat.id : '',
+                                            description: item.description || '',
+                                            is_active: item.status === 1 || !!item.is_active
+                                        });
+                                        setShowMenuModal(true);
+                                    }}
+                                >
                                     <Text style={styles.editBtnText}>Edit</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.deleteBtn}>
+                                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteMenu(item.id)}>
                                     <Text style={styles.deleteBtnText}>Delete</Text>
                                 </TouchableOpacity>
                             </View>
@@ -920,7 +1006,7 @@ const AdminDashboard = () => {
             }
 
             const query = new URLSearchParams(reportFilters).toString();
-            const res = await fetch(`${apiConfig.BASE_URL}${endpoint}?${query}`, {
+            const res = await fetch(`${apiConfig.API_BASE_URL}${endpoint}?${query}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1058,8 +1144,16 @@ const AdminDashboard = () => {
                         )}
 
                         <View style={[styles.modalActions, { marginTop: 25 }]}>
-                            <TouchableOpacity style={[styles.exportBtn, { flex: 1 }]} onPress={() => Alert.alert('Success', 'PDF Report saving to device...')}>
-                                <Text style={styles.exportBtnText}>📄 PDF</Text>
+                            <TouchableOpacity 
+                                style={[styles.exportBtn, { flex: 1, backgroundColor: '#DC2626' }]} 
+                                onPress={() => {
+                                    const pdfUrl = `${apiConfig.API_BASE_URL}/api/reports/pdf?token=${token}`;
+                                    Linking.openURL(pdfUrl).catch(err => {
+                                        Alert.alert('Error', 'Could not open the PDF report: ' + err.message);
+                                    });
+                                }}
+                            >
+                                <Text style={styles.exportBtnText}>📄 Download PDF Report</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.exportBtn, { flex: 1, backgroundColor: '#3B82F6' }]} onPress={() => Alert.alert('Success', 'PNG Report captured!')}>
                                 <Text style={styles.exportBtnText}>🖼️ PNG</Text>
@@ -1146,12 +1240,12 @@ const AdminDashboard = () => {
         }
     };
     const renderTopBar = () => (
-        <View style={styles.topBar}>
-            <View style={styles.brandContainer}>
-                <Text style={styles.logoEmoji}>🍴</Text>
-                <View>
-                    <Text style={styles.brandName}>Melissa's</Text>
-                    <Text style={styles.brandTagline}>Food Court</Text>
+        <View style={[styles.topBar, { alignItems: 'center' }]}>
+            <View style={[styles.brandContainer, { flexDirection: 'row', alignItems: 'center' }]}>
+                <Image source={require('../../assets/logo.png')} style={{ width: 40, height: 40, resizeMode: 'contain', marginRight: 10, alignSelf: 'center' }} />
+                <View style={{ justifyContent: 'center' }}>
+                    <Text style={[styles.brandName, { color: '#FFD700', fontWeight: 'bold' }]}>Melissa's</Text>
+                    <Text style={[styles.brandTagline, { color: '#FFD700', fontWeight: 'bold' }]}>Food Court</Text>
                 </View>
             </View>
 
@@ -1377,8 +1471,82 @@ const AdminDashboard = () => {
         </Modal>
     );
 
+    const MenuModal = () => (
+        <Modal visible={showMenuModal} transparent animationType="slide">
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</Text>
+                        <TouchableOpacity onPress={() => {
+                            setShowMenuModal(false);
+                            setEditingItem(null);
+                            setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                        }}>
+                            <Text style={{ fontSize: 24 }}>✕</Text>
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <ScrollView style={{ marginTop: 15 }}>
+                        <Text style={styles.label}>Item Name *</Text>
+                        <TextInput 
+                            style={styles.input} 
+                            placeholder="e.g. Chicken Burger"
+                            value={menuForm.name}
+                            onChangeText={(val) => setMenuForm({...menuForm, name: val})}
+                        />
+
+                        <Text style={styles.label}>Price (Rs.) *</Text>
+                        <TextInput 
+                            style={styles.input} 
+                            placeholder="e.g. 1200"
+                            keyboardType="numeric"
+                            value={menuForm.price.toString()}
+                            onChangeText={(val) => setMenuForm({...menuForm, price: val})}
+                        />
+
+                        <Text style={styles.label}>Category *</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 }}>
+                            {categories.map(cat => (
+                                <TouchableOpacity 
+                                    key={cat.id} 
+                                    style={[styles.catPill, menuForm.category_id === cat.id && styles.activeCatPill]}
+                                    onPress={() => setMenuForm({...menuForm, category_id: cat.id})}
+                                >
+                                    <Text style={[styles.catPillText, menuForm.category_id === cat.id && styles.activeCatPillText]}>{cat.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={styles.label}>Description</Text>
+                        <TextInput 
+                            style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+                            placeholder="Brief description..."
+                            multiline
+                            value={menuForm.description}
+                            onChangeText={(val) => setMenuForm({...menuForm, description: val})}
+                        />
+
+                        <TouchableOpacity 
+                            style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}
+                            onPress={() => setMenuForm({...menuForm, is_active: !menuForm.is_active})}
+                        >
+                            <View style={[styles.toggle, menuForm.is_active && styles.toggleActive]}>
+                                <View style={[styles.toggleHandle, menuForm.is_active && styles.toggleHandleActive]} />
+                            </View>
+                            <Text style={{ marginLeft: 10, fontSize: 14, color: '#374151' }}>Item is Available</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+
+                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#111827' }]} onPress={handleSaveMenu}>
+                        <Text style={styles.saveBtnText}>{editingItem ? 'Update Item' : 'Create Item'}</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             {renderTopBar()}
             {renderHeaderTabs()}
             <ScrollView 
@@ -1396,8 +1564,8 @@ const AdminDashboard = () => {
             <TotalOrdersModal />
             <ActiveStaffModal />
             <TotalCustomersModal />
-        </SafeAreaView>
-
+            <MenuModal />
+        </View>
     );
 
 };
@@ -2199,13 +2367,13 @@ const styles = StyleSheet.create({
     toggleActive: {
         backgroundColor: '#10B981',
     },
-    toggleCircle: {
+    toggleHandle: {
         width: 16,
         height: 16,
         borderRadius: 8,
         backgroundColor: 'white',
     },
-    toggleCircleActive: {
+    toggleHandleActive: {
         alignSelf: 'flex-end',
     },
     modalActions: {
@@ -2230,6 +2398,21 @@ const styles = StyleSheet.create({
     saveBtnText: {
         color: 'white',
         fontWeight: 'bold',
+    },
+    label: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#374151',
+        marginBottom: 8,
+        marginTop: 5,
+    },
+    input: {
+        backgroundColor: '#F3F4F6',
+        borderRadius: 10,
+        padding: 12,
+        fontSize: 14,
+        color: '#111827',
+        marginBottom: 15,
     },
     emptyState: {
         alignItems: 'center',

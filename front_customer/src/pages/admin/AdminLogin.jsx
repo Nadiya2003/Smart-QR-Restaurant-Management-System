@@ -47,9 +47,16 @@ const AdminLogin = () => {
     return (
         <div className="min-h-screen bg-black flex items-center justify-center p-4">
             <GlassCard className="max-w-md w-full p-8 border-gold-500/50">
-                <h1 className="text-3xl font-bold text-center text-gold-500 mb-6 font-mono">
-                    SYSTEM ADMIN
-                </h1>
+                <div className="flex flex-col items-center justify-center mb-6">
+                    <img 
+                        src="/logo.png" 
+                        alt="Melissa's Food Court Logo" 
+                        className="h-24 w-auto object-contain mb-4 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]"
+                    />
+                    <h1 className="text-2xl font-bold text-center text-gold-500 font-mono tracking-widest">
+                        ADMIN TERMINAL
+                    </h1>
+                </div>
 
                 {error && (
                     <div className="bg-red-900/50 text-red-200 p-3 rounded mb-4 text-center">

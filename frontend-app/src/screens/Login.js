@@ -8,7 +8,8 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
-    ActivityIndicator
+    ActivityIndicator,
+    Image
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 
@@ -53,9 +54,9 @@ const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
             <View style={styles.card}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
-                        <Text style={{ fontSize: 32 }}>🍕</Text>
+                        <Image source={require('../../assets/logo.png')} style={{ width: 45, height: 45, resizeMode: 'contain' }} />
                     </View>
-                    <Text style={styles.headerTitle}>Welcome Back</Text>
+                    <Text style={[styles.headerTitle, { color: '#FFD700' }]}>Welcome Back</Text>
                     <Text style={styles.headerSubtitle}>Sign in to Melissa's Food Court</Text>
                 </View>
 

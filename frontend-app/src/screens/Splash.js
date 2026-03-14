@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity, Image } from 'react-native';
 
 const Splash = ({ onFinish }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -39,7 +39,10 @@ const Splash = ({ onFinish }) => {
                 }
             ]}>
                 <View style={styles.iconContainer}>
-                    <Text style={styles.iconText}>🍕</Text>
+                    <Image 
+                        source={require('../../assets/logo.png')} 
+                        style={{ width: 80, height: 80, resizeMode: 'contain' }} 
+                    />
                 </View>
 
                 <Text style={styles.title}>
@@ -72,17 +75,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     iconContainer: {
-        width: 100,
-        height: 100,
-        backgroundColor: '#DC2626', // red-600
-        borderRadius: 50,
+        width: 120,
+        height: 120,
+        backgroundColor: 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
-        shadowColor: '#EF4444',
+        shadowColor: '#FFD700',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
+        shadowOpacity: 0.3,
+        shadowRadius: 15,
         elevation: 10,
     },
     iconText: {
@@ -96,7 +98,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     titleHighLight: {
-        color: '#DC2626', // red-600
+        color: '#FFD700', // Gold
     },
     subtitle: {
         fontSize: 16,
@@ -106,14 +108,14 @@ const styles = StyleSheet.create({
         lineHeight: 24,
     },
     button: {
-        backgroundColor: '#DC2626',
+        backgroundColor: '#FFD700',
         paddingVertical: 15,
         paddingHorizontal: 40,
         borderRadius: 30,
         marginTop: 20,
     },
     buttonText: {
-        color: '#FFF',
+        color: '#000000',
         fontSize: 18,
         fontWeight: 'bold',
     }

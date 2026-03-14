@@ -16,5 +16,6 @@ router.get('/cancellations', reportController.getCancellationsReport);
 router.get('/customers', reportController.getCustomersReport);
 router.get('/staff', reportController.getStaffReport);
 router.get('/generate', reportController.generateUnifiedReport);
+router.get('/pdf', reportController.generatePdfReport);
 
 export default router;

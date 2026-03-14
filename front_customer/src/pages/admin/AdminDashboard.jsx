@@ -39,6 +39,8 @@ const AdminDashboard = () => {
     const [menuModalOpen, setMenuModalOpen] = useState(false);
     const [catModalOpen, setCatModalOpen] = useState(false);
     const [newMenu, setNewMenu] = useState({ name: '', description: '', price: '', category_id: '', image: '' });
+    const [editingMenu, setEditingMenu] = useState(null);
+    const [menuImageFile, setMenuImageFile] = useState(null);
     const [newCategory, setNewCategory] = useState({ name: '', description: '', image: '' });
 
     // Supplier/Inventory Modal
@@ -118,14 +120,10 @@ const AdminDashboard = () => {
         const token = localStorage.getItem('adminToken');
         if (!token) {
             navigate('/admin/login');
-            return;
         }
-        fetchData();
-        const interval = setInterval(fetchStatsAndOrders, 10000);
-        return () => clearInterval(interval);
     }, [navigate]);
 
-    const fetchStatsAndOrders = async () => {
+    const fetchStatsAndOrders = useCallback(async () => {
         const token = localStorage.getItem('adminToken');
         if (!token) return;
         const headers = { 'Authorization': `Bearer ${token}` };
@@ -143,9 +141,9 @@ const AdminDashboard = () => {
                 setOrders(o.orders || []);
             }
         } catch (e) {}
-    };
+    }, []);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         const token = localStorage.getItem('adminToken');
         if (!token) {
@@ -250,7 +248,18 @@ const AdminDashboard = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        const token = localStorage.getItem('adminToken');
+        if (!token) {
+            navigate('/admin/login');
+            return;
+        }
+        fetchData();
+        const interval = setInterval(fetchStatsAndOrders, 10000);
+        return () => clearInterval(interval);
+    }, [fetchData, fetchStatsAndOrders, navigate]);
 
     const handleToggleStatus = async (id, currentIsActive, type = 'staff') => {
         const token = localStorage.getItem('adminToken');
@@ -360,15 +369,63 @@ const AdminDashboard = () => {
         e.preventDefault();
         const token = localStorage.getItem('adminToken');
         try {
-            await fetch(`${config.API_BASE_URL}/api/menu`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(newMenu)
+            const formData = new FormData();
+            formData.append('name', newMenu.name);
+            formData.append('description', newMenu.description);
+            formData.append('price', newMenu.price);
+            formData.append('category_id', newMenu.category_id);
+            if (menuImageFile) {
+                formData.append('image', menuImageFile);
+            } else {
+                formData.append('image', newMenu.image);
+            }
+
+            const url = editingMenu 
+                ? `${config.API_BASE_URL}/api/menu/${editingMenu.id}` 
+                : `${config.API_BASE_URL}/api/menu`;
+            
+            const method = editingMenu ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
             });
-            setMenuModalOpen(false);
-            setNewMenu({ name: '', description: '', price: '', category_id: '', image: '' });
-            fetchData();
+
+            if (response.ok) {
+                setMenuModalOpen(false);
+                setEditingMenu(null);
+                setMenuImageFile(null);
+                setNewMenu({ name: '', description: '', price: '', category_id: '', image: '' });
+                fetchData();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Operation failed');
+            }
         } catch (err) { console.error(err); }
+    };
+
+    const handleDeleteMenu = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this menu item?')) return;
+        const token = localStorage.getItem('adminToken');
+        try {
+            const response = await fetch(`${config.API_BASE_URL}/api/menu/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                fetchData();
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const handleGeneratePdfReport = async () => {
+        const token = localStorage.getItem('adminToken');
+        try {
+            window.open(`${config.API_BASE_URL}/api/reports/pdf?token=${token}`, '_blank');
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handleAddInventory = async (e) => {
@@ -451,7 +508,19 @@ const AdminDashboard = () => {
         link.click();
     };
 
-    if (loading) return <div className="text-white p-8">Loading Dashboard...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4">
+            <img src="/logo.png" alt="Melissa's Food Court Logo" className="h-32 w-auto object-contain mb-8 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)] animate-pulse" />
+            <div className="text-gold-500 font-black text-2xl uppercase tracking-widest animate-pulse">
+                Loading Data...
+            </div>
+            <div className="mt-6 flex gap-2">
+                <span className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                <span className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                <span className="w-3 h-3 bg-gold-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+            </div>
+        </div>
+    );
 
     const renderRoleBadge = (role) => {
         const colors = {
@@ -475,13 +544,17 @@ const AdminDashboard = () => {
                 <div className="flex items-center gap-4">
                     <img src="/logo.png" alt="Melissa's Logo" className="h-12 w-auto object-contain" />
                     <div>
-                        <h1 className="text-xl font-black text-white tracking-tighter">MELISSA'S FOOD COURT</h1>
-                        <p className="text-[10px] text-gold-500 uppercase tracking-widest font-bold">Admin Dashboard</p>
+                        <h1 className="text-xl font-black text-white tracking-tighter uppercase">Melissa's Food Court</h1>
+                        <p className="text-[10px] text-gold-500 uppercase tracking-widest font-bold">Admin Dashboard Operations</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-6">
+                    <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
+                        <span className="text-xl">🔔</span>
+                        <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-[#101010]"></span>
+                    </button>
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-bold text-white">{adminUser.name || 'Administrator'}</p>
+                        <p className="text-sm font-bold text-white">{adminUser.full_name || adminUser.name || 'Administrator'}</p>
                         <p className="text-xs text-gray-500">{adminUser.role || 'System Overseer'}</p>
                     </div>
                     <button 
@@ -490,10 +563,24 @@ const AdminDashboard = () => {
                             localStorage.removeItem('adminUser');
                             navigate('/admin/login');
                         }}
-                        className="h-10 w-10 rounded-full bg-gold-500/20 flex items-center justify-center border border-gold-500/40 hover:bg-gold-500/40 transition-colors"
+                        className="h-10 w-10 rounded-full bg-gold-500/10 flex items-center justify-center border border-gold-500/20 hover:bg-gold-500/30 transition-all group overflow-hidden"
                         title="Logout"
                     >
-                        {adminUser.name?.charAt(0) || '👸'}
+                        {adminUser.image ? (
+                            <img src={`${config.API_BASE_URL}/public/stewards/${adminUser.image}`} className="h-full w-full object-cover" />
+                        ) : (
+                            <span className="text-lg group-hover:scale-110 transition-transform">👤</span>
+                        )}
+                    </button>
+                    <button 
+                        onClick={() => {
+                            localStorage.removeItem('adminToken');
+                            localStorage.removeItem('adminUser');
+                            navigate('/admin/login');
+                        }}
+                        className="text-[10px] font-black uppercase text-gray-500 hover:text-red-500 transition-colors border-l border-white/10 pl-4 h-8 flex items-center"
+                    >
+                        Sign Out
                     </button>
                 </div>
             </header>
@@ -502,6 +589,15 @@ const AdminDashboard = () => {
                 {/* Sidebar */}
                 <aside className="w-64 bg-[#101010] border-r border-white/5 p-6 flex flex-col gap-8">
                     <nav className="space-y-1">
+                        {/* Back Button */}
+                        <button 
+                            onClick={() => navigate(-1)}
+                            className="w-full text-left px-4 py-3 rounded-lg transition-all flex items-center gap-3 text-gold-500 hover:bg-gold-500/10 mb-4"
+                        >
+                            <span>⬅️</span>
+                            <span className="text-sm font-bold">Back</span>
+                        </button>
+
                         {[
                             { id: 'overview', label: 'Dashboard', icon: '📊' },
                             { id: 'Menus', label: 'Menu Items', icon: '🍽️' },
@@ -797,14 +893,14 @@ const AdminDashboard = () => {
                                             {categories.map(cat => {
                                                 const itemCount = menus.filter(m => m.category === cat.name || m.category_id === cat.id).length;
                                                 return (
-                                                    <GlassCard key={cat.id} className={`text-center group transition-all border ${itemCount < 6 ? 'border-red-500/30' : 'border-transparent hover:border-gold-500/30'}`}>
+                                                    <GlassCard key={cat.id} className={`text-center group transition-all border ${itemCount === 0 ? 'border-red-500/30' : 'border-transparent hover:border-gold-500/30'}`}>
                                                         <div className="h-16 w-16 mx-auto rounded-full bg-zinc-800 flex items-center justify-center text-2xl mb-3 overflow-hidden">
                                                             {cat.image ? <img src={cat.image.startsWith('http') ? cat.image : `${config.API_BASE_URL}/public/food/${cat.image}`} /> : '🍽️'}
                                                         </div>
                                                         <h5 className="font-bold text-white text-sm group-hover:text-gold-500">{cat.name}</h5>
                                                         <p className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{itemCount} Items</p>
-                                                        {itemCount < 6 && (
-                                                            <div className="mt-2 text-[8px] text-red-500 font-bold bg-red-500/10 py-1 rounded">⚠️ Needs {6 - itemCount} more</div>
+                                                        {itemCount === 0 && (
+                                                            <div className="mt-2 text-[8px] text-red-500 font-bold bg-red-500/10 py-1 rounded">⚠️ Empty Category</div>
                                                         )}
                                                     </GlassCard>
                                                 );
@@ -838,8 +934,28 @@ const AdminDashboard = () => {
                                                         </div>
                                                         <p className="text-[10px] text-gray-500 line-clamp-2 h-8 leading-relaxed font-medium">{item.description}</p>
                                                         <div className="flex gap-2 pt-2">
-                                                            <button className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-2 rounded-lg transition-colors border border-white/5">Edit</button>
-                                                            <button className="bg-red-900/20 hover:bg-red-900/40 text-red-500 text-[10px] font-bold px-3 py-2 rounded-lg transition-colors border border-red-500/20">Delete</button>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setEditingMenu(item);
+                                                                    setNewMenu({
+                                                                        name: item.name,
+                                                                        description: item.description,
+                                                                        price: item.price,
+                                                                        category_id: item.category_id,
+                                                                        image: item.image
+                                                                    });
+                                                                    setMenuModalOpen(true);
+                                                                }}
+                                                                className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-2 rounded-lg transition-colors border border-white/5"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDeleteMenu(item.id)}
+                                                                className="bg-red-900/20 hover:bg-red-900/40 text-red-500 text-[10px] font-bold px-3 py-2 rounded-lg transition-colors border border-red-500/20"
+                                                            >
+                                                                Delete
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1083,6 +1199,7 @@ const AdminDashboard = () => {
                                                 <p className="text-xs text-gray-500">Period: {reportFilters.startDate} to {reportFilters.endDate}</p>
                                             </div>
                                             <div className="flex gap-2">
+                                                <Button onClick={handleGeneratePdfReport} variant="primary" className="text-[10px] h-8 font-black uppercase">Generate PDF Report</Button>
                                                 <Button onClick={() => window.print()} variant="secondary" className="text-[10px] h-8 font-black uppercase">Print</Button>
                                                 <Button onClick={() => setGeneratedReport(null)} variant="secondary" className="text-[10px] h-8 font-black uppercase">Close</Button>
                                             </div>
@@ -1456,20 +1573,59 @@ const AdminDashboard = () => {
             {menuModalOpen && (
                 <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
                     <form onSubmit={handleAddMenu} className="bg-[#151515] border border-gold-500/30 rounded-2xl p-8 max-w-md w-full space-y-4">
-                        <h3 className="text-xl font-black text-white uppercase">New Menu Item</h3>
-                        <input name="name" placeholder="Item Name" className="w-full bg-black border border-white/10 p-3 rounded text-white" required onChange={e => setNewMenu({...newMenu, name: e.target.value})} />
-                        <textarea name="description" placeholder="Description" className="w-full bg-black border border-white/10 p-3 rounded text-white" required onChange={e => setNewMenu({...newMenu, description: e.target.value})} />
+                        <h3 className="text-xl font-black text-white uppercase">{editingMenu ? 'Edit Menu Item' : 'New Menu Item'}</h3>
+                        <input 
+                            name="name" 
+                            placeholder="Item Name" 
+                            className="w-full bg-black border border-white/10 p-3 rounded text-white" 
+                            required 
+                            value={newMenu.name}
+                            onChange={e => setNewMenu({...newMenu, name: e.target.value})} 
+                        />
+                        <textarea 
+                            name="description" 
+                            placeholder="Description" 
+                            className="w-full bg-black border border-white/10 p-3 rounded text-white" 
+                            required 
+                            value={newMenu.description}
+                            onChange={e => setNewMenu({...newMenu, description: e.target.value})} 
+                        />
                         <div className="grid grid-cols-2 gap-4">
-                            <input name="price" type="number" placeholder="Price" className="w-full bg-black border border-white/10 p-3 rounded text-white" required onChange={e => setNewMenu({...newMenu, price: e.target.value})} />
-                            <select name="category_id" className="w-full bg-black border border-white/10 p-3 rounded text-white" required onChange={e => setNewMenu({...newMenu, category_id: e.target.value})}>
+                            <input 
+                                name="price" 
+                                type="number" 
+                                placeholder="Price" 
+                                className="w-full bg-black border border-white/10 p-3 rounded text-white" 
+                                required 
+                                value={newMenu.price}
+                                onChange={e => setNewMenu({...newMenu, price: e.target.value})} 
+                            />
+                            <select 
+                                name="category_id" 
+                                className="w-full bg-black border border-white/10 p-3 rounded text-white" 
+                                required 
+                                value={newMenu.category_id}
+                                onChange={e => setNewMenu({...newMenu, category_id: e.target.value})}
+                            >
                                 <option value="">Select Category</option>
                                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
-                        <input name="image" placeholder="Image URL or filename" className="w-full bg-black border border-white/10 p-3 rounded text-white" required onChange={e => setNewMenu({...newMenu, image: e.target.value})} />
+                        <div className="space-y-2">
+                            <label className="text-[10px] text-gray-500 uppercase font-bold">Item Image (JPG/PNG/WEBP)</label>
+                            <input 
+                                type="file" 
+                                accept="image/*"
+                                className="w-full bg-black border border-white/10 p-3 rounded text-white text-xs" 
+                                onChange={e => setMenuImageFile(e.target.files[0])} 
+                            />
+                            {newMenu.image && !menuImageFile && (
+                                <p className="text-[10px] text-gray-600">Current: {newMenu.image}</p>
+                            )}
+                        </div>
                         <div className="flex gap-4 pt-4">
-                            <Button className="flex-1" variant="secondary" onClick={() => setMenuModalOpen(false)}>Cancel</Button>
-                            <Button className="flex-1" type="submit">Add Item</Button>
+                            <Button className="flex-1" variant="secondary" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); }}>Cancel</Button>
+                            <Button className="flex-1" type="submit">{editingMenu ? 'Update Item' : 'Add Item'}</Button>
                         </div>
                     </form>
                 </div>

@@ -60,7 +60,8 @@ export const createCategory = async (req, res) => {
 };
 
 export const createMenuItem = async (req, res) => {
-    const { category_id, name, description, price, image, tags } = req.body;
+    const { category_id, name, description, price, tags } = req.body;
+    const image = req.file ? `/uploads/menu/${req.file.filename}` : req.body.image;
     try {
         const tagsJson = tags ? JSON.stringify(tags) : null;
         const [result] = await pool.query(
@@ -76,7 +77,8 @@ export const createMenuItem = async (req, res) => {
 
 export const updateMenuItem = async (req, res) => {
     const { id } = req.params;
-    const { category_id, name, description, price, image, tags, is_active } = req.body;
+    const { category_id, name, description, price, tags, is_active } = req.body;
+    const image = req.file ? `/uploads/menu/${req.file.filename}` : req.body.image;
     try {
         const tagsJson = tags ? JSON.stringify(tags) : null;
         await pool.query(

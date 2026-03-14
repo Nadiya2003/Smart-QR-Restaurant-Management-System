@@ -134,7 +134,13 @@ const StaffRegister = () => {
 
             <div className="w-full max-w-md relative z-10">
                 {/* Header */}
-                <div className="text-center mb-8">
+                <div className="relative text-center mb-8 pt-4">
+                    <button 
+                        onClick={() => navigate('/admin/login')}
+                        className="absolute left-0 top-0 text-[#FFD700] hover:text-white transition-colors flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-[#FFD700]/20 text-sm font-medium border border-white/5 hover:border-[#FFD700]/50"
+                    >
+                        <span>⬅️</span> Back
+                    </button>
                     <img
                         id="staff-register-logo"
                         src="/logo.png"
