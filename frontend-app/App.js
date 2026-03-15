@@ -76,6 +76,7 @@ const Main = () => {
           email={resetEmail}
           otp={resetOTP}
           onPasswordReset={() => setCurrentScreen('login')}
+          onBack={() => setCurrentScreen('verify_otp')}
         />
       );
     default:

@@ -168,6 +168,15 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Back Button */}
+                <TouchableOpacity
+                    onPress={onSwitchToLogin}
+                    style={styles.backButton}
+                    disabled={isLoading}
+                >
+                    <Text style={styles.backButtonText}>← Back</Text>
+                </TouchableOpacity>
+
                 <View style={styles.card}>
                     {/* Header */}
                     <View style={styles.header}>
@@ -412,6 +421,23 @@ const styles = StyleSheet.create({
         padding: 20,
         paddingTop: 40,
         paddingBottom: 40,
+    },
+    backButton: {
+        position: 'absolute',
+        top: 40,
+        left: 20,
+        zIndex: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.08)',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    backButtonText: {
+        fontSize: 15,
+        fontWeight: 'bold',
+        color: '#111827',
     },
     card: {
         backgroundColor: 'white',

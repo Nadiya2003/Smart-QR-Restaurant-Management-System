@@ -25,7 +25,7 @@ function Menu() {
 
     const fetchMenu = async () => {
         try {
-            const response = await fetch('${config.API_BASE_URL}/api/menu');
+            const response = await fetch(`${config.API_BASE_URL}/api/menu`);
             if (!response.ok) throw new Error('Failed to fetch menu');
             const data = await response.json();
             setMenuItems(data);

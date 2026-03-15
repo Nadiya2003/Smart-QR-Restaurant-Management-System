@@ -186,15 +186,25 @@ const AdminDashboard = () => {
             setRefreshing(false);
         }
     }, [activeTab, token, attendanceDate]);
-
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => {
-            // Silently poll for stats and orders 
-            fetchData();
-        }, 15000); // 15s polling
+    }, [activeTab, fetchData]);
+
+    // Separate light polling for stats only (no full reload)
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+                const statsData = await fetch(apiConfig.ADMIN.STATS, { headers: reqHeaders });
+                if (statsData.ok) {
+                    const s = await statsData.json();
+                    setStats(s.stats);
+                }
+            } catch (e) { /* silent */ }
+        }, 60000); // Poll stats every 60s only
         return () => clearInterval(interval);
-    }, [fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -747,7 +757,7 @@ const AdminDashboard = () => {
             {menuList.filter(item => selectedCategory === 'All' || item.category === selectedCategory).map((item) => (
                 <View key={item.id} style={styles.listCard}>
                     <View style={styles.listCardHeader}>
-                        <Image source={{ uri: item.image ? (item.image.startsWith('http') ? item.image : `${apiConfig.API_BASE_URL}${item.image}`) : 'https://via.placeholder.com/150' }} style={styles.itemImage} />
+                        <Image source={{ uri: item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${apiConfig.API_BASE_URL}${item.image}` : `${apiConfig.API_BASE_URL}/food/${item.image}`)) : 'https://via.placeholder.com/150' }} style={styles.itemImage} />
                         <View style={styles.listCardInfo}>
                             <Text style={styles.listCardName}>{item.name}</Text>
                             <Text style={styles.listCardSub}>{item.category} • Rs. {item.price}</Text>
@@ -1240,16 +1250,35 @@ const AdminDashboard = () => {
         }
     };
     const renderTopBar = () => (
-        <View style={[styles.topBar, { alignItems: 'center' }]}>
+        <View style={styles.topBar}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {activeTab !== 'overview' && (
+                    <TouchableOpacity onPress={() => setActiveTab('overview')} style={{ marginRight: 15, padding: 5 }}>
+                        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#111827' }}>←</Text>
+                    </TouchableOpacity>
+                )}
             <View style={[styles.brandContainer, { flexDirection: 'row', alignItems: 'center' }]}>
-                <Image source={require('../../assets/logo.png')} style={{ width: 40, height: 40, resizeMode: 'contain', marginRight: 10, alignSelf: 'center' }} />
+                {/* Logo inside a black circle */}
+                <View style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
+                    backgroundColor: '#111827',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                }}>
+                    <Image source={require('../../assets/logo.png')} style={{ width: 30, height: 30, resizeMode: 'contain' }} />
+                </View>
+                {/* Restaurant name in bold black */}
                 <View style={{ justifyContent: 'center' }}>
-                    <Text style={[styles.brandName, { color: '#FFD700', fontWeight: 'bold' }]}>Melissa's</Text>
-                    <Text style={[styles.brandTagline, { color: '#FFD700', fontWeight: 'bold' }]}>Food Court</Text>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Melissa's Food Court</Text>
+                    <Text style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1 }}>Admin Panel</Text>
                 </View>
             </View>
+        </View>
 
-            <View style={styles.topBarRight}>
+        <View style={styles.topBarRight}>
                 <TouchableOpacity style={styles.iconCircle} onPress={() => setActiveTab('notifications')}>
                     <Text style={{ fontSize: 18 }}>🔔</Text>
                     {notificationList.filter(n => !n.is_read).length > 0 && (

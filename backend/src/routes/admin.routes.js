@@ -9,6 +9,7 @@ import {
     updateCustomerPermissions,
     toggleCustomerStatus,
     getAllOrders,
+    createOrder,
     updateOrderStatus,
     cancelOrder,
     getAllReservations,
@@ -89,6 +90,7 @@ router.put('/customers/:id/status', toggleCustomerStatus);
 
 // Orders
 router.get('/orders', getAllOrders);
+router.post('/orders', createOrder);
 router.put('/orders/:id/status', updateOrderStatus);
 router.post('/orders/:id/cancel/:type', cancelOrder);
 

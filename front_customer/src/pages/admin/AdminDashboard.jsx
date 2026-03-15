@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../../components/GlassCard';
 import Button from '../../components/Button';
@@ -48,6 +48,21 @@ const AdminDashboard = () => {
     const [invModalOpen, setInvModalOpen] = useState(false);
     const [newSupplier, setNewSupplier] = useState({ name: '', contact_number: '', email: '', address: '', products_supplied: '' });
     const [newInv, setNewInv] = useState({ item_name: '', quantity: '', unit: 'kg', supplier_id: '' });
+
+    // Order Modal
+    const [orderModalOpen, setOrderModalOpen] = useState(false);
+    const [newOrder, setNewOrder] = useState({ 
+        order_type: 'DINE-IN', 
+        customer_name: '', 
+        phone: '', 
+        items: [], 
+        table_id: '', 
+        address: '', 
+        notes: '',
+        status: 'COOKING',
+        payment_status: 'PAID'
+    });
+    const [orderItem, setOrderItem] = useState({ id: '', name: '', quantity: 1, price: 0 });
 
     // Stats Modals
     const [revModalOpen, setRevModalOpen] = useState(false);
@@ -257,9 +272,11 @@ const AdminDashboard = () => {
             return;
         }
         fetchData();
-        const interval = setInterval(fetchStatsAndOrders, 10000);
+        // Poll only stats+orders every 30s to reduce reload flicker
+        const interval = setInterval(fetchStatsAndOrders, 30000);
         return () => clearInterval(interval);
-    }, [fetchData, fetchStatsAndOrders, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleToggleStatus = async (id, currentIsActive, type = 'staff') => {
         const token = localStorage.getItem('adminToken');
@@ -328,6 +345,7 @@ const AdminDashboard = () => {
                 },
                 body: JSON.stringify({ permissions: userPerms })
             });
+            alert('Permissions updated successfully!');
             setPermModalOpen(false);
             fetchData();
         } catch (err) {
@@ -344,6 +362,7 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(newSupplier)
             });
+            alert('Supplier added successfully!');
             setSupModalOpen(false);
             setNewSupplier({ name: '', contact_number: '', email: '', address: '', products_supplied: '' });
             fetchData();
@@ -359,6 +378,7 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(newCategory)
             });
+            alert('Category added successfully!');
             setCatModalOpen(false);
             setNewCategory({ name: '', description: '', image: '' });
             fetchData();
@@ -393,6 +413,7 @@ const AdminDashboard = () => {
             });
 
             if (response.ok) {
+                alert(editingMenu ? 'Menu item updated successfully!' : 'Menu item added successfully!');
                 setMenuModalOpen(false);
                 setEditingMenu(null);
                 setMenuImageFile(null);
@@ -414,6 +435,7 @@ const AdminDashboard = () => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
+                alert('Menu item deleted successfully!');
                 fetchData();
             }
         } catch (err) { console.error(err); }
@@ -437,6 +459,7 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(newInv)
             });
+            alert('Inventory item added successfully!');
             setInvModalOpen(false);
             setNewInv({ item_name: '', quantity: '', unit: 'kg', supplier_id: '' });
             fetchData();
@@ -451,8 +474,53 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ status })
             });
+            alert(`Table status updated to ${status}!`);
             fetchData();
         } catch (err) { console.error(err); }
+    };
+
+    const handleAddOrder = async (e) => {
+        e.preventDefault();
+        if (newOrder.items.length === 0) {
+            alert('Please add at least one item');
+            return;
+        }
+        const token = localStorage.getItem('adminToken');
+        const totalPrice = newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        
+        try {
+            const response = await fetch(`${config.API_BASE_URL}/api/admin/orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ ...newOrder, total_price: totalPrice })
+            });
+
+            if (response.ok) {
+                setOrderModalOpen(false);
+                setNewOrder({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '' });
+                fetchData();
+                alert('Order created successfully!');
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to create order');
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const addItemToOrder = () => {
+        if (!orderItem.id || orderItem.quantity < 1) return;
+        setNewOrder(prev => ({
+            ...prev,
+            items: [...prev.items, { ...orderItem }]
+        }));
+        setOrderItem({ id: '', name: '', quantity: 1, price: 0 });
+    };
+
+    const removeOrderItem = (index) => {
+        setNewOrder(prev => ({
+            ...prev,
+            items: prev.items.filter((_, i) => i !== index)
+        }));
     };
 
     const generateReports = async () => {
@@ -895,7 +963,7 @@ const AdminDashboard = () => {
                                                 return (
                                                     <GlassCard key={cat.id} className={`text-center group transition-all border ${itemCount === 0 ? 'border-red-500/30' : 'border-transparent hover:border-gold-500/30'}`}>
                                                         <div className="h-16 w-16 mx-auto rounded-full bg-zinc-800 flex items-center justify-center text-2xl mb-3 overflow-hidden">
-                                                            {cat.image ? <img src={cat.image.startsWith('http') ? cat.image : `${config.API_BASE_URL}/public/food/${cat.image}`} /> : '🍽️'}
+                                                            {cat.image ? <img src={cat.image.startsWith('http') ? cat.image : (cat.image.startsWith('/') ? `${config.API_BASE_URL}${cat.image}` : `${config.API_BASE_URL}/food/${cat.image}`)} alt={cat.name} /> : '🍽️'}
                                                         </div>
                                                         <h5 className="font-bold text-white text-sm group-hover:text-gold-500">{cat.name}</h5>
                                                         <p className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{itemCount} Items</p>
@@ -919,7 +987,7 @@ const AdminDashboard = () => {
                                                 <div key={item.id} className="bg-[#151515] rounded-xl overflow-hidden border border-white/5 hover:border-gold-500/40 transition-all group">
                                                     <div className="h-40 bg-zinc-800 relative">
                                                         <img 
-                                                            src={item.image ? (item.image.startsWith('http') ? item.image : `${config.API_BASE_URL}/public/food/${item.image}`) : '/placeholder-food.jpg'} 
+                                                            src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/placeholder-food.jpg'} 
                                                             alt={item.name}
                                                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                                                         />
@@ -968,6 +1036,13 @@ const AdminDashboard = () => {
 
                         {view === 'orders' && (
                             <div className="space-y-6">
+                                <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20">
+                                    <div>
+                                        <h3 className="text-xl font-black text-white">Manage Orders</h3>
+                                        <p className="text-xs text-gray-500 mt-1">Review and process all incoming orders</p>
+                                    </div>
+                                    <Button onClick={() => setOrderModalOpen(true)} variant="primary">+ Add Order</Button>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                                     {orders.map(order => (
                                         <GlassCard key={order.id} className="space-y-4 border-l-4 border-white">
@@ -1366,6 +1441,55 @@ const AdminDashboard = () => {
                                 </div>
                             </div>
                         )}
+
+                        {view === 'reservations' && (
+                            <div className="space-y-6">
+                                <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20">
+                                    <div>
+                                        <h3 className="text-xl font-black text-white">Reservations</h3>
+                                        <p className="text-xs text-gray-500 mt-1">Manage all table reservations</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-[#101010] text-gold-500 text-[10px] uppercase font-bold tracking-widest">
+                                            <tr>
+                                                <th className="p-4">Guest Name</th>
+                                                <th className="p-4">Date & Time</th>
+                                                <th className="p-4">Party Size</th>
+                                                <th className="p-4">Table</th>
+                                                <th className="p-4 text-right">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {reservations.length === 0 ? (
+                                                <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic">No reservations found.</td></tr>
+                                            ) : reservations.map(res => (
+                                                <tr key={res.id} className="hover:bg-white/5 transition-colors">
+                                                    <td className="p-4 font-bold text-white">{res.guest_name || res.name || 'Guest'}</td>
+                                                    <td className="p-4 text-gray-400 text-xs">
+                                                        <p>{res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</p>
+                                                        <p className="text-gray-600">{res.reservation_time || res.time || ''}</p>
+                                                    </td>
+                                                    <td className="p-4 text-gray-300">{res.party_size || res.guests || 1} people</td>
+                                                    <td className="p-4 text-gray-400">{res.table_number ? `Table ${res.table_number}` : 'Not assigned'}</td>
+                                                    <td className="p-4 text-right">
+                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                                            res.status === 'confirmed' ? 'bg-green-600/20 text-green-400' :
+                                                            res.status === 'pending' ? 'bg-yellow-600/20 text-yellow-400' :
+                                                            res.status === 'cancelled' ? 'bg-red-600/20 text-red-400' :
+                                                            'bg-zinc-800 text-gray-400'
+                                                        }`}>
+                                                            {res.status || 'pending'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
@@ -1624,7 +1748,7 @@ const AdminDashboard = () => {
                             )}
                         </div>
                         <div className="flex gap-4 pt-4">
-                            <Button className="flex-1" variant="secondary" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); }}>Cancel</Button>
+                            <Button className="flex-1" variant="secondary" type="button" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); }}>Cancel</Button>
                             <Button className="flex-1" type="submit">{editingMenu ? 'Update Item' : 'Add Item'}</Button>
                         </div>
                     </form>
@@ -1641,7 +1765,7 @@ const AdminDashboard = () => {
                         <textarea placeholder="Address" className="w-full bg-black border border-white/10 p-3 rounded text-white" onChange={e => setNewSupplier({...newSupplier, address: e.target.value})} />
                         <input placeholder="Products Supplied" className="w-full bg-black border border-white/10 p-3 rounded text-white" onChange={e => setNewSupplier({...newSupplier, products_supplied: e.target.value})} />
                         <div className="flex gap-4 pt-4">
-                            <Button className="flex-1" variant="secondary" onClick={() => setSupModalOpen(false)}>Cancel</Button>
+                            <Button className="flex-1" variant="secondary" type="button" onClick={() => setSupModalOpen(false)}>Cancel</Button>
                             <Button className="flex-1" type="submit">Add</Button>
                         </div>
                     </form>
@@ -1662,10 +1786,207 @@ const AdminDashboard = () => {
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                         <div className="flex gap-4 pt-4">
-                            <Button className="flex-1" variant="secondary" onClick={() => setInvModalOpen(false)}>Cancel</Button>
+                            <Button className="flex-1" variant="secondary" type="button" onClick={() => setInvModalOpen(false)}>Cancel</Button>
                             <Button className="flex-1" type="submit">Add</Button>
                         </div>
                     </form>
+                </div>
+            )}
+            {catModalOpen && (
+                <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+                    <form onSubmit={handleAddCategory} className="bg-[#151515] border border-gold-500/30 rounded-2xl p-8 max-w-sm w-full space-y-4">
+                        <h3 className="text-xl font-black text-white uppercase">New Category</h3>
+                        <input
+                            placeholder="Category Name"
+                            className="w-full bg-black border border-white/10 p-3 rounded text-white"
+                            required
+                            value={newCategory.name}
+                            onChange={e => setNewCategory({...newCategory, name: e.target.value})}
+                        />
+                        <textarea
+                            placeholder="Description (optional)"
+                            className="w-full bg-black border border-white/10 p-3 rounded text-white"
+                            value={newCategory.description}
+                            onChange={e => setNewCategory({...newCategory, description: e.target.value})}
+                        />
+                        <input
+                            placeholder="Image URL (optional)"
+                            className="w-full bg-black border border-white/10 p-3 rounded text-white"
+                            value={newCategory.image}
+                            onChange={e => setNewCategory({...newCategory, image: e.target.value})}
+                        />
+                        <div className="flex gap-4 pt-4">
+                            <Button className="flex-1" variant="secondary" type="button" onClick={() => setCatModalOpen(false)}>Cancel</Button>
+                            <Button className="flex-1" type="submit">Add Category</Button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {orderModalOpen && (
+                <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-[#101010] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                        <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">Create New Order</h3>
+                            <div className="flex items-center gap-4">
+                                <Button variant="secondary" className="h-8 px-3 text-[10px]" type="button" onClick={() => setOrderModalOpen(false)}>← BACK</Button>
+                                <button onClick={() => setOrderModalOpen(false)} className="text-gray-500 hover:text-white text-xl font-black">✕</button>
+                            </div>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-6 lg:p-10 space-y-8">
+                            {/* Order Type Selector */}
+                            <div className="flex gap-4 p-1 bg-white/5 rounded-xl border border-white/5 w-fit mx-auto lg:mx-0">
+                                {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
+                                    <button 
+                                        key={t}
+                                        onClick={() => setNewOrder({...newOrder, order_type: t})}
+                                        className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${newOrder.order_type === t ? 'bg-gold-500 text-black shadow-[0_0_15px_rgba(255,215,0,0.3)]' : 'text-gray-500 hover:text-white'}`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                                {/* Left Side: Customer Info */}
+                                <div className="space-y-6">
+                                    <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-zinc-800 w-fit px-2 py-1 rounded">Customer Information</h4>
+                                    
+                                    <div className="space-y-4">
+                                        <input 
+                                            placeholder="Full Name" 
+                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none transition-colors" 
+                                            required 
+                                            value={newOrder.customer_name}
+                                            onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} 
+                                        />
+                                        <input 
+                                            placeholder="Phone Number" 
+                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none transition-colors" 
+                                            value={newOrder.phone}
+                                            onChange={e => setNewOrder({...newOrder, phone: e.target.value})} 
+                                        />
+                                        
+                                        {newOrder.order_type === 'DINE-IN' && (
+                                            <select 
+                                                className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold focus:border-gold-500 outline-none"
+                                                value={newOrder.table_id}
+                                                onChange={e => setNewOrder({...newOrder, table_id: e.target.value})}
+                                            >
+                                                <option value="">Select Table</option>
+                                                {allTables.map(t => <option key={t.id} value={t.id}>Table {t.table_number} ({t.area_name})</option>)}
+                                            </select>
+                                        )}
+
+                                        {newOrder.order_type === 'DELIVERY' && (
+                                            <textarea 
+                                                placeholder="Delivery Address" 
+                                                className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none"
+                                                value={newOrder.address}
+                                                onChange={e => setNewOrder({...newOrder, address: e.target.value})}
+                                            />
+                                        )}
+
+                                        <textarea 
+                                            placeholder="Special Instructions / Notes" 
+                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none"
+                                            value={newOrder.notes}
+                                            onChange={e => setNewOrder({...newOrder, notes: e.target.value})}
+                                        />
+                                        
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] text-gray-500 font-bold uppercase ml-1">Order Status</label>
+                                                <select 
+                                                    className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-xs font-bold"
+                                                    value={newOrder.status}
+                                                    onChange={e => setNewOrder({...newOrder, status: e.target.value})}
+                                                >
+                                                    <option value="COOKING">COOKING</option>
+                                                    <option value="READY_TO_SERVE">READY TO SERVE</option>
+                                                    <option value="FINISHED">FINISHED</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] text-gray-500 font-bold uppercase ml-1">Payment Status</label>
+                                                <select 
+                                                    className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-xs font-bold"
+                                                    value={newOrder.payment_status}
+                                                    onChange={e => setNewOrder({...newOrder, payment_status: e.target.value})}
+                                                >
+                                                    <option value="PAID">PAID</option>
+                                                    <option value="UNPAID">UNPAID</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right Side: Items Builder */}
+                                <div className="space-y-6">
+                                    <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-zinc-800 w-fit px-2 py-1 rounded">Add Menu Items</h4>
+                                    
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-6 space-y-4 shadow-inner">
+                                        <select 
+                                            className="w-full bg-[#101010] border border-white/10 p-3 rounded-lg text-white text-xs font-bold"
+                                            value={orderItem.id}
+                                            onChange={e => {
+                                                const selected = menus.find(m => m.id === Number(e.target.value));
+                                                if (selected) {
+                                                    setOrderItem({ id: selected.id, name: selected.name, price: Number(selected.price), quantity: 1 });
+                                                }
+                                            }}
+                                        >
+                                            <option value="">Choose item...</option>
+                                            {menus.map(m => <option key={m.id} value={m.id}>{m.name} - Rs.{m.price}</option>)}
+                                        </select>
+                                        
+                                        <div className="flex gap-4 items-center">
+                                            <div className="flex-1 flex items-center bg-zinc-900 rounded-lg border border-white/5">
+                                                <button onClick={() => setOrderItem({...orderItem, quantity: Math.max(1, orderItem.quantity - 1)})} className="p-3 text-gold-500 font-black">－</button>
+                                                <input type="number" readOnly className="w-full bg-transparent text-center text-white font-black text-sm" value={orderItem.quantity} />
+                                                <button onClick={() => setOrderItem({...orderItem, quantity: orderItem.quantity + 1})} className="p-3 text-gold-500 font-black">＋</button>
+                                            </div>
+                                            <Button onClick={addItemToOrder} variant="primary" className="h-full px-8 text-[10px] font-black uppercase">Add to List</Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Selected Items List */}
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                        {newOrder.items.length > 0 ? newOrder.items.map((item, idx) => (
+                                            <div key={idx} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 group">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-6 w-6 rounded bg-gold-500 text-black font-black text-[10px] flex items-center justify-center">{item.quantity}</div>
+                                                    <span className="text-xs font-bold text-white">{item.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <span className="text-xs text-gray-500">Rs. {item.price * item.quantity}</span>
+                                                    <button onClick={() => removeOrderItem(idx)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                                                </div>
+                                            </div>
+                                        )) : (
+                                            <div className="py-10 text-center border border-dashed border-white/10 rounded-2xl">
+                                                <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">No items added yet</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {newOrder.items.length > 0 && (
+                                        <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Grand Total</span>
+                                            <span className="text-2xl font-black text-white italic">Rs. {newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-[#0a0a0a] border-t border-white/10 flex gap-4">
+                            <Button className="flex-1 h-12 uppercase font-black tracking-widest" variant="secondary" type="button" onClick={() => setOrderModalOpen(false)}>Cancel</Button>
+                            <Button className="flex-[2] h-12 uppercase font-black tracking-widest shadow-[0_0_20px_rgba(255,215,0,0.2)]" type="button" onClick={handleAddOrder}>Confirm & Create Order</Button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

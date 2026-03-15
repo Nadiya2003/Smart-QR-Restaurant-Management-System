@@ -52,6 +52,15 @@ const VerifyOTP = ({ email, onVerified, onBack }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.container}
         >
+            {/* Back Button */}
+            <TouchableOpacity
+                onPress={onBack}
+                style={styles.backButton}
+                disabled={isLoading}
+            >
+                <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+
             <View style={styles.card}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
@@ -117,6 +126,23 @@ const styles = StyleSheet.create({
         backgroundColor: '#F3F4F6',
         justifyContent: 'center',
         padding: 20,
+    },
+    backButton: {
+        position: 'absolute',
+        top: 50,
+        left: 20,
+        zIndex: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.08)',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    backButtonText: {
+        fontSize: 15,
+        fontWeight: 'bold',
+        color: '#111827',
     },
     card: {
         backgroundColor: 'white',

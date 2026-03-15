@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+import config from '../config';
 
 function MenuItems() {
     const { category } = useParams();
@@ -18,10 +19,10 @@ function MenuItems() {
         }
 
         // Fetch menu items
-        fetch('http://192.168.1.3:5000/api/menu')
+        fetch(`${config.API_BASE_URL}/api/menu`)
             .then(res => res.json())
             .then(data => {
-                const filtered = data.filter(item => item.category === category);
+                const filtered = data.filter(item => item.category === category || item.category?.toUpperCase() === category?.toUpperCase());
                 setItems(filtered);
                 setLoading(false);
             })
@@ -113,7 +114,7 @@ function MenuItems() {
                                 {/* Image */}
                                 <div className="h-48 overflow-hidden bg-white/5">
                                     <img
-                                        src={item.image ? `http://192.168.1.3:5000/food/${item.image}` : '/placeholder-food.png'}
+                                        src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/placeholder-food.png'}
                                         alt={item.name}
                                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                     />

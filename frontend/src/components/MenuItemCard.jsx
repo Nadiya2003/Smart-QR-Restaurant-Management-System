@@ -11,7 +11,7 @@ function MenuItemCard({ item, onAddToCart }) {
             {/* Food Image */}
             <div className="h-48 bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center overflow-hidden">
                 <SafeImage 
-                    src={item.image} 
+                    src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/food/placeholder.png'} 
                     alt={item.name} 
                     className="w-full h-full object-cover" 
                 />

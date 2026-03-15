@@ -36,8 +36,8 @@ export const createDeliveryOrder = async (req, res) => {
                 for (const item of items) {
                     await connection.query(
                         `INSERT INTO order_analytics 
-                        (order_id, order_source, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                        VALUES (?, 'DELIVERY', ?, ?, ?, ?, ?, ?)`,
+                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
+                        VALUES (?, 'DELIVERY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?)`,
                         [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
                     );
                 }
@@ -94,8 +94,8 @@ export const createTakeawayOrder = async (req, res) => {
                 for (const item of items) {
                     await connection.query(
                         `INSERT INTO order_analytics 
-                        (order_id, order_source, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                        VALUES (?, 'TAKEAWAY', ?, ?, ?, ?, ?, ?)`,
+                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
+                        VALUES (?, 'TAKEAWAY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?)`,
                         [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
                     );
                 }

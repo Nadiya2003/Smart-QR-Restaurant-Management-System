@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCustomer } from '../context/CustomerContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+import config from '../config';
 
 export default function CustomerMenu() {
   const navigate = useNavigate();
-  const [selectedCategory, setSelectedCategory] = useState('SRI_LANKAN');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
 
   // Load cart from localStorage
   const [cart, setCart] = useState(() => {
@@ -15,14 +15,8 @@ export default function CustomerMenu() {
   });
 
   const [showCart, setShowCart] = useState(false);
-  const [menuItems, setMenuItems] = useState({
-    SRI_LANKAN: [],
-    ITALIAN: [],
-    INDIAN: [],
-    APPETIZERS: [],
-    DESSERTS: [],
-    BEVERAGES: []
-  });
+  const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Save cart to localStorage
@@ -32,33 +26,23 @@ export default function CustomerMenu() {
 
   // Fetch Menu from API
   useEffect(() => {
-    fetch('http://192.168.1.3:5000/api/menu')
-      .then(res => res.json())
-      .then(data => {
-        const grouped = {
-          SRI_LANKAN: [],
-          ITALIAN: [],
-          INDIAN: [],
-          APPETIZERS: [],
-          DESSERTS: [],
-          BEVERAGES: []
-        };
-
-        data.forEach(item => {
-          const cat = item.category ? item.category.toUpperCase() : 'BEVERAGES';
-          if (grouped[cat]) {
-            grouped[cat].push(item);
-          } else if (grouped['BEVERAGES']) {
-            grouped['BEVERAGES'].push(item);
-          }
-        });
-        setMenuItems(grouped);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch menu', err);
-        setLoading(false);
-      });
+    const fetchMenu = async () => {
+        try {
+            const res = await fetch(`${config.API_BASE_URL}/api/menu`);
+            const data = await res.json();
+            setMenuItems(data);
+            
+            // Extract unique categories
+            const cats = ['ALL', ...new Set(data.map(item => item.category?.toUpperCase() || 'GENERAL'))];
+            setCategories(cats.map(c => ({ id: c, label: c.replace('_', ' ') })));
+            
+            setLoading(false);
+        } catch (err) {
+            console.error('Failed to fetch menu', err);
+            setLoading(false);
+        }
+    };
+    fetchMenu();
   }, []);
 
   const addToCart = (item) => {
@@ -75,16 +59,9 @@ export default function CustomerMenu() {
   };
 
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const currentItems = menuItems[selectedCategory] || [];
-
-  const categories = [
-    { id: 'SRI_LANKAN', label: 'Sri Lankan' },
-    { id: 'ITALIAN', label: 'Italian' },
-    { id: 'INDIAN', label: 'Indian' },
-    { id: 'APPETIZERS', label: 'Appetizers' },
-    { id: 'DESSERTS', label: 'Desserts' },
-    { id: 'BEVERAGES', label: 'Beverages' },
-  ];
+  const currentItems = selectedCategory === 'ALL' 
+    ? menuItems 
+    : menuItems.filter(item => item.category?.toUpperCase() === selectedCategory);
 
   return (
     <div className={`min-h-screen bg-gradient-to-b from-[#060606] via-[#0b0b10] to-[#101018] text-white p-4 md:p-8 pb-32 md:pb-8`}>
@@ -130,7 +107,7 @@ export default function CustomerMenu() {
                 <div className="flex flex-col h-full">
                   <div className="relative mb-6 overflow-hidden rounded-2xl h-56 shadow-2xl">
                     <img
-                      src={item.image && item.image.includes('.') ? `/food/${item.image}` : '/food/placeholder.png'}
+                      src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/food/placeholder.png'}
                       alt={item.name}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                       onError={(e) => {
@@ -211,7 +188,7 @@ export default function CustomerMenu() {
                     <div key={item.id} className="flex gap-6 items-center bg-white/5 p-5 rounded-3xl border border-white/5 hover:border-gold-500/20 transition-all group">
                       <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-xl ring-2 ring-white/5">
                         <img
-                          src={item.image && item.image.includes('.') ? `/food/${item.image}` : '/food/placeholder.png'}
+                          src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/food/placeholder.png'}
                           alt={item.name}
                           className="w-full h-full object-cover"
                         />

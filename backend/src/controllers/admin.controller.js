@@ -250,6 +250,66 @@ export const getAllOrders = async (req, res) => {
     }
 };
 
+export const createOrder = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { order_type, customer_name, phone, items, total_price, notes, table_id, address } = req.body;
+
+        if (order_type === 'DINE-IN') {
+            const [pendingStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
+            const statusId = pendingStatus[0]?.id || 1;
+
+            const [result] = await connection.query(
+                'INSERT INTO orders (table_id, total_amount, status_id, items) VALUES (?, ?, ?, ?)',
+                [table_id, total_price, statusId, JSON.stringify(items)]
+            );
+            
+            for (const item of items) {
+                await connection.query(
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'DINE-IN', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                );
+            }
+
+        } else if (order_type === 'TAKEAWAY') {
+            const [result] = await connection.query(
+                'INSERT INTO takeaway_orders (customer_name, phone, items, total_price, notes, order_status, payment_status) VALUES (?, ?, ?, ?, ?, "pending", "paid")',
+                [customer_name, phone, JSON.stringify(items), total_price, notes]
+            );
+
+            for (const item of items) {
+                await connection.query(
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'TAKEAWAY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                );
+            }
+
+        } else if (order_type === 'DELIVERY') {
+            const [result] = await connection.query(
+                'INSERT INTO delivery_orders (customer_name, phone, address, items, total_price, notes, order_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, "pending", "paid")',
+                [customer_name, phone, address, JSON.stringify(items), total_price, notes]
+            );
+
+            for (const item of items) {
+                await connection.query(
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'DELIVERY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                );
+            }
+        }
+
+        await connection.commit();
+        res.status(201).json({ message: 'Order created successfully' });
+    } catch (err) {
+        await connection.rollback();
+        console.error('Create order error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    } finally {
+        connection.release();
+    }
+};
+
 export const cancelOrder = async (req, res) => {
     try {
         const { id, type } = req.params; // type: DELIVERY, TAKEAWAY, DINE-IN

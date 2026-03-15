@@ -54,6 +54,9 @@ export default {
         SUPPLIERS: `${API_URL}/admin/suppliers`,
         NOTIFICATIONS: `${API_URL}/admin/notifications`,
         STAFF_ACTIVITY: `${API_URL}/admin/staff-activity`,
+        REPORTS: `${API_URL}/admin/reports`,
+        REPORT_PDF: `${API_URL}/reports/pdf`,
+        REPORT_GENERATE: `${API_URL}/reports/generate`,
     },
 
     // Menu endpoints

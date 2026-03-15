@@ -39,7 +39,7 @@ const logReport = async (type, filters, userId) => {
 export const getFoodReport = async (req, res) => {
     try {
         const { startDate, endDate, hourStart, hourEnd, category } = req.query;
-        await logReport('Food Wise', req.query, req.user?.id);
+        await logReport('Food Wise', req.query, req.user?.userId);
         let { where, params } = buildFilterQuery(startDate, endDate, hourStart, hourEnd);
 
         if (category && category !== 'All') {
@@ -71,7 +71,7 @@ export const getFoodReport = async (req, res) => {
 export const getRevenueReport = async (req, res) => {
     try {
         const { startDate, endDate, hourStart, hourEnd, paymentMethod, orderType } = req.query;
-        await logReport('Revenue', req.query, req.user?.userId || req.user?.id);
+        await logReport('Revenue', req.query, req.user?.userId);
         let { where, params } = buildFilterQuery(startDate, endDate, hourStart, hourEnd);
 
         if (paymentMethod && paymentMethod !== 'All') {
@@ -103,7 +103,7 @@ export const getRevenueReport = async (req, res) => {
 export const getOrdersReport = async (req, res) => {
     try {
         const { startDate, endDate, hourStart, hourEnd } = req.query;
-        await logReport('Orders', req.query, req.user?.userId || req.user?.id);
+        await logReport('Orders', req.query, req.user?.userId);
         let { where, params } = buildFilterQuery(startDate, endDate, hourStart, hourEnd);
 
         const [byStatus] = await pool.query(`
@@ -126,7 +126,7 @@ export const getOrdersReport = async (req, res) => {
 export const getCancellationsReport = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        await logReport('Cancellations', req.query, req.user?.userId || req.user?.id);
+        await logReport('Cancellations', req.query, req.user?.userId);
         let where = " WHERE 1=1 ";
         const params = [];
         if (startDate) { where += " AND created_at >= ? "; params.push(startDate); }
@@ -149,7 +149,7 @@ export const getCancellationsReport = async (req, res) => {
 export const getCustomersReport = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        await logReport('Customers', req.query, req.user?.userId || req.user?.id);
+        await logReport('Customers', req.query, req.user?.userId);
         
         const [total] = await pool.query("SELECT COUNT(*) as count FROM online_customers");
         const [newThisWeek] = await pool.query("SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
@@ -198,7 +198,7 @@ export const getStaffReport = async (req, res) => {
 export const getSupplierReport = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        await logReport('Supplier Purchase', req.query, req.user?.userId || req.user?.id);
+        await logReport('Supplier Purchase', req.query, req.user?.userId);
         
         const [purchases] = await pool.query(`
             SELECT s.name as supplier_name, i.item_name, i.quantity, i.unit, i.last_updated
@@ -322,7 +322,7 @@ export const generateUnifiedReport = async (req, res) => {
         // Save report to history
         const [result] = await pool.query(
             "INSERT INTO reports (title, report_type, summary_data, data_json, generated_by) VALUES (?, ?, ?, ?, ?)",
-            [title, type, JSON.stringify(summary), JSON.stringify(data), req.user?.userId || req.user?.id]
+            [title, type, JSON.stringify(summary), JSON.stringify(data), req.user?.userId]
         );
 
         res.json({ id: result.insertId, title, data, summary });
