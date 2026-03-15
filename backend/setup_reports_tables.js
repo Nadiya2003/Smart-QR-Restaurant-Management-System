@@ -5,18 +5,20 @@ async function setup() {
     try {
         console.log("Starting Reports System database setup...");
 
-        // 1. Report Logs Table
+        // 1. Saved Reports Table
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS report_logs (
+            CREATE TABLE IF NOT EXISTS reports (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
                 report_type VARCHAR(50) NOT NULL,
-                filters_used JSON,
+                summary_data JSON,
+                data_json JSON,
                 generated_by INT,
                 generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (generated_by) REFERENCES staff_users(id) ON DELETE SET NULL
             )
         `);
-        console.log("report_logs table ensured.");
+        console.log("reports table ensured.");
 
         // 2. Order Analytics Table (Flattened items for easier reporting)
         await pool.query(`

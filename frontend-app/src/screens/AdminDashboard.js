@@ -58,6 +58,7 @@ const AdminDashboard = () => {
     const [activityList, setActivityList] = useState([]);
     const [notificationList, setNotificationList] = useState([]);
     const [inventoryList, setInventoryList] = useState([]);
+    const [reportList, setReportList] = useState([]);
     const [categories, setCategories] = useState([]);
 
     const [loading, setLoading] = useState(true);
@@ -112,6 +113,10 @@ const AdminDashboard = () => {
     const [showOrderModal, setShowOrderModal] = useState(false);
     const [newOrder, setNewOrder] = useState({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '', status: 'COOKING', payment_status: 'PAID' });
     const [orderItem, setOrderItem] = useState({ id: '', name: '', quantity: 1, price: 0 });
+
+    const [showRoleModal, setShowRoleModal] = useState(false);
+    const [selectedRole, setSelectedRole] = useState('');
+    const STAFF_ROLES = ['steward', 'manager', 'cashier', 'kitchen_staff', 'bar_staff', 'delivery_rider', 'inventory_manager', 'supplier'];
 
     const fetchData = useCallback(async (isSilent = false) => {
         try {
@@ -182,6 +187,11 @@ const AdminDashboard = () => {
             if (activeTab === 'reports') {
                 const reportData = await safeFetch(apiConfig.ADMIN.REPORTS, { headers: reqHeaders });
                 if (reportData) setReportList(reportData.reports || []);
+            }
+
+            if (activeTab === 'reservations') {
+                const resData = await safeFetch(apiConfig.ADMIN.RESERVATIONS, { headers: reqHeaders });
+                if (resData) setReservationList(resData.reservations || []);
             }
 
         } catch (error) {
@@ -303,6 +313,27 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleUpdateRole = async () => {
+        if (!selectedStaff || !selectedRole) return;
+        try {
+            const res = await fetch(`${apiConfig.ADMIN.STAFF}/${selectedStaff.id}/role`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ role_name: selectedRole })
+            });
+            if (res.ok) {
+                Alert.alert('Success', 'Role updated with default permissions');
+                setShowRoleModal(false);
+                fetchData();
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to update role');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
+        }
+    };
+
     const handlePickImage = async () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -392,12 +423,15 @@ const AdminDashboard = () => {
                 }
             }
         ]);
-    };    const tabs = [
+    };
+
+    const tabs = [
         { key: 'overview', label: 'Dashboard', icon: '📊' },
         { key: 'users', label: 'Users', icon: '👥' },
         { key: 'attendance', label: 'Attendance', icon: '🕒' },
         { key: 'menu', label: 'Menu', icon: '🍽️' },
         { key: 'orders', label: 'Orders', icon: '🛍️' },
+        { key: 'reservations', label: 'Reservations', icon: '📅' },
         { key: 'activity', label: 'Activity', icon: '⚡' },
         { key: 'suppliers', label: 'Suppliers', icon: '🚚' },
         { key: 'inventory', label: 'Inventory', icon: '📦' },
@@ -537,7 +571,17 @@ const AdminDashboard = () => {
                                             setShowPermissionsModal(true);
                                         }}
                                     >
-                                        <Text style={styles.permBtnText}>🔐 Permissions</Text>
+                                        <Text style={styles.permBtnText}>🔐 Perms</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.permBtn, { marginLeft: 5, backgroundColor: '#FEF3C7' }]} 
+                                        onPress={() => {
+                                            setSelectedStaff(staff);
+                                            setSelectedRole(staff.role.toLowerCase());
+                                            setShowRoleModal(true);
+                                        }}
+                                    >
+                                        <Text style={[styles.permBtnText, { color: '#D97706' }]}>🛠️ Role</Text>
                                     </TouchableOpacity>
 
 
@@ -929,43 +973,38 @@ const AdminDashboard = () => {
         </>
     );
 
-    const PermissionsModal = () => (
-        <Modal visible={showPermissionsModal} transparent animationType="slide">
+
+    const renderRoleModal = () => (
+        <Modal visible={showRoleModal} transparent animationType="fade">
             <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
                     <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Manage Permissions</Text>
-                        <TouchableOpacity onPress={() => setShowPermissionsModal(false)}>
+                        <Text style={styles.modalTitle}>Assign Work Role</Text>
+                        <TouchableOpacity onPress={() => setShowRoleModal(false)}>
                             <Text style={{ fontSize: 24 }}>✕</Text>
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.modalSub}>{selectedStaff?.name || selectedStaff?.full_name} ({selectedStaff?.role})</Text>
+                    <Text style={styles.modalSub}>{selectedStaff?.name || selectedStaff?.full_name}</Text>
                     
-                    <ScrollView style={styles.permList}>
-                        {[
-                            { key: 'orders.view', label: 'View Orders' },
-                            { key: 'orders.manage', label: 'Manage Orders' },
-                            { key: 'menu.manage', label: 'Manage Menu' },
-                            { key: 'inventory.manage', label: 'Manage Inventory' },
-                            { key: 'reports.view', label: 'View Reports' },
-                            { key: 'staff.manage', label: 'Manage Staff' },
-                            { key: 'suppliers.manage', label: 'Manage Suppliers' }
-                        ].map(perm => (
-                            <TouchableOpacity key={perm.key} style={styles.permItem} onPress={() => togglePermission(perm.key)}>
-                                <Text style={styles.permItemText}>{perm.label}</Text>
-                                <View style={[styles.toggle, staffPermissions[perm.key] && styles.toggleActive]}>
-                                    <View style={[styles.toggleCircle, staffPermissions[perm.key] && styles.toggleCircleActive]} />
-                                </View>
+                    <View style={{ gap: 10, marginVertical: 20 }}>
+                        {STAFF_ROLES.map(role => (
+                            <TouchableOpacity 
+                                key={role} 
+                                style={[styles.permItem, selectedRole === role && { backgroundColor: '#FEF3C7', borderColor: '#D97706' }]}
+                                onPress={() => setSelectedRole(role)}
+                            >
+                                <Text style={[styles.permItemText, { textTransform: 'uppercase' }]}>{role.replace('_', ' ')}</Text>
+                                {selectedRole === role && <Text>✅</Text>}
                             </TouchableOpacity>
                         ))}
-                    </ScrollView>
+                    </View>
 
                     <View style={styles.modalActions}>
-                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPermissionsModal(false)}>
-                            <Text style={styles.cancelBtnText}>Cancel</Text>
+                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowRoleModal(false)}>
+                            <Text style={styles.cancelBtnText}>Discard</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.saveBtn} onPress={savePermissions}>
-                            <Text style={styles.saveBtnText}>Save Changes</Text>
+                        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#F59E0B' }]} onPress={handleUpdateRole}>
+                            <Text style={styles.saveBtnText}>Assign Role</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -1152,7 +1191,7 @@ const AdminDashboard = () => {
                                 <View style={styles.barChartContainer}>
                                     {generatedReport.items.slice(0, 6).map((item, idx) => (
                                         <View key={idx} style={styles.barColumn}>
-                                            <View style={[styles.bar, { height: (item.total_sold / generatedReport.items[0].total_sold) * 80 + 5, backgroundColor: '#10B981' }]} />
+                                            <View style={[styles.bar, { height: (item.total_sold / (generatedReport.items[0]?.total_sold || 1)) * 80 + 5, backgroundColor: '#10B981' }]} />
                                             <Text style={styles.barLabel}>{item.item_name.substring(0, 4)}</Text>
                                         </View>
                                     ))}
@@ -1191,13 +1230,19 @@ const AdminDashboard = () => {
                             <TouchableOpacity 
                                 style={[styles.exportBtn, { flex: 1, backgroundColor: '#DC2626' }]} 
                                 onPress={() => {
-                                    const pdfUrl = `${apiConfig.API_BASE_URL}/api/reports/pdf?token=${token}`;
+                                    const params = new URLSearchParams({
+                                        token: token,
+                                        type: reportType.toLowerCase().replace(' ', '-'),
+                                        startDate: reportFilters.startDate,
+                                        endDate: reportFilters.endDate
+                                    }).toString();
+                                    const pdfUrl = `${apiConfig.API_BASE_URL}/api/reports/pdf?${params}`;
                                     Linking.openURL(pdfUrl).catch(err => {
                                         Alert.alert('Error', 'Could not open the PDF report: ' + err.message);
                                     });
                                 }}
                             >
-                                <Text style={styles.exportBtnText}>📄 Download PDF Report</Text>
+                                <Text style={styles.exportBtnText}>📄 Download PDF</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.exportBtn, { flex: 1, backgroundColor: '#3B82F6' }]} onPress={() => Alert.alert('Success', 'PNG Report captured!')}>
                                 <Text style={styles.exportBtnText}>🖼️ PNG</Text>
@@ -1225,23 +1270,82 @@ const AdminDashboard = () => {
                     <Text style={styles.emptyText}>No reservations found</Text>
                 </View>
             ) : (
-                reservationList.map((res) => (
-                    <View key={res.id} style={styles.listCard}>
-                        <View style={styles.listCardHeader}>
-                            <View style={[styles.avatarCircle, { backgroundColor: '#EDE9FE' }]}>
-                                <Text style={styles.avatarText}>📅</Text>
-                            </View>
-                            <View style={styles.listCardInfo}>
-                                <Text style={styles.listCardName}>{res.customer_name}</Text>
-                                <Text style={styles.listCardSub}>Table #{res.table_number} • {res.guest_count} guests</Text>
-                                <Text style={styles.listCardSub}>{new Date(res.reservation_time).toLocaleString()}</Text>
+                reservationList.map((res) => {
+                    const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
+                    return (
+                        <View key={res.id} style={styles.listCard}>
+                            <View style={styles.listCardHeader}>
+                                <View style={[styles.avatarCircle, { backgroundColor: '#EDE9FE' }]}>
+                                    <Text style={styles.avatarText}>👤</Text>
+                                </View>
+                                <View style={styles.listCardInfo}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <Text style={styles.listCardName}>{res.customer_name || res.guest_name || 'Guest'}</Text>
+                                        <View style={[styles.badge, { 
+                                            backgroundColor: status === 'CONFIRMED' ? '#D1FAE5' : status === 'CANCELLED' ? '#FEE2E2' : '#FEF3C7',
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 2
+                                        }]}>
+                                            <Text style={[styles.badgeText, { 
+                                                color: status === 'CONFIRMED' ? '#059669' : status === 'CANCELLED' ? '#DC2626' : '#D97706',
+                                                fontSize: 10
+                                            }]}>
+                                                {status}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.listCardSub}>{res.guest_count || res.party_size || 1} Guests • {res.mobile_number || 'N/A'}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginLeft: 10 }}>🕒 {res.reservation_time || res.time}</Text>
+                                    </View>
+                                    <Text style={[styles.listCardSub, { marginTop: 4, fontStyle: 'italic' }]}>
+                                        {res.area_name || 'General'} Area • {res.table_number ? `Table #${res.table_number}` : 'Unassigned'}
+                                    </Text>
+                                    
+                                    {status === 'PENDING' && (
+                                        <View style={[styles.modalActions, { marginTop: 15 }]}>
+                                            <TouchableOpacity 
+                                                style={[styles.addButtonSmall, { flex: 1, backgroundColor: '#10B981' }]}
+                                                onPress={() => updateResStatus(res.id, 'CONFIRMED')}
+                                            >
+                                                <Text style={[styles.addButtonTextSmall, { textAlign: 'center' }]}>Confirm</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={[styles.addButtonSmall, { flex: 1, backgroundColor: '#EF4444' }]}
+                                                onPress={() => updateResStatus(res.id, 'CANCELLED')}
+                                            >
+                                                <Text style={[styles.addButtonTextSmall, { textAlign: 'center' }]}>Cancel</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </View>
                             </View>
                         </View>
-                    </View>
-                ))
+                    );
+                })
             )}
         </>
     );
+
+    const updateResStatus = async (id, status) => {
+        try {
+            const res = await fetch(`${apiConfig.ADMIN.RESERVATIONS}/${id}/status`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ status })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Reservation ${status.toLowerCase()}`);
+                fetchData();
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to update reservation');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
+        }
+    };
 
     const updateStatus = async (id, status, type) => {
         try {
@@ -1279,6 +1383,7 @@ const AdminDashboard = () => {
             case 'activity': return renderActivity();
             case 'inventory': return renderInventory();
             case 'reports': return renderReports();
+            case 'reservations': return renderReservations();
             case 'notifications': return renderNotifications();
             default: return renderOverview();
         }
@@ -1291,28 +1396,28 @@ const AdminDashboard = () => {
                         <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#111827' }}>←</Text>
                     </TouchableOpacity>
                 )}
-            <View style={[styles.brandContainer, { flexDirection: 'row', alignItems: 'center' }]}>
-                {/* Logo inside a black circle */}
-                <View style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 23,
-                    backgroundColor: '#111827',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 10,
-                }}>
-                    <Image source={require('../../assets/logo.png')} style={{ width: 30, height: 30, resizeMode: 'contain' }} />
-                </View>
-                {/* Restaurant name in bold black */}
-                <View style={{ justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Melissa's Food Court</Text>
-                    <Text style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1 }}>Admin Panel</Text>
+                <View style={[styles.brandContainer, { flexDirection: 'row', alignItems: 'center' }]}>
+                    {/* Logo inside a black circle */}
+                    <View style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 23,
+                        backgroundColor: '#111827',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                    }}>
+                        <Image source={require('../../assets/logo.png')} style={{ width: 30, height: 30, resizeMode: 'contain' }} />
+                    </View>
+                    {/* Restaurant name in bold black */}
+                    <View style={{ justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Melissa's Food Court</Text>
+                        <Text style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1 }}>Admin Panel</Text>
+                    </View>
                 </View>
             </View>
-        </View>
 
-        <View style={styles.topBarRight}>
+            <View style={styles.topBarRight}>
                 <TouchableOpacity style={styles.iconCircle} onPress={() => setActiveTab('notifications')}>
                     <Text style={{ fontSize: 18 }}>🔔</Text>
                     {notificationList.filter(n => !n.is_read).length > 0 && (
@@ -1375,6 +1480,7 @@ const AdminDashboard = () => {
             {renderTotalCustomersModal()}
             {renderMenuModal()}
             {renderOrderModal()}
+            {renderRoleModal()}
         </View>
     );
 
@@ -1384,29 +1490,40 @@ const AdminDashboard = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Staff Permissions</Text>
+                            <Text style={styles.modalTitle}>Manage Permissions</Text>
                             <TouchableOpacity onPress={() => setShowPermissionsModal(false)}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
                         </View>
-                        <ScrollView style={{ marginTop: 15 }}>
-                            {staffList.map(staff => (
-                                <View key={staff.id} style={styles.permItem}>
-                                    <View>
-                                        <Text style={styles.permItemText}>{staff.name || staff.full_name}</Text>
-                                        <Text style={{ fontSize: 10, color: '#6B7280' }}>{staff.role}</Text>
+                        <Text style={styles.modalSub}>{selectedStaff?.name || selectedStaff?.full_name} ({selectedStaff?.role})</Text>
+                        
+                        <ScrollView style={{ marginVertical: 10 }}>
+                            {[
+                                { key: 'orders.view', label: 'View Orders' },
+                                { key: 'orders.manage', label: 'Manage Orders' },
+                                { key: 'menu.manage', label: 'Manage Menu' },
+                                { key: 'inventory.manage', label: 'Manage Inventory' },
+                                { key: 'reports.view', label: 'View Reports' },
+                                { key: 'staff.manage', label: 'Manage Staff' },
+                                { key: 'suppliers.manage', label: 'Manage Suppliers' }
+                            ].map(perm => (
+                                <TouchableOpacity key={perm.key} style={styles.permItem} onPress={() => togglePermission(perm.key)}>
+                                    <Text style={styles.permItemText}>{perm.label}</Text>
+                                    <View style={[styles.toggle, staffPermissions[perm.key] && styles.toggleActive]}>
+                                        <View style={[styles.toggleCircle, staffPermissions[perm.key] && styles.toggleCircleActive]} />
                                     </View>
-                                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                                        <TouchableOpacity style={[styles.badge, staff.is_active ? styles.badgeActive : styles.badgeInactive]} onPress={() => handleToggleStatus(staff.id, staff.is_active)}>
-                                            <Text style={styles.badgeText}>{staff.is_active ? 'Active' : 'Inactive'}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
+                                </TouchableOpacity>
                             ))}
                         </ScrollView>
-                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowPermissionsModal(false)}>
-                            <Text style={styles.saveBtnText}>Save Changes</Text>
-                        </TouchableOpacity>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPermissionsModal(false)}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.saveBtn} onPress={savePermissions}>
+                                <Text style={styles.saveBtnText}>Save Changes</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -1524,12 +1641,12 @@ const AdminDashboard = () => {
                             <View style={styles.listCard}>
                                 <Text style={styles.listCardName}>Trend Analysis</Text>
                                 <View style={[styles.summaryRow, { marginTop: 10 }]}>
-                                    <Text style={styles.summaryLabel}>This Week</Text>
-                                    <Text style={styles.summaryValue}>{stats?.details?.weeklyOrders || 0}</Text>
+                                    <Text style={styles.summaryLabel}>Today's Orders</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.todayOrders || 0}</Text>
                                 </View>
                                 <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                    <Text style={styles.summaryLabel}>This Month</Text>
-                                    <Text style={styles.summaryValue}>{stats?.details?.monthlyOrders || 0}</Text>
+                                    <Text style={styles.summaryLabel}>Total (All Time)</Text>
+                                    <Text style={styles.summaryValue}>{stats?.totalOrders || 0}</Text>
                                 </View>
                             </View>
                         </ScrollView>
@@ -1590,7 +1707,7 @@ const AdminDashboard = () => {
                         <ScrollView>
                             <View style={styles.listCard}>
                                 <Text style={styles.listCardName}>Growth this week</Text>
-                                <Text style={[styles.statValue, { color: '#10B981', marginTop: 10 }]}>+{stats?.details?.newCustomersWeek || 0} New Signups</Text>
+                                <Text style={[styles.statValue, { color: '#10B981', marginTop: 10 }]}>+{stats?.details?.newCustomersWeek?.count ?? stats?.details?.newCustomersWeek ?? 0} New Signups</Text>
                             </View>
                         </ScrollView>
                         
@@ -1607,90 +1724,99 @@ const AdminDashboard = () => {
         return (
             <Modal visible={showMenuModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { flex: 1, maxHeight: '90%' }]}>
+                        {/* Header */}
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</Text>
+                            <Text style={styles.modalTitle}>{editingItem ? '✏️ Edit Item' : '➕ New Menu Item'}</Text>
                             <TouchableOpacity onPress={() => {
                                 setShowMenuModal(false);
                                 setEditingItem(null);
-                                setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                                setMenuForm({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
                             }}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
                         </View>
-                        
-                        <ScrollView style={{ marginTop: 15 }}>
+
+                        {/* Scrollable Form */}
+                        <ScrollView style={{ flex: 1, marginTop: 15 }} showsVerticalScrollIndicator={false}>
                             <Text style={styles.label}>Item Name *</Text>
-                            <TextInput 
-                                style={styles.input} 
+                            <TextInput
+                                style={styles.input}
                                 placeholder="e.g. Chicken Burger"
                                 value={menuForm.name}
-                                onChangeText={(val) => setMenuForm({...menuForm, name: val})}
+                                onChangeText={(val) => setMenuForm({ ...menuForm, name: val })}
                             />
 
                             <Text style={styles.label}>Price (Rs.) *</Text>
-                            <TextInput 
-                                style={styles.input} 
+                            <TextInput
+                                style={styles.input}
                                 placeholder="e.g. 1200"
                                 keyboardType="numeric"
                                 value={menuForm.price.toString()}
-                                onChangeText={(val) => setMenuForm({...menuForm, price: val})}
+                                onChangeText={(val) => setMenuForm({ ...menuForm, price: val })}
                             />
 
                             <Text style={styles.label}>Category *</Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
                                 {categories.map(cat => (
-                                    <TouchableOpacity 
-                                        key={cat.id} 
+                                    <TouchableOpacity
+                                        key={cat.id}
                                         style={[styles.catPill, menuForm.category_id === cat.id && styles.activeCatPill]}
-                                        onPress={() => setMenuForm({...menuForm, category_id: cat.id})}
+                                        onPress={() => setMenuForm({ ...menuForm, category_id: cat.id })}
                                     >
                                         <Text style={[styles.catPillText, menuForm.category_id === cat.id && styles.activeCatPillText]}>{cat.name}</Text>
                                     </TouchableOpacity>
                                 ))}
-                            </View>
+                            </ScrollView>
 
                             <Text style={styles.label}>Description</Text>
-                            <TextInput 
-                                style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                                placeholder="Brief description..."
+                            <TextInput
+                                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                                placeholder="Brief description of the dish..."
                                 multiline
                                 value={menuForm.description}
-                                onChangeText={(val) => setMenuForm({...menuForm, description: val})}
+                                onChangeText={(val) => setMenuForm({ ...menuForm, description: val })}
                             />
 
-                            <Text style={styles.label}>Food Image URL</Text>
-                            <TextInput 
-                                style={styles.input} 
-                                placeholder="Image URL (or path)"
-                                value={menuForm.image}
-                                onChangeText={(val) => setMenuForm({...menuForm, image: val})}
-                            />
-                            {menuForm.image ? (
-                                <Image source={{ uri: menuForm.image.startsWith('http') ? menuForm.image : `${apiConfig.API_BASE_URL}${menuForm.image}` }} style={{ width: '100%', height: 150, borderRadius: 10, marginBottom: 15 }} />
-                            ) : null}
-
-                            <TouchableOpacity 
-                                style={[styles.input, { borderStyle: 'dashed', borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center', backgroundColor: 'transparent' }]}
+                            <Text style={styles.label}>Food Image</Text>
+                            <TouchableOpacity
+                                style={[styles.input, { borderStyle: 'dashed', borderWidth: 1.5, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9FAFB', height: 44 }]}
                                 onPress={handlePickImage}
                             >
-                                <Text style={[styles.label, { marginTop: 0, color: '#9CA3AF' }]}>[ Choose File ]</Text>
+                                <Text style={{ color: '#6B7280', fontSize: 13 }}>📁 Pick image from gallery</Text>
                             </TouchableOpacity>
+                            <TextInput
+                                style={[styles.input, { marginTop: 8 }]}
+                                placeholder="Or paste image URL here..."
+                                value={menuForm.image}
+                                onChangeText={(val) => setMenuForm({ ...menuForm, image: val })}
+                            />
+                            {menuForm.image ? (
+                                <Image source={{ uri: menuForm.image.startsWith('http') ? menuForm.image : `${apiConfig.API_BASE_URL}${menuForm.image}` }} style={{ width: '100%', height: 140, borderRadius: 10, marginBottom: 12 }} resizeMode="cover" />
+                            ) : null}
 
-                            <TouchableOpacity 
-                                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25 }}
-                                onPress={() => setMenuForm({...menuForm, is_active: !menuForm.is_active})}
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30, paddingVertical: 8 }}
+                                onPress={() => setMenuForm({ ...menuForm, is_active: !menuForm.is_active })}
                             >
                                 <View style={[styles.toggle, menuForm.is_active && styles.toggleActive]}>
                                     <View style={[styles.toggleHandle, menuForm.is_active && styles.toggleHandleActive]} />
                                 </View>
-                                <Text style={{ marginLeft: 10, fontSize: 14, color: '#374151' }}>Item is Available</Text>
+                                <Text style={{ marginLeft: 10, fontSize: 14, color: '#374151', fontWeight: '600' }}>
+                                    {menuForm.is_active ? '✅ Item is Available' : '❌ Mark as Unavailable'}
+                                </Text>
                             </TouchableOpacity>
                         </ScrollView>
 
-                        <View style={{ paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
-                            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#111827', height: 55, justifyContent: 'center' }]} onPress={handleSaveMenu}>
-                                <Text style={[styles.saveBtnText, { fontSize: 16 }]}>[ SAVE ITEM ]</Text>
+                        {/* Save Button — always visible outside ScrollView */}
+                        <View style={{ paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
+                            <TouchableOpacity
+                                style={{ backgroundColor: '#111827', height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
+                                onPress={handleSaveMenu}
+                            >
+                                <Text style={{ color: 'white', fontSize: 15, fontWeight: 'bold', letterSpacing: 0.5 }}>
+                                    {editingItem ? '💾 Save Changes' : '✅ Add Menu Item'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -1701,87 +1827,230 @@ const AdminDashboard = () => {
 
     function renderOrderModal() {
         const addItemToOrder = () => {
-            if (!orderItem.id) return Alert.alert('Error', 'Pick an item');
-            setNewOrder({ ...newOrder, items: [...newOrder.items, orderItem] });
+            if (!orderItem.id) return Alert.alert('Select Item', 'Please select a menu item first.');
+            // Check if item already in order — if so, increase quantity
+            const existingIdx = newOrder.items.findIndex(i => i.id === orderItem.id);
+            if (existingIdx >= 0) {
+                const updated = [...newOrder.items];
+                updated[existingIdx].quantity += orderItem.quantity;
+                setNewOrder({ ...newOrder, items: updated });
+            } else {
+                setNewOrder({ ...newOrder, items: [...newOrder.items, { ...orderItem }] });
+            }
             setOrderItem({ id: '', name: '', quantity: 1, price: 0 });
         };
 
+        const removeItem = (idx) => {
+            const updated = newOrder.items.filter((_, i) => i !== idx);
+            setNewOrder({ ...newOrder, items: updated });
+        };
+
+        const totalPrice = newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
         const handleAddOrderLocal = async () => {
-            if (newOrder.items.length === 0) return Alert.alert('Error', 'Add items first');
+            if (!newOrder.customer_name.trim()) return Alert.alert('Missing Info', 'Enter customer name.');
+            if (newOrder.items.length === 0) return Alert.alert('Empty Order', 'Add at least one item.');
+            if (newOrder.order_type === 'DELIVERY' && !newOrder.address.trim()) return Alert.alert('Missing Info', 'Enter delivery address.');
             try {
-                const totalPrice = newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders`, {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({ ...newOrder, total_price: totalPrice })
                 });
+                const data = await res.json();
                 if (res.ok) {
-                    Alert.alert('Success', 'Order created');
+                    Alert.alert('✅ Order Created', `Order #${data.orderId || ''} placed for ${newOrder.customer_name}`);
                     setShowOrderModal(false);
-                    setNewOrder({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '', status: 'COOKING', payment_status: 'PAID' });
+                    setNewOrder({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '', status: 'PENDING', payment_status: 'PAID' });
+                    setOrderItem({ id: '', name: '', quantity: 1, price: 0 });
                     fetchData(true);
+                } else {
+                    Alert.alert('Error', data.message || 'Failed to create order');
                 }
-            } catch (e) { Alert.alert('Error', 'Network error'); }
+            } catch (e) {
+                Alert.alert('Network Error', 'Check your connection and try again.');
+            }
         };
 
         return (
             <Modal visible={showOrderModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+                    <View style={[styles.modalContent, { flex: 1, maxHeight: '92%' }]}>
+
+                        {/* Header */}
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>New Order</Text>
-                            <TouchableOpacity onPress={() => setShowOrderModal(false)}>
+                            <Text style={styles.modalTitle}>🛍️ New Order</Text>
+                            <TouchableOpacity onPress={() => {
+                                setShowOrderModal(false);
+                                setOrderItem({ id: '', name: '', quantity: 1, price: 0 });
+                            }}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
                         </View>
-                        <ScrollView style={{ marginTop: 15 }}>
+
+                        <ScrollView style={{ flex: 1, marginTop: 12 }} showsVerticalScrollIndicator={false}>
+
+                            {/* Order Type */}
                             <Text style={styles.label}>Order Type</Text>
-                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                                {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
-                                    <TouchableOpacity key={t} style={[styles.catPill, newOrder.order_type === t && styles.activeCatPill]} onPress={() => setNewOrder({ ...newOrder, order_type: t })}>
-                                        <Text style={[styles.catPillText, newOrder.order_type === t && styles.activeCatPillText]}>{t}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                                {[{ t: 'DINE-IN', icon: '🍽️' }, { t: 'TAKEAWAY', icon: '🛍️' }, { t: 'DELIVERY', icon: '🛵' }].map(({ t, icon }) => (
+                                    <TouchableOpacity
+                                        key={t}
+                                        style={[styles.catPill, newOrder.order_type === t && styles.activeCatPill, { flex: 1, alignItems: 'center' }]}
+                                        onPress={() => setNewOrder({ ...newOrder, order_type: t })}
+                                    >
+                                        <Text style={[styles.catPillText, newOrder.order_type === t && styles.activeCatPillText]}>{icon} {t}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
 
-                            <TextInput style={styles.input} placeholder="Customer Name" value={newOrder.customer_name} onChangeText={t => setNewOrder({ ...newOrder, customer_name: t })} />
-                            
-                            <Text style={styles.label}>Add Items</Text>
-                            <View style={{ backgroundColor: '#F3F4F6', borderRadius: 10, marginBottom: 15, padding: 10 }}>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                                    {menuList.map(m => (
-                                        <TouchableOpacity key={m.id} style={[styles.catPill, { backgroundColor: 'white' }]} onPress={() => setOrderItem({ id: m.id, name: m.name, price: m.price, quantity: 1 })}>
-                                            <Text style={styles.catPillText}>{m.name}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                                {orderItem.id ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Text style={{ fontWeight: 'bold' }}>{orderItem.name} (Rs.{orderItem.price})</Text>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                            <TouchableOpacity onPress={() => setOrderItem({...orderItem, quantity: Math.max(1, orderItem.quantity-1)})}><Text style={{ fontSize: 20, padding: 5 }}>-</Text></TouchableOpacity>
-                                            <Text style={{ marginHorizontal: 10 }}>{orderItem.quantity}</Text>
-                                            <TouchableOpacity onPress={() => setOrderItem({...orderItem, quantity: orderItem.quantity+1})}><Text style={{ fontSize: 20, padding: 5 }}>+</Text></TouchableOpacity>
-                                            <TouchableOpacity style={{ backgroundColor: '#111827', padding: 8, borderRadius: 5, marginLeft: 10 }} onPress={addItemToOrder}>
-                                                <Text style={{ color: 'white', fontSize: 10 }}>ADD</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                ) : <Text style={{ fontSize: 10, color: '#6B7280' }}>Select an item above</Text>}
-                            </View>
+                            {/* Customer Info */}
+                            <Text style={styles.label}>Customer Name *</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. John Perera"
+                                value={newOrder.customer_name}
+                                onChangeText={t => setNewOrder({ ...newOrder, customer_name: t })}
+                            />
 
-                            <View style={{ marginBottom: 15 }}>
-                                {newOrder.items.map((item, i) => (
-                                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                                        <Text>{item.quantity}x {item.name}</Text>
-                                        <Text>Rs.{item.price * item.quantity}</Text>
-                                    </View>
+                            <Text style={styles.label}>Phone Number</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="071 XXXXXXX"
+                                keyboardType="phone-pad"
+                                value={newOrder.phone}
+                                onChangeText={t => setNewOrder({ ...newOrder, phone: t })}
+                            />
+
+                            {/* Conditional fields */}
+                            {newOrder.order_type === 'DINE-IN' && (
+                                <>
+                                    <Text style={styles.label}>Table Number</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="e.g. T5"
+                                        value={newOrder.table_id}
+                                        keyboardType="numeric"
+                                        onChangeText={t => setNewOrder({ ...newOrder, table_id: t })}
+                                    />
+                                </>
+                            )}
+                            {newOrder.order_type === 'DELIVERY' && (
+                                <>
+                                    <Text style={styles.label}>Delivery Address *</Text>
+                                    <TextInput
+                                        style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
+                                        placeholder="Full address..."
+                                        multiline
+                                        value={newOrder.address}
+                                        onChangeText={t => setNewOrder({ ...newOrder, address: t })}
+                                    />
+                                </>
+                            )}
+
+                            {/* Payment Status */}
+                            <Text style={styles.label}>Payment</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                                {['PAID', 'PENDING', 'CASH'].map(p => (
+                                    <TouchableOpacity
+                                        key={p}
+                                        style={[styles.catPill, newOrder.payment_status === p && styles.activeCatPill]}
+                                        onPress={() => setNewOrder({ ...newOrder, payment_status: p })}
+                                    >
+                                        <Text style={[styles.catPillText, newOrder.payment_status === p && styles.activeCatPillText]}>{p}</Text>
+                                    </TouchableOpacity>
                                 ))}
                             </View>
+
+                            {/* Menu Item Picker */}
+                            <Text style={styles.label}>🍽️ Select Items</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                                {menuList.filter(m => m.is_active || m.status === 1).map(m => (
+                                    <TouchableOpacity
+                                        key={m.id}
+                                        style={[styles.catPill, orderItem.id === m.id && styles.activeCatPill, { marginBottom: 4 }]}
+                                        onPress={() => setOrderItem({ id: m.id, name: m.name, price: Number(m.price), quantity: 1, category: m.category })}
+                                    >
+                                        <Text style={[styles.catPillText, orderItem.id === m.id && styles.activeCatPillText]}>{m.name}</Text>
+                                        <Text style={{ fontSize: 9, color: orderItem.id === m.id ? '#D4AF37' : '#9CA3AF' }}>Rs.{m.price}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            {/* Selected item qty control */}
+                            {orderItem.id ? (
+                                <View style={{ backgroundColor: '#F3F4F6', borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontWeight: '700', fontSize: 14 }}>{orderItem.name}</Text>
+                                        <Text style={{ color: '#6B7280', fontSize: 12 }}>Rs. {orderItem.price} each</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <TouchableOpacity
+                                            style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
+                                            onPress={() => setOrderItem({ ...orderItem, quantity: Math.max(1, orderItem.quantity - 1) })}
+                                        >
+                                            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>−</Text>
+                                        </TouchableOpacity>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', minWidth: 24, textAlign: 'center' }}>{orderItem.quantity}</Text>
+                                        <TouchableOpacity
+                                            style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
+                                            onPress={() => setOrderItem({ ...orderItem, quantity: orderItem.quantity + 1 })}
+                                        >
+                                            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>+</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={{ backgroundColor: '#111827', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                                            onPress={addItemToOrder}
+                                        >
+                                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>+ Add</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ) : (
+                                <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 12 }}>👆 Tap an item above to select</Text>
+                            )}
+
+                            {/* Order Items List */}
+                            {newOrder.items.length > 0 && (
+                                <View style={{ backgroundColor: 'white', borderRadius: 10, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' }}>
+                                    <Text style={{ fontWeight: '700', marginBottom: 8, fontSize: 13 }}>📋 Order Items</Text>
+                                    {newOrder.items.map((item, i) => (
+                                        <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: i < newOrder.items.length - 1 ? 1 : 0, borderBottomColor: '#F3F4F6' }}>
+                                            <Text style={{ flex: 1, fontSize: 13 }}>{item.quantity}x {item.name}</Text>
+                                            <Text style={{ fontSize: 13, fontWeight: '600', marginRight: 10 }}>Rs. {(item.price * item.quantity).toLocaleString()}</Text>
+                                            <TouchableOpacity onPress={() => removeItem(i)}>
+                                                <Text style={{ color: '#DC2626', fontSize: 16 }}>✕</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
+                            {/* Notes */}
+                            <Text style={styles.label}>Notes (optional)</Text>
+                            <TextInput
+                                style={[styles.input, { height: 60, textAlignVertical: 'top', marginBottom: 20 }]}
+                                placeholder="Special instructions..."
+                                multiline
+                                value={newOrder.notes}
+                                onChangeText={t => setNewOrder({ ...newOrder, notes: t })}
+                            />
                         </ScrollView>
-                        <View style={{ paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
-                            <TouchableOpacity style={[styles.saveBtn, { height: 55, justifyContent: 'center' }]} onPress={handleAddOrderLocal}>
-                                <Text style={[styles.saveBtnText, { fontSize: 16 }]}>CREATE ORDER</Text>
+
+                        {/* Footer with total and submit */}
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 12 }}>
+                            {newOrder.items.length > 0 && (
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                                    <Text style={{ fontWeight: '700', fontSize: 15 }}>Total</Text>
+                                    <Text style={{ fontWeight: '700', fontSize: 15, color: '#10B981' }}>Rs. {totalPrice.toLocaleString()}</Text>
+                                </View>
+                            )}
+                            <TouchableOpacity
+                                style={{ backgroundColor: newOrder.items.length === 0 ? '#9CA3AF' : '#111827', height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
+                                onPress={handleAddOrderLocal}
+                                disabled={newOrder.items.length === 0}
+                            >
+                                <Text style={{ color: 'white', fontSize: 15, fontWeight: 'bold' }}>✅ Place Order</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

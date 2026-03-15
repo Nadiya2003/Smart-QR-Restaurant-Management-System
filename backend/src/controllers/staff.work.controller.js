@@ -23,10 +23,10 @@ export const getAssignedOrders = async (req, res) => {
             SELECT o.id, o.created_at,
                    os.name as status,
                    ot.name as type,
-                   u.name as customer_name,
-                   (SELECT COALESCE(SUM(oi.price * oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) as total
+                   COALESCE(u.name, 'Guest') as customer_name,
+                   (SELECT COALESCE(SUM(oa.total_price), 0) FROM order_analytics oa WHERE oa.order_id = o.id AND oa.order_source = 'DINE-IN') as total
             FROM orders o 
-            LEFT JOIN customers u ON o.customer_id = u.id 
+            LEFT JOIN online_customers u ON o.customer_id = u.id 
             JOIN order_statuses os ON o.status_id = os.id
             JOIN order_types ot ON o.order_type_id = ot.id
             WHERE 1=1 `;
@@ -45,10 +45,9 @@ export const getAssignedOrders = async (req, res) => {
         // Fetch items for each order
         for (let order of orders) {
             const [items] = await pool.query(`
-                SELECT oi.*, mi.name 
-                FROM order_items oi 
-                JOIN menu_items mi ON oi.menu_item_id = mi.id 
-                WHERE oi.order_id = ?`, [order.id]);
+                SELECT oa.item_id as id, oa.item_name as name, oa.quantity, oa.unit_price as price, oa.total_price
+                FROM order_analytics oa
+                WHERE oa.order_id = ? AND oa.order_source = 'DINE-IN'`, [order.id]);
             order.items = items;
         }
 
@@ -128,10 +127,10 @@ export const sendNotification = async (req, res) => {
 
         if (!stewardId) return res.status(400).json({ message: "Steward ID required" });
 
-        // Using staff_notifications table
+        // Using notifications table
         await pool.query(
-            "INSERT INTO staff_notifications (staff_id, message, title, is_read) VALUES (?, ?, ?, ?)",
-            [stewardId, message, type || 'GENERAL', false]
+            "INSERT INTO notifications (user_id, message, title) VALUES (?, ?, ?)",
+            [stewardId, message, type || 'GENERAL']
         );
 
         res.json({ message: "Notification sent successfully" });

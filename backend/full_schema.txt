@@ -1,0 +1,454 @@
+[
+  "bar_staff",
+  "cancel_deliveries",
+  "cancel_reservations",
+  "cancel_takeaways",
+  "cashiers",
+  "categories",
+  "contact_messages",
+  "customer_permissions",
+  "customers",
+  "delivery_orders",
+  "delivery_riders",
+  "dining_areas",
+  "feedback",
+  "inventory",
+  "inventory_managers",
+  "kitchen_staff",
+  "managers",
+  "menu_items",
+  "notifications",
+  "online_customers",
+  "order_analytics",
+  "order_statuses",
+  "order_types",
+  "orders",
+  "payment_methods",
+  "payment_statuses",
+  "permissions",
+  "report_logs",
+  "reports",
+  "reservations",
+  "restaurant_tables",
+  "role_permissions",
+  "staff_attendance",
+  "staff_permissions",
+  "staff_roles",
+  "staff_users",
+  "stewards",
+  "supplier_orders",
+  "supplier_payments",
+  "supplier_staff",
+  "suppliers",
+  "takeaway_orders"
+]
+
+--- bar_staff ---
+[
+  "id",
+  "staff_id",
+  "bar_section",
+  "created_at"
+]
+--- cancel_deliveries ---
+[
+  "id",
+  "customer_id",
+  "order_id",
+  "cancellation_reason",
+  "cancelled_at"
+]
+--- cancel_reservations ---
+[
+  "id",
+  "customer_id",
+  "reservation_id",
+  "cancellation_reason",
+  "cancelled_at"
+]
+--- cancel_takeaways ---
+[
+  "id",
+  "customer_id",
+  "order_id",
+  "cancellation_reason",
+  "cancelled_at"
+]
+--- cashiers ---
+[
+  "id",
+  "staff_id",
+  "register_number",
+  "shift_type",
+  "created_at"
+]
+--- categories ---
+[
+  "id",
+  "name",
+  "description",
+  "image",
+  "created_at"
+]
+--- contact_messages ---
+[
+  "id",
+  "name",
+  "email",
+  "subject",
+  "message",
+  "created_at"
+]
+--- customer_permissions ---
+[
+  "id",
+  "customer_id",
+  "permission_key",
+  "allowed"
+]
+--- customers ---
+[
+  "id",
+  "name",
+  "email",
+  "phone",
+  "password_hash",
+  "profile_image",
+  "loyalty_points",
+  "is_active",
+  "reset_otp",
+  "reset_otp_expiry",
+  "created_at"
+]
+--- delivery_orders ---
+[
+  "id",
+  "customer_id",
+  "customer_name",
+  "phone",
+  "address",
+  "items",
+  "total_price",
+  "notes",
+  "payment_method",
+  "payment_status",
+  "transaction_id",
+  "order_status",
+  "status_notes",
+  "created_at",
+  "updated_at",
+  "cancellation_reason"
+]
+--- delivery_riders ---
+[
+  "id",
+  "staff_id",
+  "vehicle_type",
+  "license_number",
+  "is_available",
+  "created_at"
+]
+--- dining_areas ---
+[
+  "id",
+  "area_name",
+  "description",
+  "created_at"
+]
+--- feedback ---
+[
+  "id",
+  "order_id",
+  "rating",
+  "comment",
+  "created_at"
+]
+--- inventory ---
+[
+  "id",
+  "item_name",
+  "category",
+  "quantity",
+  "unit",
+  "low_stock_threshold",
+  "updated_at",
+  "supplier_id",
+  "last_updated"
+]
+--- inventory_managers ---
+[
+  "id",
+  "staff_id",
+  "warehouse_section",
+  "created_at"
+]
+--- kitchen_staff ---
+[
+  "id",
+  "staff_id",
+  "station",
+  "specialization",
+  "created_at"
+]
+--- managers ---
+[
+  "id",
+  "staff_id",
+  "department",
+  "hire_date",
+  "created_at"
+]
+--- menu_items ---
+[
+  "id",
+  "category_id",
+  "name",
+  "description",
+  "price",
+  "image",
+  "tags",
+  "is_active",
+  "created_at"
+]
+--- notifications ---
+[
+  "id",
+  "user_id",
+  "role_id",
+  "title",
+  "message",
+  "type",
+  "is_read",
+  "created_at",
+  "target_audience"
+]
+--- online_customers ---
+[
+  "id",
+  "name",
+  "email",
+  "phone",
+  "password",
+  "profile_image",
+  "loyalty_points",
+  "is_active",
+  "reset_otp",
+  "reset_otp_expiry",
+  "created_at"
+]
+--- order_analytics ---
+[
+  "id",
+  "order_id",
+  "order_source",
+  "order_status",
+  "payment_method",
+  "item_id",
+  "item_name",
+  "category_name",
+  "quantity",
+  "unit_price",
+  "total_price",
+  "created_at"
+]
+--- order_statuses ---
+[
+  "id",
+  "name",
+  "created_at"
+]
+--- order_types ---
+[
+  "id",
+  "name",
+  "created_at"
+]
+--- orders ---
+[
+  "id",
+  "customer_id",
+  "steward_id",
+  "order_type_id",
+  "status_id",
+  "payment_method_id",
+  "payment_status_id",
+  "table_id",
+  "created_at",
+  "updated_at",
+  "cancellation_reason"
+]
+--- payment_methods ---
+[
+  "id",
+  "name",
+  "created_at"
+]
+--- payment_statuses ---
+[
+  "id",
+  "name",
+  "created_at"
+]
+--- permissions ---
+[
+  "id",
+  "name",
+  "description",
+  "created_at"
+]
+--- report_logs ---
+[
+  "id",
+  "report_type",
+  "filters_used",
+  "generated_by",
+  "generated_at"
+]
+--- reports ---
+[
+  "id",
+  "report_type",
+  "title",
+  "summary_data",
+  "data_json",
+  "generated_by",
+  "generated_at"
+]
+--- reservations ---
+[
+  "id",
+  "customer_id",
+  "table_id",
+  "area_id",
+  "reservation_date",
+  "reservation_time",
+  "guest_count",
+  "customer_name",
+  "mobile_number",
+  "special_requests",
+  "reservation_status",
+  "status_notes",
+  "created_at",
+  "updated_at"
+]
+--- restaurant_tables ---
+[
+  "id",
+  "area_id",
+  "table_number",
+  "capacity",
+  "location",
+  "status",
+  "created_at"
+]
+--- role_permissions ---
+[
+  "role_id",
+  "permission_id"
+]
+--- staff_attendance ---
+[
+  "id",
+  "staff_id",
+  "date",
+  "login_time",
+  "logout_time",
+  "status"
+]
+--- staff_permissions ---
+[
+  "id",
+  "staff_id",
+  "permission_key",
+  "created_at"
+]
+--- staff_roles ---
+[
+  "id",
+  "role_name",
+  "description",
+  "created_at"
+]
+--- staff_users ---
+[
+  "id",
+  "full_name",
+  "email",
+  "phone",
+  "password",
+  "role_id",
+  "is_active",
+  "permissions",
+  "reset_otp",
+  "reset_otp_expiry",
+  "created_at",
+  "updated_at"
+]
+--- stewards ---
+[
+  "id",
+  "staff_id",
+  "is_available",
+  "image",
+  "assigned_section",
+  "created_at"
+]
+--- supplier_orders ---
+[
+  "id",
+  "supplier_id",
+  "order_date",
+  "total_amount",
+  "status",
+  "notes"
+]
+--- supplier_payments ---
+[
+  "id",
+  "supplier_order_id",
+  "payment_date",
+  "amount",
+  "payment_method",
+  "transaction_id"
+]
+--- supplier_staff ---
+[
+  "id",
+  "staff_id",
+  "company_name",
+  "created_at"
+]
+--- suppliers ---
+[
+  "id",
+  "name",
+  "contact_person",
+  "phone",
+  "email",
+  "address",
+  "created_at",
+  "status",
+  "company_name",
+  "product_category",
+  "contact_number",
+  "products_supplied"
+]
+--- takeaway_orders ---
+[
+  "id",
+  "customer_id",
+  "customer_name",
+  "phone",
+  "pickup_time",
+  "items",
+  "total_price",
+  "notes",
+  "payment_method",
+  "payment_status",
+  "transaction_id",
+  "order_status",
+  "status_notes",
+  "created_at",
+  "updated_at",
+  "cancellation_reason"
+]

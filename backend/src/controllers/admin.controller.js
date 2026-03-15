@@ -123,14 +123,47 @@ export const updateStaffRole = async (req, res) => {
         }
         const roleId = roleRows[0].id;
 
-        // 2. Update staff_users
-        await connection.query('UPDATE staff_users SET role_id = ? WHERE id = ?', [roleId, id]);
+        // Define default permissions for roles (aligned with staff.work.routes and dashboard)
+        const ROLE_DEFAULTS = {
+            'admin': [
+                'orders.view', 'orders.view_dine_in', 'orders.view_takeaway', 'orders.view_delivery',
+                'orders.status_update', 'orders.accept_reject',
+                'menu.manage', 'payments.view', 'payments.status', 'notifications.receive'
+            ],
+            'manager': [
+                'orders.view', 'orders.view_dine_in', 'orders.view_takeaway', 'orders.view_delivery',
+                'orders.status_update', 'orders.accept_reject',
+                'menu.manage', 'payments.view', 'payments.status', 'notifications.receive'
+            ],
+            'cashier': [
+                'orders.view', 'orders.view_dine_in', 'orders.view_takeaway', 'orders.view_delivery',
+                'orders.status_update', 'payments.view', 'payments.status', 'notifications.receive'
+            ],
+            'steward': [
+                'orders.view', 'orders.view_dine_in', 'orders.status_update', 'orders.accept_reject',
+                'notifications.receive'
+            ],
+            'kitchen_staff': [
+                'orders.view', 'orders.view_dine_in', 'orders.view_takeaway', 'orders.view_delivery',
+                'orders.status_update'
+            ],
+            'bar_staff': [
+                'orders.view', 'orders.view_dine_in', 'orders.status_update'
+            ],
+            'delivery_rider': [
+                'orders.view', 'orders.view_delivery', 'orders.status_update'
+            ],
+            'inventory_manager': ['inventory.view', 'inventory.update'],
+            'supplier': []
+        };
 
-        // 3. Handle role-specific table (Optional/Advanced: move data if needed, but for now just ensure entry exists)
-        // This part is tricky because of the schema, but at minimum the role_id change works for auth.
-        
+        const permissions = JSON.stringify(ROLE_DEFAULTS[role_name.toLowerCase()] || ['orders.view']);
+
+        // 2. Update staff_users with both role and default permissions
+        await connection.query('UPDATE staff_users SET role_id = ?, permissions = ? WHERE id = ?', [roleId, permissions, id]);
+
         await connection.commit();
-        res.json({ message: `Role updated to ${role_name}` });
+        res.json({ message: `Role updated to ${role_name} with default permissions` });
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Update staff role error:', err);
@@ -255,14 +288,25 @@ export const createOrder = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { order_type, customer_name, phone, items, total_price, notes, table_id, address } = req.body;
+        const performerId = req.user?.userId || 0;
 
         if (order_type === 'DINE-IN') {
+            // Find a valid customer ID to satisfy FK constraint (must exist in online_customers)
+            const [custRows] = await connection.query('SELECT id FROM online_customers LIMIT 1');
+            const finalCustomerId = custRows[0]?.id;
+            
+            if (!finalCustomerId) {
+                await connection.rollback();
+                return res.status(400).json({ message: 'No registered customers found. Please Register at least one user first.' });
+            }
+
             const [pendingStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
             const statusId = pendingStatus[0]?.id || 1;
 
+            // 'orders' table for DINE-IN (using default steward_id if nullable or omitting)
             const [result] = await connection.query(
-                'INSERT INTO orders (table_id, total_amount, status_id, items) VALUES (?, ?, ?, ?)',
-                [table_id, total_price, statusId, JSON.stringify(items)]
+                'INSERT INTO orders (customer_id, table_id, status_id, order_type_id) VALUES (?, ?, ?, 1)',
+                [finalCustomerId, table_id || null, statusId]
             );
             
             for (const item of items) {
@@ -274,8 +318,8 @@ export const createOrder = async (req, res) => {
 
         } else if (order_type === 'TAKEAWAY') {
             const [result] = await connection.query(
-                'INSERT INTO takeaway_orders (customer_name, phone, items, total_price, notes, order_status, payment_status) VALUES (?, ?, ?, ?, ?, "pending", "paid")',
-                [customer_name, phone, JSON.stringify(items), total_price, notes]
+                'INSERT INTO takeaway_orders (customer_name, phone, items, total_price, notes, order_status, payment_status, pickup_time) VALUES (?, ?, ?, ?, ?, "pending", "paid", ?)',
+                [customer_name, phone, JSON.stringify(items), total_price, notes || '', new Date().toLocaleTimeString()]
             );
 
             for (const item of items) {
@@ -288,7 +332,7 @@ export const createOrder = async (req, res) => {
         } else if (order_type === 'DELIVERY') {
             const [result] = await connection.query(
                 'INSERT INTO delivery_orders (customer_name, phone, address, items, total_price, notes, order_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, "pending", "paid")',
-                [customer_name, phone, address, JSON.stringify(items), total_price, notes]
+                [customer_name, phone, address || '', JSON.stringify(items), total_price, notes || '']
             );
 
             for (const item of items) {
@@ -299,14 +343,22 @@ export const createOrder = async (req, res) => {
             }
         }
 
+        // Log to audit log
+        try {
+            await connection.query(
+                'INSERT INTO audit_logs (action_type, performed_by, details) VALUES (?, ?, ?)',
+                ['ORDER_CREATED', performerId, `Manual ${order_type} order created for ${customer_name || 'Guest'}`]
+            );
+        } catch (e) {}
+
         await connection.commit();
         res.status(201).json({ message: 'Order created successfully' });
     } catch (err) {
-        await connection.rollback();
+        if (connection) await connection.rollback();
         console.error('Create order error:', err);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({ message: 'Server Error: ' + err.message });
     } finally {
-        connection.release();
+        if (connection) connection.release();
     }
 };
 
@@ -377,7 +429,8 @@ export const getStats = async (req, res) => {
         const [[{ customerCount }]] = await pool.query('SELECT COUNT(*) as customerCount FROM online_customers');
         const [[{ staffCount }]] = await pool.query('SELECT COUNT(*) as staffCount FROM staff_users');
         const [[{ activeStaffCount }]] = await pool.query('SELECT COUNT(*) as activeStaffCount FROM staff_attendance WHERE date = CURDATE() AND logout_time IS NULL');
-        const [[{ newCustomersWeek }]] = await pool.query('SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+        const [[{ count: newCustomersWeekCount }]] = await pool.query('SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+
         
         const [ordersToday] = await pool.query(`
             SELECT COUNT(*) as count FROM (
@@ -439,7 +492,7 @@ export const getStats = async (req, res) => {
                 
                 details: {
                     todayOrders: ordersToday[0].count,
-                    newCustomersWeek: newCustomersWeek[0].count,
+                    newCustomersWeek: newCustomersWeekCount,
                     todayCategories,
                     totalRevenue: totalRevenue || 0
                 }
@@ -453,19 +506,21 @@ export const getStats = async (req, res) => {
 
 export const getRevenueAnalytics = async (req, res) => {
     try {
-        // Dummy data for graph and breakdown
         const dailyRevenue = await pool.query(`
-            SELECT DATE(created_at) as date, SUM(total_price) as revenue, COUNT(*) as orders
+            SELECT date, SUM(total_price) as revenue, COUNT(DISTINCT order_id) as orders
             FROM (
-                SELECT created_at, total_price FROM delivery_orders WHERE payment_status = 'paid'
+                SELECT DATE(created_at) as date, id as order_id, total_price FROM delivery_orders WHERE payment_status = 'paid'
                 UNION ALL
-                SELECT created_at, total_price FROM takeaway_orders WHERE payment_status = 'paid'
+                SELECT DATE(created_at) as date, id as order_id, total_price FROM takeaway_orders WHERE payment_status = 'paid'
                 UNION ALL
-                SELECT created_at, total_amount as total_price FROM orders WHERE payment_status = 'paid'
+                SELECT DATE(created_at) as date, order_id, SUM(total_price) as total_price 
+                FROM order_analytics 
+                WHERE order_source = 'DINE-IN' 
+                GROUP BY order_id, DATE(created_at)
             ) combined
-            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY)
-            GROUP BY DATE(created_at)
-            ORDER BY DATE(created_at) ASC
+            WHERE date >= DATE_SUB(CURDATE(), INTERVAL 10 DAY)
+            GROUP BY date
+            ORDER BY date ASC
         `);
 
         const typeBreakdown = await pool.query(`
@@ -473,7 +528,7 @@ export const getRevenueAnalytics = async (req, res) => {
             UNION ALL
             SELECT 'Takeaway' as type, COALESCE(SUM(total_price), 0) as revenue FROM takeaway_orders WHERE payment_status = 'paid'
             UNION ALL
-            SELECT 'Dine-in' as type, COALESCE(SUM(total_amount), 0) as revenue FROM orders WHERE payment_status = 'paid'
+            SELECT 'Dine-in' as type, COALESCE(SUM(total_price), 0) as revenue FROM order_analytics WHERE order_source = 'DINE-IN'
         `);
 
         res.json({
@@ -489,7 +544,13 @@ export const getRevenueAnalytics = async (req, res) => {
 // --- Reservation Management ---
 export const getAllReservations = async (req, res) => {
     try {
-        const [reservations] = await pool.query('SELECT * FROM reservations ORDER BY created_at DESC');
+        const [reservations] = await pool.query(`
+            SELECT r.*, rt.table_number, da.area_name
+            FROM reservations r
+            LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
+            LEFT JOIN dining_areas da ON r.area_id = da.id
+            ORDER BY r.created_at DESC
+        `);
         res.json({ reservations });
     } catch (err) {
         console.error('Get all reservations error:', err);
@@ -507,7 +568,7 @@ export const updateReservationStatus = async (req, res) => {
             return res.status(400).json({ message: 'Invalid reservation status' });
         }
 
-        await pool.query('UPDATE reservations SET status = ? WHERE id = ?', [status.toUpperCase(), id]);
+        await pool.query('UPDATE reservations SET reservation_status = ? WHERE id = ?', [status.toUpperCase(), id]);
         res.json({ message: 'Reservation status updated' });
     } catch (err) {
         console.error('Update reservation status error:', err);

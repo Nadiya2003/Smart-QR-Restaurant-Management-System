@@ -112,6 +112,8 @@ export const getOrdersReport = async (req, res) => {
                 SELECT id, order_status, total_price, created_at FROM delivery_orders
                 UNION ALL
                 SELECT id, order_status, total_price, created_at FROM takeaway_orders
+                UNION ALL
+                SELECT order_id as id, order_status, SUM(total_price) as total_price, created_at FROM order_analytics WHERE order_source = 'DINE-IN' GROUP BY order_id, order_status, created_at
             ) as combined
             ${where}
             GROUP BY order_status
@@ -160,6 +162,8 @@ export const getCustomersReport = async (req, res) => {
                 SELECT customer_name, total_price FROM delivery_orders
                 UNION ALL
                 SELECT customer_name, total_price FROM takeaway_orders
+                UNION ALL
+                SELECT 'DINE-IN GUEST' as customer_name, SUM(total_price) as total_price FROM order_analytics WHERE order_source = 'DINE-IN' GROUP BY order_id
             ) as combined
             GROUP BY customer_name
             ORDER BY order_count DESC
@@ -252,14 +256,19 @@ export const generateUnifiedReport = async (req, res) => {
             case 'orders':
                 title = "Order Summary Report";
                 const [orderSummary] = await pool.query(`
-                    SELECT order_status as status, COUNT(*) as count, SUM(total_price) as revenue
+                    SELECT status, COUNT(*) as count, SUM(total_price) as revenue
                     FROM (
-                        SELECT id, order_status, total_price, created_at FROM delivery_orders
+                        SELECT order_status as status, total_price, created_at FROM delivery_orders
                         UNION ALL
-                        SELECT id, order_status, total_price, created_at FROM takeaway_orders
+                        SELECT order_status as status, total_price, created_at FROM takeaway_orders
+                        UNION ALL
+                        SELECT order_status as status, SUM(total_price) as total_price, created_at 
+                        FROM order_analytics 
+                        WHERE order_source = 'DINE-IN' 
+                        GROUP BY order_id, order_status, created_at
                     ) as combined
                     WHERE created_at >= ? AND created_at <= ?
-                    GROUP BY order_status
+                    GROUP BY status
                 `, [startDate, endDate + " 23:59:59"]);
                 data = orderSummary;
                 summary.totalRevenue = orderSummary.reduce((acc, curr) => acc + Number(curr.revenue), 0);
@@ -293,9 +302,9 @@ export const generateUnifiedReport = async (req, res) => {
             case 'customers':
                 title = "Customer Activity Report";
                 const [customerData] = await pool.query(`
-                    SELECT name, email, phone, created_at as join_date, status
-                    FROM users
-                    WHERE role = 'CUSTOMER' AND created_at >= ? AND created_at <= ?
+                    SELECT name, email, phone, created_at as join_date, is_active as status
+                    FROM online_customers
+                    WHERE created_at >= ? AND created_at <= ?
                 `, [startDate, endDate + " 23:59:59"]);
                 data = customerData;
                 summary.totalOrders = customerData.length;
@@ -304,12 +313,13 @@ export const generateUnifiedReport = async (req, res) => {
             case 'staff':
                 title = "Staff Performance Report";
                 const [staffPerformance] = await pool.query(`
-                    SELECT su.full_name, su.role, COUNT(a.id) as attendance_days, 
+                    SELECT su.full_name, sr.role_name as role, COUNT(a.id) as attendance_days, 
                            SUM(TIMESTAMPDIFF(HOUR, a.login_time, IFNULL(a.logout_time, NOW()))) as total_hours
                     FROM staff_users su
+                    LEFT JOIN staff_roles sr ON su.role_id = sr.id
                     LEFT JOIN staff_attendance a ON su.id = a.staff_id
                     WHERE su.created_at >= ? AND su.created_at <= ?
-                    GROUP BY su.id
+                    GROUP BY su.id, sr.role_name
                 `, [startDate, endDate + " 23:59:59"]);
                 data = staffPerformance;
                 summary.totalOrders = staffPerformance.length;
@@ -334,85 +344,115 @@ export const generateUnifiedReport = async (req, res) => {
 
 export const generatePdfReport = async (req, res) => {
     try {
+        const { type, startDate, endDate } = req.query;
+        
+        // 1. Fetch data similar to generateUnifiedReport logic
+        let data = [];
+        let title = "Business Report";
+        let summary = { totalRevenue: 0, totalOrders: 0 };
+
+        // For simplicity, we reuse the query logic but tailored for PDF
+        // Re-calculate or re-fetch (Ideally we'd have a helper)
+        if (type === 'revenue') {
+            title = "Revenue Analytics Report";
+            const [rows] = await pool.query(`
+                SELECT DATE(created_at) as date, SUM(total_price) as revenue, COUNT(DISTINCT order_id) as orders
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                GROUP BY DATE(created_at) ORDER BY date ASC
+            `, [startDate, endDate + " 23:59:59"]);
+            data = rows;
+            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+            summary.totalOrders = rows.reduce((acc, curr) => acc + Number(curr.orders), 0);
+        } else if (type === 'food') {
+            title = "Food Sales Report";
+            const [rows] = await pool.query(`
+                SELECT item_name, SUM(quantity) as sold, SUM(total_price) as revenue
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                GROUP BY item_name ORDER BY sold DESC
+            `, [startDate, endDate + " 23:59:59"]);
+            data = rows;
+            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+            summary.totalOrders = rows.reduce((acc, curr) => acc + Number(curr.sold), 0);
+        } else {
+            // Default to orders for other types in PDF for now
+            title = "Order History Report";
+            const [rows] = await pool.query(`
+                SELECT order_id, order_source, item_name, quantity, total_price, created_at
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                ORDER BY created_at DESC
+            `, [startDate, endDate + " 23:59:59"]);
+            data = rows;
+            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.total_price), 0);
+            summary.totalOrders = rows.length;
+        }
+
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `report_${Date.now()}.pdf`;
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
-
         doc.pipe(res);
 
         // Header
-        const logoPath = path.resolve('public/logo.png');
-        try {
-            doc.image(logoPath, 50, 45, { width: 50 });
-        } catch (e) {
-            console.warn('Logo not found for PDF');
-        }
-
-        doc.fillColor('#D4AF37')
-           .fontSize(20)
-           .text("Melissa's Food Court Sales Report", 110, 57);
-
+        doc.fillColor('#D4AF37').fontSize(22).font('Helvetica-Bold').text("MELISSA'S FOOD COURT", { align: 'center' });
+        doc.fillColor('#333').fontSize(14).text(title, { align: 'center' });
+        doc.fontSize(10).text(`Period: ${startDate} to ${endDate}`, { align: 'center' });
         doc.moveDown();
-        doc.strokeColor('#333').lineWidth(1).moveTo(50, 100).lineTo(550, 100).stroke();
+        doc.strokeColor('#D4AF37').lineWidth(2).moveTo(50, 130).lineTo(550, 130).stroke();
 
-        // Sample Data
-        const sampleData = [
-            { date: 'Day 1', orders: 25, revenue: 18000, cancelled: 2 },
-            { date: 'Day 2', orders: 32, revenue: 22500, cancelled: 1 },
-            { date: 'Day 3', orders: 28, revenue: 20000, cancelled: 3 },
-            { date: 'Day 4', orders: 40, revenue: 31000, cancelled: 2 },
-            { date: 'Day 5', orders: 30, revenue: 24500, cancelled: 1 },
-            { date: 'Day 6', orders: 35, revenue: 27000, cancelled: 0 },
-            { date: 'Day 7', orders: 45, revenue: 36000, cancelled: 4 },
-            { date: 'Day 8', orders: 38, revenue: 29000, cancelled: 2 },
-            { date: 'Day 9', orders: 41, revenue: 33500, cancelled: 1 },
-            { date: 'Day 10', orders: 50, revenue: 42000, cancelled: 3 },
-        ];
-
-        const totalOrders = sampleData.reduce((sum, d) => sum + d.orders, 0);
-        const totalRevenue = sampleData.reduce((sum, d) => sum + d.revenue, 0);
-        const totalCancelled = sampleData.reduce((sum, d) => sum + d.cancelled, 0);
-
-        // Summary
+        // Summary Cards
         doc.moveDown(2);
-        doc.fontSize(14).fillColor('#000').text("Report Summary:", { underline: true });
-        doc.fontSize(12).moveDown(0.5);
-        doc.text(`Total Orders: ${totalOrders}`);
-        doc.text(`Total Revenue: Rs. ${totalRevenue.toLocaleString()}`);
-        doc.text(`Total Cancelled Orders: ${totalCancelled}`);
+        const startY = doc.y;
+        doc.rect(50, startY, 240, 60).fill('#f9f9f9').stroke('#eee');
+        doc.rect(300, startY, 240, 60).fill('#f9f9f9').stroke('#eee');
+        
+        doc.fillColor('#666').fontSize(10).text("TOTAL REVENUE", 70, startY + 15);
+        doc.fillColor('#000').fontSize(16).font('Helvetica-Bold').text(`Rs. ${summary.totalRevenue.toLocaleString()}`, 70, startY + 30);
+        
+        doc.fillColor('#666').fontSize(10).font('Helvetica').text("TOTAL ENTRIES", 320, startY + 15);
+        doc.fillColor('#000').fontSize(16).font('Helvetica-Bold').text(`${summary.totalOrders}`, 320, startY + 30);
 
-        // Table Header
-        doc.moveDown(2);
-        const tableTop = 270;
-        doc.font('Helvetica-Bold').fontSize(12);
-        doc.text('Date', 50, tableTop);
-        doc.text('Orders', 150, tableTop);
-        doc.text('Revenue', 250, tableTop);
-        doc.text('Cancelled Orders', 400, tableTop);
+        // Table
+        doc.moveDown(4);
+        doc.fillColor('#D4AF37').fontSize(12).text("Detailed Data Table:", { underline: true });
+        doc.moveDown();
+
+        const tableTop = doc.y;
+        const colWidths = [150, 100, 100, 100];
+        const headers = data.length > 0 ? Object.keys(data[0]) : [];
+
+        // Draw Headers
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+        let currentX = 50;
+        headers.slice(0, 4).forEach((h, i) => {
+            doc.text(h.toUpperCase().replace('_', ' '), currentX, tableTop);
+            currentX += colWidths[i] || 100;
+        });
 
         doc.strokeColor('#eee').lineWidth(1).moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
 
-        // Table Content
-        doc.font('Helvetica').fontSize(10);
-        let rowTop = tableTop + 30;
-        sampleData.forEach(item => {
-            doc.text(item.date, 50, rowTop);
-            doc.text(item.orders.toString(), 150, rowTop);
-            doc.text(`Rs. ${item.revenue.toLocaleString()}`, 250, rowTop);
-            doc.text(item.cancelled.toString(), 400, rowTop);
-            rowTop += 25;
+        // Draw Rows
+        doc.font('Helvetica').fontSize(9);
+        let rowY = tableTop + 25;
+        data.slice(0, 50).forEach(row => { // Limit to 50 rows for PDF safety
+            if (rowY > 700) { doc.addPage(); rowY = 50; }
+            let itemX = 50;
+            Object.values(row).slice(0, 4).forEach((val, i) => {
+                let displayVal = val;
+                if (val instanceof Date) displayVal = val.toLocaleDateString();
+                doc.text(String(displayVal), itemX, rowY);
+                itemX += colWidths[i] || 100;
+            });
+            rowY += 20;
         });
 
         // Footer
-        doc.fontSize(10).fillColor('#888').text(
-            `Generated by Melissa's Food Court Admin Dashboard`,
-            50, rowTop + 50, { align: 'center' }
-        );
-        doc.text(
-            `Generated Date & Time: ${new Date().toLocaleString()}`,
-            50, rowTop + 65, { align: 'center' }
+        doc.fontSize(8).fillColor('#999').text(
+            `Generated on ${new Date().toLocaleString()} | melissasfoodcourt.com`,
+            50, 750, { align: 'center' }
         );
 
         doc.end();

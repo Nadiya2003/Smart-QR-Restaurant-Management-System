@@ -6,7 +6,12 @@ import config from '../../config';
 
 // Helper: Permissions List
 const ALL_STAFF_PERMS = [
-    'View Orders', 'Manage Orders', 'View Inventory', 'Update Inventory', 'View Reports', 'Manage Menu'
+    { key: 'orders.view', label: 'View Orders' },
+    { key: 'orders.status_update', label: 'Update Status' },
+    { key: 'menu.manage', label: 'Manage Menu' },
+    { key: 'inventory.manage', label: 'Manage Inventory' },
+    { key: 'reports.view', label: 'View Reports' },
+    { key: 'staff.manage', label: 'Manage Staff' }
 ];
 
 const AdminDashboard = () => {
@@ -29,6 +34,9 @@ const AdminDashboard = () => {
 
     const [view, setView] = useState('overview'); 
     const [loading, setLoading] = useState(true);
+    const [selectedMenuCategory, setSelectedMenuCategory] = useState('All');
+    const [orderSearchTerm, setOrderSearchTerm] = useState('');
+    const [selectedOrderCategory, setSelectedOrderCategory] = useState('All');
 
     // Modal State
     const [selectedUser, setSelectedUser] = useState(null);
@@ -445,9 +453,14 @@ const AdminDashboard = () => {
     const handleGeneratePdfReport = async () => {
         const token = localStorage.getItem('adminToken');
         try {
-            window.open(`${config.API_BASE_URL}/api/reports/pdf?token=${token}`, '_blank');
+            const params = new URLSearchParams({
+                ...reportFilters,
+                token: token
+            }).toString();
+            window.open(`${config.API_BASE_URL}/api/reports/pdf?${params}`, '_blank');
         } catch (err) {
-            console.error(err);
+            console.error('PDF error:', err);
+            alert('Could not prepare PDF download');
         }
     };
 
@@ -537,44 +550,53 @@ const AdminDashboard = () => {
     };
 
     const exportReport = (report) => {
-        // Simple mock of PNG export
-        // In a real app we'd use a server-side route or canvas to draw this
-        const reportContent = `
-            MELISSA'S FOOD COURT
-            Address: 123 Food Street, Colombo, Sri Lanka
-            ---------------------------
-            REPORT: ${report.title}
-            Type: ${report.report_type}
-            Date: ${new Date(report.generated_at).toLocaleString()}
-            
-            SUMMARY:
-            Total Orders: ${JSON.parse(report.summary_data).totalOrders}
-            Total Revenue: Rs. ${JSON.parse(report.summary_data).totalRevenue}
-             Most Ordered: ${JSON.parse(report.summary_data).mostOrderedItems.join(', ')}
-        `;
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = 600;
-        canvas.height = 400;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, 600, 400);
-        ctx.fillStyle = 'black';
-        ctx.font = '20px Arial';
-        ctx.fillText("MELISSA'S FOOD COURT", 50, 50);
-        ctx.font = '14px Arial';
-        ctx.fillText("Address: 123 Food Street, Colombo, Sri Lanka", 50, 80);
-        ctx.fillText("--------------------------------------------------", 50, 100);
-        
-        const lines = reportContent.split('\n');
-        lines.forEach((line, i) => {
-            ctx.fillText(line.trim(), 50, 130 + (i * 20));
-        });
+        try {
+            let summary = {};
+            try {
+                summary = typeof report.summary_data === 'string' 
+                    ? JSON.parse(report.summary_data || '{}') 
+                    : (report.summary_data || {});
+            } catch (e) { summary = {}; }
 
-        const link = document.createElement('a');
-        link.download = `report_${report.id}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+            const reportContent = `
+                MELISSA'S FOOD COURT
+                ---------------------------
+                REPORT: ${report.title || 'Summary'}
+                Type: ${report.report_type || 'General'}
+                Date: ${new Date(report.generated_at).toLocaleString()}
+                
+                SUMMARY:
+                Total Orders: ${summary.totalOrders || 0}
+                Total Revenue: Rs. ${summary.totalRevenue || 0}
+                ${summary.mostOrderedItems ? `Most Ordered: ${Array.isArray(summary.mostOrderedItems) ? summary.mostOrderedItems.join(', ') : summary.mostOrderedItems}` : ''}
+            `;
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 600;
+            canvas.height = 400;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 600, 400);
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.fillText("MELISSA'S FOOD COURT", 50, 50);
+            ctx.font = '14px Arial';
+            ctx.fillText("Report Details", 50, 80);
+            ctx.fillText("--------------------------------------------------", 50, 100);
+            
+            const lines = reportContent.split('\n');
+            lines.forEach((line, i) => {
+                ctx.fillText(line.trim(), 50, 130 + (i * 20));
+            });
+
+            const link = document.createElement('a');
+            link.download = `report_${report.id || Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch (err) {
+            console.error('Export failed:', err);
+            alert('Failed to export report image');
+        }
     };
 
     if (loading) return (
@@ -669,16 +691,16 @@ const AdminDashboard = () => {
 
                         {[
                             { id: 'overview', label: 'Dashboard', icon: '📊' },
-                            { id: 'Menus', label: 'Menu Items', icon: '🍽️' },
+                            { id: 'menus', label: 'Menu Items', icon: '🍽️' },
                             { id: 'orders', label: 'Orders', icon: '📋' },
                             { id: 'staff', label: 'Staff members', icon: '👥' },
                             { id: 'customers', label: 'Customers', icon: '👤' },
-                            { id: 'Suppliers', label: 'Suppliers', icon: '🚚' },
-                            { id: 'Inventory', label: 'Inventory', icon: '📦' },
+                            { id: 'suppliers', label: 'Suppliers', icon: '🚚' },
+                            { id: 'inventory', label: 'Inventory', icon: '📦' },
                             { id: 'reservations', label: 'Reservations', icon: '📅' },
-                            { id: 'Reports', label: 'Business Reports', icon: '📈' },
+                            { id: 'reports', label: 'Business Reports', icon: '📈' },
                             { id: 'audit-logs', label: 'Audit Logs', icon: '🔐' },
-                            { id: 'Tables', label: 'Tables', icon: '🪑' }
+                            { id: 'tables', label: 'Tables', icon: '🪑' }
                         ].map(item => (
                             <button
                                 key={item.id}
@@ -711,47 +733,45 @@ const AdminDashboard = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                     <button onClick={() => setRevModalOpen(true)} className="group text-left transition-transform active:scale-95">
                                         <GlassCard className="h-full border-t-4 border-gold-500 bg-gradient-to-br from-gold-500/10 to-transparent group-hover:border-white transition-colors">
-                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Today Revenue</p>
-                                            <p className="text-3xl text-white font-black mb-1">Rs. {stats.todayRevenue || 0}</p>
-                                            <div className="flex items-center gap-1 text-[10px] text-green-500 font-bold uppercase mt-4">
-                                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                                                Real-time Update
+                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Total Revenue</p>
+                                            <p className="text-3xl text-white font-black mb-1">Rs. {stats.revenue || 0}</p>
+                                            <div className="flex items-center gap-1 text-[10px] text-gold-500 font-bold uppercase mt-4">
+                                                Today: Rs. {stats.todayRevenue || 0}
                                             </div>
-                                            <p className="text-[9px] text-gold-500/50 mt-2 font-bold uppercase tracking-tighter">Click to see analytics →</p>
+                                            <p className="text-[9px] text-gold-500/50 mt-2 font-bold uppercase tracking-tighter">View breakdown →</p>
                                         </GlassCard>
                                     </button>
 
                                     <button onClick={() => setOrdModalOpen(true)} className="group text-left transition-transform active:scale-95">
                                         <GlassCard className="h-full border-t-4 border-blue-500 bg-gradient-to-br from-blue-500/10 to-transparent group-hover:border-white transition-colors">
-                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Total Orders</p>
-                                            <p className="text-3xl text-white font-black mb-1">{stats.totalOrders || 0}</p>
-                                            <div className="mt-4 flex gap-1">
-                                                {[1,2,3,4,5].map(i => <div key={i} className="h-1 flex-1 bg-blue-500/20 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{width: `${Math.random()*100}%`}}></div></div>)}
+                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Todays Orders</p>
+                                            <p className="text-3xl text-white font-black mb-1">{stats.details?.todayOrders || 0}</p>
+                                            <div className="flex items-center gap-1 text-[10px] text-blue-500 font-bold uppercase mt-4">
+                                                Total: {stats.totalOrders || 0}
                                             </div>
-                                            <p className="text-[9px] text-blue-500/50 mt-4 font-bold uppercase tracking-tighter">View order history →</p>
-                                        </GlassCard>
-                                    </button>
-
-                                    <button onClick={() => setActiveStaffModalOpen(true)} className="group text-left transition-transform active:scale-95">
-                                        <GlassCard className="h-full border-t-4 border-orange-500 bg-gradient-to-br from-orange-500/10 to-transparent group-hover:border-white transition-colors">
-                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Active Staff</p>
-                                            <p className="text-3xl text-white font-black mb-1">{stats.activeStaff || 0}</p>
-                                            <div className="flex -space-x-2 mt-4 overflow-hidden">
-                                                {[1,2,3].map(i => <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-black bg-zinc-800 flex items-center justify-center text-[10px]">👤</div>)}
-                                                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-black bg-zinc-700 flex items-center justify-center text-[8px] font-bold">+{Math.max(0, (stats.activeStaff || 0) - 3)}</div>
-                                            </div>
-                                            <p className="text-[9px] text-orange-500/50 mt-2 font-bold uppercase tracking-tighter">Manage attendance →</p>
+                                            <p className="text-[9px] text-blue-500/50 mt-2 font-bold uppercase tracking-tighter">Manage orders →</p>
                                         </GlassCard>
                                     </button>
 
                                     <button onClick={() => setCustModalOpen(true)} className="group text-left transition-transform active:scale-95">
                                         <GlassCard className="h-full border-t-4 border-purple-500 bg-gradient-to-br from-purple-500/10 to-transparent group-hover:border-white transition-colors">
-                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Total Customers</p>
-                                            <p className="text-3xl text-white font-black mb-1">{stats.totalCustomers || 0}</p>
-                                            <div className="mt-4 text-[10px] text-purple-400 font-bold bg-purple-500/10 px-2 py-1 rounded w-fit border border-purple-500/20">
-                                                +{stats.details?.newCustomersWeek || 0} this week
+                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Weekly Signups</p>
+                                            <p className="text-3xl text-white font-black mb-1">{stats.details?.newCustomersWeek || 0}</p>
+                                            <div className="flex items-center gap-1 text-[10px] text-purple-500 font-bold uppercase mt-4">
+                                                Total Base: {stats.totalCustomers || 0}
                                             </div>
-                                            <p className="text-[9px] text-purple-500/50 mt-2 font-bold uppercase tracking-tighter">View directory →</p>
+                                            <p className="text-[9px] text-purple-500/50 mt-2 font-bold uppercase tracking-tighter">View customers →</p>
+                                        </GlassCard>
+                                    </button>
+
+                                    <button onClick={() => setActiveStaffModalOpen(true)} className="group text-left transition-transform active:scale-95">
+                                        <GlassCard className="h-full border-t-4 border-orange-500 bg-gradient-to-br from-orange-500/10 to-transparent group-hover:border-white transition-colors">
+                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-2">Team on Duty</p>
+                                            <p className="text-3xl text-white font-black mb-1">{stats.activeStaff || 0}</p>
+                                            <div className="flex -space-x-2 mt-4 overflow-hidden">
+                                                {[1,2,3].map(i => <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-black bg-zinc-800 flex items-center justify-center text-[10px]">👤</div>)}
+                                                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-black bg-zinc-700 flex items-center justify-center text-[8px] font-bold">+{Math.max(0, (stats.staff || 0) - 3)}</div>
+                                            </div>
                                         </GlassCard>
                                     </button>
                                 </div>
@@ -799,9 +819,9 @@ const AdminDashboard = () => {
                                         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Quick Links</h3>
                                         <div className="grid grid-cols-2 gap-2">
                                             <Button onClick={() => setView('orders')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">Manage Orders</Button>
-                                            <Button onClick={() => setView('Reports')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">View Reports</Button>
-                                            <Button onClick={() => setView('Inventory')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">Stock Setup</Button>
-                                            <Button onClick={() => setView('Menus')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">Update Menu</Button>
+                                            <Button onClick={() => setView('reports')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">View Reports</Button>
+                                            <Button onClick={() => setView('inventory')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">Stock Setup</Button>
+                                            <Button onClick={() => setView('menus')} variant="secondary" className="text-[9px] h-10 font-bold uppercase">Update Menu</Button>
                                         </div>
                                     </GlassCard>
                                 </div>
@@ -816,11 +836,11 @@ const AdminDashboard = () => {
                                         <GlassCard className="bg-zinc-900/50">
                                             <h3 className="text-xl font-bold mb-6">Revenue by Day (Past 10 Days)</h3>
                                             <div className="h-64 flex items-end gap-2 px-4">
-                                                {revenueData.daily.map((d, i) => (
+                                                {(revenueData.daily || []).map((d, i) => (
                                                     <div key={i} className="flex-1 flex flex-col items-center group">
                                                         <div 
                                                             className="w-full bg-gold-500/40 rounded-t group-hover:bg-gold-500 transition-all cursor-help relative" 
-                                                            style={{ height: `${(d.revenue / Math.max(...revenueData.daily.map(x => x.revenue))) * 100}%` }}
+                                                            style={{ height: `${(d.revenue / Math.max(1, ...(revenueData.daily || []).map(x => x.revenue))) * 100}%` }}
                                                         >
                                                             <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 Rs.{d.revenue}
@@ -844,7 +864,7 @@ const AdminDashboard = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-white/5">
-                                                    {revenueData.daily.map((d, i) => (
+                                                    {(revenueData.daily || []).map((d, i) => (
                                                         <tr key={i} className="hover:bg-white/5">
                                                             <td className="p-4">{new Date(d.date).toDateString()}</td>
                                                             <td className="p-4 font-bold">{d.orders}</td>
@@ -860,14 +880,14 @@ const AdminDashboard = () => {
                                         <GlassCard>
                                             <h4 className="text-sm font-bold text-gray-400 mb-6 uppercase tracking-widest border-b border-white/5 pb-2">Order type breakdown</h4>
                                             <div className="space-y-6">
-                                                {revenueData.breakdown.map((b, i) => (
+                                                {(revenueData.breakdown || []).map((b, i) => (
                                                     <div key={i} className="space-y-2">
                                                         <div className="flex justify-between items-end">
                                                             <span className="text-white font-bold">{b.type}</span>
                                                             <span className="text-sm text-gray-400">Rs. {b.revenue}</span>
                                                         </div>
                                                         <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-gold-500" style={{ width: `${(b.revenue / stats.revenue) * 100}%` }} />
+                                                            <div className="h-full bg-gold-500" style={{ width: `${(b.revenue / Math.max(1, stats.revenue)) * 100}%` }} />
                                                         </div>
                                                     </div>
                                                 ))}
@@ -938,7 +958,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {view === 'Menus' && (
+                        {view === 'menus' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20 shadow-2xl">
                                     <div>
@@ -958,19 +978,28 @@ const AdminDashboard = () => {
                                             <div className="h-0.5 w-8 bg-gold-500" />
                                             <h4 className="text-lg font-bold text-white uppercase tracking-widest text-sm">Categories</h4>
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                                            <GlassCard 
+                                                onClick={() => setSelectedMenuCategory('All')}
+                                                className={`text-center cursor-pointer transition-all border ${selectedMenuCategory === 'All' ? 'border-gold-500 bg-gold-500/10' : 'border-transparent hover:border-white/20'}`}
+                                            >
+                                                <div className="h-12 w-12 mx-auto rounded-full bg-zinc-800 flex items-center justify-center text-xl mb-2">🍱</div>
+                                                <h5 className="font-bold text-white text-[10px] uppercase">All Items</h5>
+                                            </GlassCard>
                                             {categories.map(cat => {
                                                 const itemCount = menus.filter(m => m.category === cat.name || m.category_id === cat.id).length;
+                                                const isActive = selectedMenuCategory === cat.name || selectedMenuCategory === cat.id;
                                                 return (
-                                                    <GlassCard key={cat.id} className={`text-center group transition-all border ${itemCount === 0 ? 'border-red-500/30' : 'border-transparent hover:border-gold-500/30'}`}>
-                                                        <div className="h-16 w-16 mx-auto rounded-full bg-zinc-800 flex items-center justify-center text-2xl mb-3 overflow-hidden">
-                                                            {cat.image ? <img src={cat.image.startsWith('http') ? cat.image : (cat.image.startsWith('/') ? `${config.API_BASE_URL}${cat.image}` : `${config.API_BASE_URL}/food/${cat.image}`)} alt={cat.name} /> : '🍽️'}
+                                                    <GlassCard 
+                                                        key={cat.id} 
+                                                        onClick={() => setSelectedMenuCategory(cat.name)}
+                                                        className={`text-center cursor-pointer group transition-all border ${isActive ? 'border-gold-500 bg-gold-500/10' : (itemCount === 0 ? 'border-red-500/30' : 'border-transparent hover:border-gold-500/30')}`}
+                                                    >
+                                                        <div className="h-12 w-12 mx-auto rounded-full bg-zinc-800 flex items-center justify-center text-xl mb-2 overflow-hidden shadow-inner">
+                                                            {cat.image ? <img src={cat.image.startsWith('http') ? cat.image : (cat.image.startsWith('/') ? `${config.API_BASE_URL}${cat.image}` : `${config.API_BASE_URL}/food/${cat.image}`)} alt={cat.name} className="w-full h-full object-cover" /> : '🍽️'}
                                                         </div>
-                                                        <h5 className="font-bold text-white text-sm group-hover:text-gold-500">{cat.name}</h5>
-                                                        <p className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{itemCount} Items</p>
-                                                        {itemCount === 0 && (
-                                                            <div className="mt-2 text-[8px] text-red-500 font-bold bg-red-500/10 py-1 rounded">⚠️ Empty Category</div>
-                                                        )}
+                                                        <h5 className="font-black text-white text-[10px] uppercase group-hover:text-gold-500 truncate">{cat.name}</h5>
+                                                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter mt-1">{itemCount} Dishes</p>
                                                     </GlassCard>
                                                 );
                                             })}
@@ -995,7 +1024,9 @@ const AdminDashboard = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-white/5">
-                                                    {menus.map(item => (
+                                                    {menus
+                                                        .filter(item => selectedMenuCategory === 'All' || item.category === selectedMenuCategory)
+                                                        .map(item => (
                                                         <tr key={item.id} id={`menu-item-${item.id}`} className="hover:bg-white/[0.02] transition-colors group">
                                                             <td className="px-6 py-4">
                                                                 <div className="w-12 h-12 rounded-lg bg-zinc-800 overflow-hidden border border-white/10">
@@ -1084,13 +1115,20 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
                                             <div className="bg-white/5 p-4 rounded-xl space-y-2">
-                                                <div className="flex border-b border-white/5 pb-2 text-[10px] text-gray-600 font-bold uppercase">
-                                                    <div className="flex-1">Items</div>
-                                                    <div>Total</div>
-                                                </div>
-                                                <div className="text-sm font-bold text-white">
-                                                    {/* In a real app we'd parse JSON items */}
-                                                    {order.table_number ? `Dine-in Order @ Table ${order.table_number}` : 'External Order'}
+                                                <div className="text-[10px] text-gray-300 space-y-2">
+                                                    {(() => {
+                                                        try {
+                                                            const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                                                            return items && items.length > 0 ? items.map((it, idx) => (
+                                                                <div key={idx} className="flex justify-between items-center bg-black/30 p-2 rounded">
+                                                                    <span>{it.name} <span className="text-gray-500 text-[8px] font-black">×{it.quantity}</span></span>
+                                                                    <span className="font-mono">Rs.{Number(it.price * it.quantity).toLocaleString()}</span>
+                                                                </div>
+                                                            )) : <span className="italic text-gray-600">No items listed</span>;
+                                                        } catch (e) {
+                                                            return <span className="italic text-gray-600">{order.table_number ? `Dine-in Order @ Table ${order.table_number}` : 'External Order'}</span>;
+                                                        }
+                                                    })()}
                                                 </div>
                                                 <div className="flex justify-between items-end mt-4">
                                                     <p className="text-xs text-gray-500 font-bold">Total Amount</p>
@@ -1160,7 +1198,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {view === 'Suppliers' && (
+                        {view === 'suppliers' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20">
                                     <div>
@@ -1203,7 +1241,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {view === 'Inventory' && (
+                        {view === 'inventory' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20">
                                     <div>
@@ -1247,7 +1285,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {view === 'Reports' && (
+                        {view === 'reports' && (
                             <div className="space-y-6 animate-in fade-in duration-500">
                                 {/* Report Generation Panel */}
                                 <GlassCard className="border border-gold-500/20">
@@ -1329,7 +1367,10 @@ const AdminDashboard = () => {
                                                     {generatedReport.data.map((row, i) => (
                                                         <tr key={i} className="hover:bg-white/5 text-gray-300">
                                                             {Object.values(row).map((v, j) => (
-                                                                <td key={j} className="p-4 text-xs">{v}</td>
+                                                                <td key={j} className="p-4 text-xs font-mono">
+                                                                    {v === null || v === undefined ? '—' : 
+                                                                     (typeof v === 'object' ? (v instanceof Date ? v.toLocaleString() : JSON.stringify(v)) : String(v))}
+                                                                </td>
                                                             ))}
                                                         </tr>
                                                     ))}
@@ -1343,7 +1384,10 @@ const AdminDashboard = () => {
                                         <h4 className="text-xs font-black text-gray-600 uppercase tracking-widest px-2">Recent Report History</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                             {reports.length > 0 ? reports.map(report => {
-                                                const s = JSON.parse(report.summary_data || '{}');
+                                                let s = {};
+                                                try {
+                                                    s = typeof report.summary_data === 'string' ? JSON.parse(report.summary_data || '{}') : (report.summary_data || {});
+                                                } catch (e) { console.error("Parse summary error", e); s = {}; }
                                                 return (
                                                     <GlassCard key={report.id} className="hover:border-gold-500 transition-colors group">
                                                         <div className="flex justify-between items-start mb-6">
@@ -1366,9 +1410,17 @@ const AdminDashboard = () => {
 
                                                         <div className="flex gap-2">
                                                             <Button onClick={() => {
+                                                                let reportData = [];
+                                                                try {
+                                                                    reportData = typeof report.data_json === 'string' ? JSON.parse(report.data_json || '[]') : (report.data_json || []);
+                                                                } catch (e) { 
+                                                                    console.error("Parse data error", e);
+                                                                    alert("Could not parse report data. It may be corrupted.");
+                                                                    return;
+                                                                }
                                                                 setGeneratedReport({
                                                                     title: report.title,
-                                                                    data: JSON.parse(report.data_json || '[]'),
+                                                                    data: Array.isArray(reportData) ? reportData : [],
                                                                     summary: s
                                                                 });
                                                             }} variant="secondary" className="flex-1 text-[10px] h-9 font-black uppercase tracking-widest">
@@ -1417,7 +1469,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {view === 'Tables' && (
+                        {view === 'tables' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-xl border border-gold-500/20">
                                     <h3 className="text-xl font-black text-white tracking-tight uppercase">Venue Layout</h3>
@@ -1470,42 +1522,95 @@ const AdminDashboard = () => {
                                         <h3 className="text-xl font-black text-white">Reservations</h3>
                                         <p className="text-xs text-gray-500 mt-1">Manage all table reservations</p>
                                     </div>
+                                    <div className="flex gap-2">
+                                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                                            <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                            <span className="text-[10px] font-bold text-yellow-500 uppercase">{reservations.filter(r => (r.reservation_status || r.status) === 'PENDING').length} Pending</span>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
                                     <table className="w-full text-left text-sm">
                                         <thead className="bg-[#101010] text-gold-500 text-[10px] uppercase font-bold tracking-widest">
                                             <tr>
-                                                <th className="p-4">Guest Name</th>
-                                                <th className="p-4">Date & Time</th>
-                                                <th className="p-4">Party Size</th>
-                                                <th className="p-4">Table</th>
-                                                <th className="p-4 text-right">Status</th>
+                                                <th className="p-4">Guest Reference</th>
+                                                <th className="p-4">Contact</th>
+                                                <th className="p-4">Schedule</th>
+                                                <th className="p-4">Area & Table</th>
+                                                <th className="p-4 text-right">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-white/5">
                                             {reservations.length === 0 ? (
                                                 <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic">No reservations found.</td></tr>
-                                            ) : reservations.map(res => (
-                                                <tr key={res.id} className="hover:bg-white/5 transition-colors">
-                                                    <td className="p-4 font-bold text-white">{res.guest_name || res.name || 'Guest'}</td>
-                                                    <td className="p-4 text-gray-400 text-xs">
-                                                        <p>{res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</p>
-                                                        <p className="text-gray-600">{res.reservation_time || res.time || ''}</p>
-                                                    </td>
-                                                    <td className="p-4 text-gray-300">{res.party_size || res.guests || 1} people</td>
-                                                    <td className="p-4 text-gray-400">{res.table_number ? `Table ${res.table_number}` : 'Not assigned'}</td>
-                                                    <td className="p-4 text-right">
-                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                                                            res.status === 'confirmed' ? 'bg-green-600/20 text-green-400' :
-                                                            res.status === 'pending' ? 'bg-yellow-600/20 text-yellow-400' :
-                                                            res.status === 'cancelled' ? 'bg-red-600/20 text-red-400' :
-                                                            'bg-zinc-800 text-gray-400'
-                                                        }`}>
-                                                            {res.status || 'pending'}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            ) : reservations.map(res => {
+                                                const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
+                                                return (
+                                                    <tr key={res.id} className="hover:bg-white/5 transition-colors">
+                                                        <td className="p-4">
+                                                            <p className="font-bold text-white">{res.customer_name || res.guest_name || res.name || 'Guest'}</p>
+                                                            <p className="text-[10px] text-gray-500">{res.guest_count || res.party_size || res.guests || 1} People</p>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <p className="text-xs text-gray-300">{res.mobile_number || res.phone || 'N/A'}</p>
+                                                            <p className="text-[10px] text-gray-500 truncate max-w-[150px]">{res.email || ''}</p>
+                                                        </td>
+                                                        <td className="p-4 text-gray-400 text-xs text-gray-300">
+                                                            <p className="font-bold">{res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</p>
+                                                            <p className="text-gold-500 font-mono">{res.reservation_time || res.time || ''}</p>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <p className="text-xs text-white font-bold">{res.area_name || 'General'}</p>
+                                                            <p className="text-[10px] text-gray-500">{res.table_number ? `Table #${res.table_number}` : 'No Table'}</p>
+                                                        </td>
+                                                        <td className="p-4 text-right">
+                                                            <div className="flex flex-col items-end gap-2">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight ${
+                                                                    status === 'CONFIRMED' ? 'bg-green-600/20 text-green-400 border border-green-500/20' :
+                                                                    status === 'PENDING' ? 'bg-yellow-600/20 text-yellow-400 border border-yellow-500/20' :
+                                                                    status === 'CANCELLED' ? 'bg-red-600/20 text-red-400 border border-red-500/20' :
+                                                                    'bg-zinc-800 text-gray-400'
+                                                                }`}>
+                                                                    {status}
+                                                                </span>
+                                                                {status === 'PENDING' && (
+                                                                    <div className="flex gap-1">
+                                                                        <button 
+                                                                            onClick={async () => {
+                                                                                const token = localStorage.getItem('adminToken');
+                                                                                await fetch(`${config.API_BASE_URL}/api/admin/reservations/${res.id}/status`, {
+                                                                                    method: 'PUT',
+                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                                                    body: JSON.stringify({ status: 'CONFIRMED' })
+                                                                                });
+                                                                                fetchData();
+                                                                            }}
+                                                                            className="text-[9px] bg-green-500/10 text-green-500 border border-green-500/20 px-2 py-1 rounded hover:bg-green-500 hover:text-white transition-all font-bold"
+                                                                        >
+                                                                            CONFIRM
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={async () => {
+                                                                                if (!window.confirm('Cancel this reservation?')) return;
+                                                                                const token = localStorage.getItem('adminToken');
+                                                                                await fetch(`${config.API_BASE_URL}/api/admin/reservations/${res.id}/status`, {
+                                                                                    method: 'PUT',
+                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                                                    body: JSON.stringify({ status: 'CANCELLED' })
+                                                                                });
+                                                                                fetchData();
+                                                                            }}
+                                                                            className="text-[9px] bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-1 rounded hover:bg-red-500 hover:text-white transition-all font-bold"
+                                                                        >
+                                                                            CANCEL
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -1545,14 +1650,14 @@ const AdminDashboard = () => {
                         <h3 className="text-xl font-black mb-6 text-white uppercase tracking-tight border-b border-white/5 pb-4">Access control list</h3>
                         <div className="grid grid-cols-1 gap-3 mb-8">
                             {ALL_STAFF_PERMS.map(perm => (
-                                <label key={perm} className="flex items-center justify-between cursor-pointer p-4 bg-white/5 rounded-xl border border-transparent hover:border-gold-500/30 transition-all">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{perm}</span>
+                                <label key={perm.key} className="flex items-center justify-between cursor-pointer p-4 bg-white/5 rounded-xl border border-transparent hover:border-gold-500/30 transition-all">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{perm.label}</span>
                                     <input
                                         type="checkbox"
-                                        checked={userPerms.includes(perm)}
+                                        checked={userPerms.includes(perm.key)}
                                         onChange={() => {
-                                            if (userPerms.includes(perm)) setUserPerms(userPerms.filter(p => p !== perm));
-                                            else setUserPerms([...userPerms, perm]);
+                                            if (userPerms.includes(perm.key)) setUserPerms(userPerms.filter(p => p !== perm.key));
+                                            else setUserPerms([...userPerms, perm.key]);
                                         }}
                                         className="w-5 h-5 accent-gold-500 cursor-pointer"
                                     />
@@ -1607,7 +1712,7 @@ const AdminDashboard = () => {
                         </div>
 
                         <div className="mt-8 flex gap-4">
-                            <Button className="flex-1" variant="primary" onClick={() => { setRevModalOpen(false); setView('Reports'); }}>Detailed Financial Report</Button>
+                            <Button className="flex-1" variant="primary" onClick={() => { setRevModalOpen(false); setView('reports'); }}>Detailed Financial Report</Button>
                             <Button className="flex-1" variant="secondary" onClick={() => setRevModalOpen(false)}>Close View</Button>
                         </div>
                     </div>
@@ -1722,54 +1827,57 @@ const AdminDashboard = () => {
                             <h3 className="text-xl font-black text-white uppercase">{editingMenu ? 'Edit Menu Item' : 'New Menu Item'}</h3>
                             <button onClick={() => { setMenuModalOpen(false); setEditingMenu(null); setMenuImagePreview(null); }} className="text-gray-500 hover:text-white transition-colors">✕</button>
                         </div>
-                        <form id="menu-item-form" onSubmit={handleAddMenu} className="flex flex-col h-full max-h-[85vh]">
-                            <div className="flex-1 p-8 space-y-5 overflow-y-auto custom-scrollbar">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Food Name</label>
+                        <form id="menu-item-form" onSubmit={handleAddMenu} className="flex flex-col h-[75vh]">
+                            <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                                <div className="space-y-2">
+                                    <label className="text-[11px] text-gold-500 uppercase font-black tracking-widest ml-1">Food Name *</label>
                                     <input 
                                         id="menu-item-name"
                                         name="name" 
-                                        placeholder="Item Name" 
-                                        className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all" 
+                                        placeholder="Enter dish name..." 
+                                        className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all shadow-inner" 
                                         required 
                                         value={newMenu.name}
                                         onChange={e => setNewMenu({...newMenu, name: e.target.value})} 
                                     />
                                 </div>
                                 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Description</label>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] text-gold-500 uppercase font-black tracking-widest ml-1">Description *</label>
                                     <textarea 
                                         id="menu-item-description"
                                         name="description" 
-                                        placeholder="Description" 
-                                        className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-medium focus:border-gold-500 outline-none transition-all min-h-[100px]" 
+                                        placeholder="Describe the dish, ingredients, etc..." 
+                                        className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-medium focus:border-gold-500 outline-none transition-all min-h-[120px] shadow-inner" 
                                         required 
                                         value={newMenu.description}
                                         onChange={e => setNewMenu({...newMenu, description: e.target.value})} 
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Price (LKR)</label>
-                                        <input 
-                                            id="menu-item-price"
-                                            name="price" 
-                                            type="number" 
-                                            placeholder="Price" 
-                                            className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-black focus:border-gold-500 outline-none transition-all" 
-                                            required 
-                                            value={newMenu.price}
-                                            onChange={e => setNewMenu({...newMenu, price: e.target.value})} 
-                                        />
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[11px] text-gold-500 uppercase font-black tracking-widest ml-1">Price (LKR) *</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">Rs.</span>
+                                            <input 
+                                                id="menu-item-price"
+                                                name="price" 
+                                                type="number" 
+                                                placeholder="0.00" 
+                                                className="w-full bg-black border border-white/10 p-4 pl-12 rounded-xl text-white font-black focus:border-gold-500 outline-none transition-all shadow-inner" 
+                                                required 
+                                                value={newMenu.price}
+                                                onChange={e => setNewMenu({...newMenu, price: e.target.value})} 
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Category</label>
+                                    <div className="space-y-2">
+                                        <label className="text-[11px] text-gold-500 uppercase font-black tracking-widest ml-1">Category *</label>
                                         <select 
                                             id="menu-item-category"
                                             name="category_id" 
-                                            className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all" 
+                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all shadow-inner appearance-none" 
                                             required 
                                             value={newMenu.category_id}
                                             onChange={e => setNewMenu({...newMenu, category_id: e.target.value})}
@@ -1780,50 +1888,73 @@ const AdminDashboard = () => {
                                     </div>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Upload Food Image</label>
+                                <div className="space-y-4">
+                                    <label className="text-[11px] text-gold-500 uppercase font-black tracking-widest ml-1">Media Assets</label>
                                     
-                                    {menuImagePreview && (
-                                        <div className="w-full h-40 rounded-xl overflow-hidden border border-white/10 bg-black relative group shadow-2xl">
-                                            <img src={menuImagePreview} alt="Preview" className="w-full h-full object-contain" />
-                                            <button 
-                                                id="clear-image-preview"
-                                                type="button"
-                                                onClick={() => { setMenuImageFile(null); setMenuImagePreview(null); }}
-                                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg hover:scale-110 active:scale-90"
-                                            >
-                                                ✕
-                                            </button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] text-gray-500 uppercase font-bold ml-1">Image Preview</label>
+                                            <div className="w-full h-32 rounded-xl overflow-hidden border border-white/10 bg-black relative group shadow-2xl flex items-center justify-center">
+                                                {menuImagePreview ? (
+                                                    <img src={menuImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="text-gray-700 text-4xl">🖼️</div>
+                                                )}
+                                                {menuImagePreview && (
+                                                    <button 
+                                                        id="clear-image-preview"
+                                                        type="button"
+                                                        onClick={() => { setMenuImageFile(null); setMenuImagePreview(null); }}
+                                                        className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg hover:scale-110"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    )}
 
-                                    <div className="relative group">
-                                        <input 
-                                            id="menu-item-image-upload"
-                                            type="file" 
-                                            accept="image/png, image/jpeg, image/webp"
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-                                            onChange={e => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    setMenuImageFile(file);
-                                                    const reader = new FileReader();
-                                                    reader.onloadend = () => setMenuImagePreview(reader.result);
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} 
-                                        />
-                                        <div className="w-full bg-black border border-dashed border-white/20 p-6 rounded-xl text-center group-hover:border-gold-500/50 transition-all bg-gold-500/5">
-                                            <span className="text-xs font-black text-gold-500 uppercase tracking-widest">[ Choose File ]</span>
-                                            <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase">JPG, PNG, WEBP (MAX 5MB)</p>
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] text-gray-500 uppercase font-bold ml-1">Uploader</label>
+                                            <div className="relative h-32 group">
+                                                <input 
+                                                    id="menu-item-image-upload"
+                                                    type="file" 
+                                                    accept="image/png, image/jpeg, image/webp"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                                                    onChange={e => {
+                                                        const file = e.target.files[0];
+                                                        if (file) {
+                                                            setMenuImageFile(file);
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => setMenuImagePreview(reader.result);
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }} 
+                                                />
+                                                <div className="w-full h-full bg-black border border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center group-hover:border-gold-500/50 transition-all bg-gold-500/5">
+                                                    <span className="text-[10px] font-black text-gold-500 uppercase tracking-widest">Upload Image</span>
+                                                    <p className="text-[8px] text-gray-600 mt-2 font-bold uppercase text-center px-4">Drag here or click to browse</p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="p-8 border-t border-white/5 bg-zinc-900/50 flex gap-4">
-                                <Button id="cancel-menu-form" className="flex-1 h-12 text-xs font-black" variant="secondary" type="button" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); setMenuImagePreview(null); }}>CANCEL</Button>
-                                <Button id="save-menu-item" className="flex-[2] h-12 text-xs font-black shadow-[0_0_20px_rgba(212,175,55,0.2)]" type="submit">[ SAVE ITEM ]</Button>
+                            <div className="p-6 border-t border-white/5 bg-black flex gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => { setMenuModalOpen(false); setEditingMenu(null); setMenuImagePreview(null); }}
+                                    className="flex-1 h-14 rounded-xl border-2 border-white/10 text-white font-black uppercase text-[11px] tracking-widest hover:bg-white/5 transition-all"
+                                >
+                                    Cancel Changes
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-[2] h-14 rounded-xl bg-gold-500 text-black font-black uppercase text-[11px] tracking-widest hover:bg-gold-600 transition-all shadow-[0_0_25px_rgba(212,175,55,0.3)]"
+                                >
+                                    {editingMenu ? 'Update Menu Item' : 'Create Menu Item'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -1899,167 +2030,201 @@ const AdminDashboard = () => {
             )}
 
             {orderModalOpen && (
-                <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4 overflow-y-auto">
-                    <div className="bg-[#101010] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-                        <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">Create New Order</h3>
-                            <div className="flex items-center gap-4">
-                                <Button variant="secondary" className="h-8 px-3 text-[10px]" type="button" onClick={() => setOrderModalOpen(false)}>← BACK</Button>
-                                <button onClick={() => setOrderModalOpen(false)} className="text-gray-500 hover:text-white text-xl font-black">✕</button>
+                <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#101010] border border-white/10 rounded-3xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+                        {/* Modal Header */}
+                        <div className="px-8 py-6 border-b border-white/10 flex justify-between items-center bg-zinc-900/50">
+                            <div>
+                                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">New Operational Order</h3>
+                                <p className="text-[10px] text-gold-500 font-bold uppercase tracking-widest mt-1">Manual system entry</p>
                             </div>
+                            <button onClick={() => setOrderModalOpen(false)} className="h-10 w-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto p-6 lg:p-10 space-y-8">
-                            {/* Order Type Selector */}
-                            <div className="flex gap-4 p-1 bg-white/5 rounded-xl border border-white/5 w-fit mx-auto lg:mx-0">
-                                {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
-                                    <button 
-                                        key={t}
-                                        onClick={() => setNewOrder({...newOrder, order_type: t})}
-                                        className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${newOrder.order_type === t ? 'bg-gold-500 text-black shadow-[0_0_15px_rgba(255,215,0,0.3)]' : 'text-gray-500 hover:text-white'}`}
-                                    >
-                                        {t}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                                {/* Left Side: Customer Info */}
-                                <div className="space-y-6">
-                                    <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-zinc-800 w-fit px-2 py-1 rounded">Customer Information</h4>
-                                    
-                                    <div className="space-y-4">
-                                        <input 
-                                            placeholder="Full Name" 
-                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none transition-colors" 
-                                            required 
-                                            value={newOrder.customer_name}
-                                            onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} 
-                                        />
-                                        <input 
-                                            placeholder="Phone Number" 
-                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none transition-colors" 
-                                            value={newOrder.phone}
-                                            onChange={e => setNewOrder({...newOrder, phone: e.target.value})} 
-                                        />
-                                        
-                                        {newOrder.order_type === 'DINE-IN' && (
-                                            <select 
-                                                className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold focus:border-gold-500 outline-none"
-                                                value={newOrder.table_id}
-                                                onChange={e => setNewOrder({...newOrder, table_id: e.target.value})}
+                        {/* Modal Content - Scrollable area */}
+                        <div className="flex-1 flex overflow-hidden">
+                            {/* Left: Guest Details */}
+                            <div className="w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto custom-scrollbar bg-black/20">
+                                <h4 className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Guest Info</h4>
+                                <div className="space-y-4">
+                                    <div className="flex p-1 bg-black rounded-lg border border-white/5">
+                                        {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
+                                            <button 
+                                                key={t}
+                                                type="button"
+                                                onClick={() => setNewOrder({...newOrder, order_type: t})}
+                                                className={`flex-1 py-1.5 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${newOrder.order_type === t ? 'bg-gold-500 text-black' : 'text-gray-500 hover:text-white'}`}
                                             >
-                                                <option value="">Select Table</option>
-                                                {allTables.map(t => <option key={t.id} value={t.id}>Table {t.table_number} ({t.area_name})</option>)}
-                                            </select>
-                                        )}
+                                                {t}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <input 
+                                        placeholder="Customer Name *" 
+                                        className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-sm focus:border-gold-500 outline-none" 
+                                        required 
+                                        value={newOrder.customer_name}
+                                        onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} 
+                                    />
+                                    <input 
+                                        placeholder="Phone Number" 
+                                        className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-sm focus:border-gold-500 outline-none" 
+                                        value={newOrder.phone}
+                                        onChange={e => setNewOrder({...newOrder, phone: e.target.value})} 
+                                    />
+                                    
+                                    {newOrder.order_type === 'DINE-IN' && (
+                                        <select 
+                                            className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-sm focus:border-gold-500 outline-none appearance-none"
+                                            value={newOrder.table_id}
+                                            onChange={e => setNewOrder({...newOrder, table_id: e.target.value})}
+                                        >
+                                            <option value="">Select Table...</option>
+                                            {allTables.map(t => <option key={t.id} value={t.id}>Table {t.table_number} ({t.area_name})</option>)}
+                                        </select>
+                                    )}
 
-                                        {newOrder.order_type === 'DELIVERY' && (
-                                            <textarea 
-                                                placeholder="Delivery Address" 
-                                                className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none"
-                                                value={newOrder.address}
-                                                onChange={e => setNewOrder({...newOrder, address: e.target.value})}
-                                            />
-                                        )}
-
+                                    {newOrder.order_type === 'DELIVERY' && (
                                         <textarea 
-                                            placeholder="Special Instructions / Notes" 
-                                            className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-bold placeholder:text-gray-700 focus:border-gold-500 outline-none"
-                                            value={newOrder.notes}
-                                            onChange={e => setNewOrder({...newOrder, notes: e.target.value})}
+                                            placeholder="Delivery Address..." 
+                                            className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-sm focus:border-gold-500 outline-none min-h-[100px]"
+                                            value={newOrder.address}
+                                            onChange={e => setNewOrder({...newOrder, address: e.target.value})}
                                         />
-                                        
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] text-gray-500 font-bold uppercase ml-1">Order Status</label>
-                                                <select 
-                                                    className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-xs font-bold"
-                                                    value={newOrder.status}
-                                                    onChange={e => setNewOrder({...newOrder, status: e.target.value})}
-                                                >
-                                                    <option value="COOKING">COOKING</option>
-                                                    <option value="READY_TO_SERVE">READY TO SERVE</option>
-                                                    <option value="FINISHED">FINISHED</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] text-gray-500 font-bold uppercase ml-1">Payment Status</label>
-                                                <select 
-                                                    className="w-full bg-black border border-white/10 p-3 rounded-xl text-white text-xs font-bold"
-                                                    value={newOrder.payment_status}
-                                                    onChange={e => setNewOrder({...newOrder, payment_status: e.target.value})}
-                                                >
-                                                    <option value="PAID">PAID</option>
-                                                    <option value="UNPAID">UNPAID</option>
-                                                </select>
-                                            </div>
+                                    )}
+
+                                    <div className="pt-4 border-t border-white/5 space-y-3">
+                                        <div>
+                                            <label className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Payment Method</label>
+                                            <select 
+                                                className="w-full bg-black border border-white/10 p-2 rounded-lg text-white text-[10px] font-bold uppercase outline-none"
+                                                value={newOrder.payment_status}
+                                                onChange={e => setNewOrder({...newOrder, payment_status: e.target.value})}
+                                            >
+                                                <option value="PAID">PAID (Digital)</option>
+                                                <option value="CASH">CASH</option>
+                                                <option value="UNPAID">PENDING</option>
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Right Side: Items Builder */}
-                                <div className="space-y-6">
-                                    <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-zinc-800 w-fit px-2 py-1 rounded">Add Menu Items</h4>
-                                    
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-6 space-y-4 shadow-inner">
-                                        <select 
-                                            className="w-full bg-[#101010] border border-white/10 p-3 rounded-lg text-white text-xs font-bold"
-                                            value={orderItem.id}
-                                            onChange={e => {
-                                                const selected = menus.find(m => m.id === Number(e.target.value));
-                                                if (selected) {
-                                                    setOrderItem({ id: selected.id, name: selected.name, price: Number(selected.price), quantity: 1 });
-                                                }
-                                            }}
+                            {/* Middle: Item Library */}
+                            <div className="flex-1 p-6 flex flex-col space-y-4 overflow-hidden">
+                                <div className="flex justify-between items-center">
+                                    <h4 className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Select Items</h4>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search menu..." 
+                                        value={orderSearchTerm}
+                                        onChange={e => setOrderSearchTerm(e.target.value)}
+                                        className="bg-black border border-white/10 rounded-lg px-3 py-1.5 text-[10px] text-white focus:border-gold-500 outline-none w-48"
+                                    />
+                                </div>
+                                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                    <button 
+                                        onClick={() => setSelectedOrderCategory('All')}
+                                        className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedOrderCategory === 'All' ? 'bg-gold-500 text-black' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                                    >
+                                        All
+                                    </button>
+                                    {categories.map(cat => (
+                                        <button 
+                                            key={cat.id}
+                                            onClick={() => setSelectedOrderCategory(cat.name)}
+                                            className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedOrderCategory === cat.name ? 'bg-gold-500 text-black' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
                                         >
-                                            <option value="">Choose item...</option>
-                                            {menus.map(m => <option key={m.id} value={m.id}>{m.name} - Rs.{m.price}</option>)}
-                                        </select>
-                                        
-                                        <div className="flex gap-4 items-center">
-                                            <div className="flex-1 flex items-center bg-zinc-900 rounded-lg border border-white/5">
-                                                <button onClick={() => setOrderItem({...orderItem, quantity: Math.max(1, orderItem.quantity - 1)})} className="p-3 text-gold-500 font-black">－</button>
-                                                <input type="number" readOnly className="w-full bg-transparent text-center text-white font-black text-sm" value={orderItem.quantity} />
-                                                <button onClick={() => setOrderItem({...orderItem, quantity: orderItem.quantity + 1})} className="p-3 text-gold-500 font-black">＋</button>
-                                            </div>
-                                            <Button onClick={addItemToOrder} variant="primary" className="h-full px-8 text-[10px] font-black uppercase">Add to List</Button>
-                                        </div>
-                                    </div>
-
-                                    {/* Selected Items List */}
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                        {newOrder.items.length > 0 ? newOrder.items.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 group">
+                                            {cat.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex-1 overflow-y-auto grid grid-cols-2 lg:grid-cols-3 gap-3 pr-2 custom-scrollbar">
+                                    {menus
+                                        .filter(m => (selectedOrderCategory === 'All' || m.category === selectedOrderCategory) && 
+                                                   (orderSearchTerm === '' || m.name.toLowerCase().includes(orderSearchTerm.toLowerCase())))
+                                        .map(m => (
+                                            <button 
+                                                key={m.id}
+                                                onClick={() => {
+                                                    const existing = newOrder.items.findIndex(it => it.id === m.id);
+                                                    if (existing >= 0) {
+                                                        const updatedItems = [...newOrder.items];
+                                                        updatedItems[existing].quantity += 1;
+                                                        setNewOrder({ ...newOrder, items: updatedItems });
+                                                    } else {
+                                                        setNewOrder({ 
+                                                            ...newOrder, 
+                                                            items: [...newOrder.items, { id: m.id, name: m.name, price: Number(m.price), quantity: 1 }] 
+                                                        });
+                                                    }
+                                                }}
+                                                className="bg-black/50 border border-white/5 rounded-2xl p-3 text-left hover:border-gold-500/50 hover:bg-gold-500/5 transition-all group relative h-fit"
+                                            >
                                                 <div className="flex items-center gap-3">
-                                                    <div className="h-6 w-6 rounded bg-gold-500 text-black font-black text-[10px] flex items-center justify-center">{item.quantity}</div>
-                                                    <span className="text-xs font-bold text-white">{item.name}</span>
+                                                    <div className="w-10 h-10 rounded-lg bg-zinc-900 overflow-hidden flex-shrink-0">
+                                                        <img 
+                                                            src={m.image ? (m.image.startsWith('http') ? m.image : (m.image.startsWith('/') ? `${config.API_BASE_URL}${m.image}` : `${config.API_BASE_URL}/food/${m.image}`)) : '/placeholder-food.jpg'} 
+                                                            alt={m.name}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <h5 className="text-[11px] font-bold text-white truncate">{m.name}</h5>
+                                                        <p className="text-[10px] text-gold-500 font-extrabold">Rs.{m.price}</p>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-xs text-gray-500">Rs. {item.price * item.quantity}</span>
-                                                    <button onClick={() => removeOrderItem(idx)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                                                </div>
+                                                <div className="absolute inset-0 bg-gold-500/0 group-active:bg-gold-500/10 transition-colors pointer-events-none" />
+                                            </button>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+
+                            {/* Right: Cart Summary */}
+                            <div className="w-80 p-6 bg-zinc-950/50 border-l border-white/5 flex flex-col space-y-6 overflow-hidden">
+                                <h4 className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Order Bucket</h4>
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                                    {newOrder.items.length > 0 ? newOrder.items.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 group hover:bg-white/10 transition-colors">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold text-white truncate">{item.name}</p>
+                                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{item.quantity} × Rs.{item.price}</p>
                                             </div>
-                                        )) : (
-                                            <div className="py-10 text-center border border-dashed border-white/10 rounded-2xl">
-                                                <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">No items added yet</p>
+                                            <div className="flex items-center gap-3 ml-4">
+                                                <p className="text-xs font-black text-gold-500 italic">Rs.{item.price * item.quantity}</p>
+                                                <button onClick={() => removeOrderItem(idx)} className="text-red-500 hover:text-white transition-colors">✕</button>
                                             </div>
-                                        )}
-                                    </div>
-                                    
-                                    {newOrder.items.length > 0 && (
-                                        <div className="pt-4 border-t border-white/5 flex justify-between items-center">
-                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Grand Total</span>
-                                            <span className="text-2xl font-black text-white italic">Rs. {newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)}</span>
+                                        </div>
+                                    )) : (
+                                        <div className="h-full flex flex-col items-center justify-center opacity-20 border-2 border-dashed border-white/10 rounded-2xl">
+                                            <p className="text-xs font-black uppercase">No Items</p>
                                         </div>
                                     )}
                                 </div>
+                                
+                                {newOrder.items.length > 0 && (
+                                    <div className="bg-zinc-900 p-5 rounded-2xl border border-white/5 shadow-inner">
+                                        <div className="flex justify-between items-end">
+                                            <p className="text-[10px] text-gray-500 font-black uppercase">Total Bill</p>
+                                            <p className="text-2xl font-black text-white italic drop-shadow-xl">Rs. {newOrder.items.reduce((s, i) => s + (i.price * i.quantity), 0)}</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="p-6 bg-[#0a0a0a] border-t border-white/10 flex gap-4">
-                            <Button className="flex-1 h-12 uppercase font-black tracking-widest" variant="secondary" type="button" onClick={() => setOrderModalOpen(false)}>Cancel</Button>
-                            <Button className="flex-[2] h-12 uppercase font-black tracking-widest shadow-[0_0_20px_rgba(255,215,0,0.2)]" type="button" onClick={handleAddOrder}>Confirm & Create Order</Button>
+                        {/* Modal Footer Actions */}
+                        <div className="p-6 border-t border-white/5 bg-zinc-900/50 flex gap-4">
+                            <Button className="flex-1" variant="secondary" onClick={() => setOrderModalOpen(false)}>Discard</Button>
+                            <Button 
+                                className="flex-[2] h-12 text-sm" 
+                                variant="primary" 
+                                disabled={newOrder.items.length === 0 || !newOrder.customer_name}
+                                onClick={handleAddOrder}
+                            >
+                                [ Process & Confirm Order ]
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -2067,6 +2232,5 @@ const AdminDashboard = () => {
         </div>
     );
 };
-
 
 export default AdminDashboard;

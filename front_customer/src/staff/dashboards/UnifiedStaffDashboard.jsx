@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../../components/GlassCard';
 import Button from '../../components/Button';
+import config from '../../config';
 
 // Unified Dashboard for ALL Staff Roles
 // Renders widgets based on PERMISSIONS, not Role Name
@@ -164,7 +165,7 @@ const StaffListWidget = () => {
         const fetchTeam = async () => {
             try {
                 const token = localStorage.getItem('staffToken');
-                const res = await fetch('http://192.168.1.3:5000/api/staff/auth/team', {
+                const res = await fetch(`${config.API_BASE_URL}/api/staff/auth/team`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const data = await res.json();

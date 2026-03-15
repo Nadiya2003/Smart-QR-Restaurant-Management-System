@@ -4,6 +4,7 @@ import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import TableSelection from '../components/TableSelection';
+import config from '../config';
 
 /**
  * Reservation Page - Table booking form

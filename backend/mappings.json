@@ -1,0 +1,68 @@
+{
+  "order_types": [
+    {
+      "id": 1,
+      "name": "DINE_IN",
+      "created_at": "2026-03-12T15:34:13.000Z"
+    },
+    {
+      "id": 2,
+      "name": "TAKEAWAY",
+      "created_at": "2026-03-12T15:34:13.000Z"
+    },
+    {
+      "id": 3,
+      "name": "DELIVERY",
+      "created_at": "2026-03-12T15:34:13.000Z"
+    }
+  ],
+  "order_statuses": [
+    {
+      "id": 1,
+      "name": "PENDING",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 2,
+      "name": "CONFIRMED",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 3,
+      "name": "PREPARING",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 4,
+      "name": "READY",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 5,
+      "name": "SERVED",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 6,
+      "name": "COMPLETED",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 7,
+      "name": "CANCELLED",
+      "created_at": "2026-03-12T15:32:37.000Z"
+    },
+    {
+      "id": 8,
+      "name": "ORDER PLACED",
+      "created_at": "2026-03-14T08:38:06.000Z"
+    },
+    {
+      "id": 11,
+      "name": "OUT FOR DELIVERY",
+      "created_at": "2026-03-14T08:38:06.000Z"
+    }
+  ],
+  "payment_methods": [],
+  "payment_statuses": []
+}
