@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-
-/**
- * Header Component - Sticky navigation with glassmorphism
- */
 import { useAuth } from '../context/AuthContext';
 import SafeImage from './SafeImage';
 import AccountAvatar from '../assets/default-customer-avatar.png';
+import config from '../config';
 
 function Header() {
     const { user, logout, isAuthenticated } = useAuth();
@@ -120,14 +117,19 @@ function Header() {
                                     className="flex items-center gap-3 p-1 pr-4 rounded-full bg-white/5 hover:bg-white/10 transition-all border border-[#D4AF37]/30 hover:border-[#D4AF37] group"
                                 >
                                     <img 
-                                        src={user?.user?.profile_image ? (user.user.profile_image.toString().startsWith('http') ? user.user.profile_image : `${config.API_BASE_URL}${user.user.profile_image}`) : AccountAvatar} 
+                                        src={(() => {
+                                            const pic = user?.user?.profile_image;
+                                            if (!pic) return AccountAvatar;
+                                            if (pic.startsWith('http') || pic.startsWith('/assets')) return pic;
+                                            return `${config.API_BASE_URL}${pic}`;
+                                        })()}
                                         alt="Profile" 
                                         className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]"
-                                        onError={(e) => e.target.src = AccountAvatar}
+                                        onError={(e) => { e.target.onerror = null; e.target.src = AccountAvatar; }}
                                     />
                                     <div className="hidden lg:block text-left">
                                         <p className="text-[10px] text-gray-400 leading-none">Account</p>
-                                        <p className="text-sm font-bold text-white leading-tight group-hover:text-[#D4AF37] transition-colors">{user?.user?.name?.split(' ')[0] || 'User'}</p>
+                                        <p className="text-sm font-bold text-white leading-tight group-hover:text-[#D4AF37] transition-colors">{user?.user?.name?.split(' ')[0] || user?.name?.split(' ')[0] || 'User'}</p>
                                     </div>
                                 </Link>
                             </div>

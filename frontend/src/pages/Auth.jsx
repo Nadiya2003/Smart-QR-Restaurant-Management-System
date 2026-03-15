@@ -57,7 +57,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('${config.API_BASE_URL}/api/auth/login', {
+            const res = await fetch(`${config.API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -106,14 +106,23 @@ function Auth() {
                 fd.append('profile_image', formData.profile_image);
             }
 
-            const res = await fetch('${config.API_BASE_URL}/api/auth/register', {
+            const res = await fetch(`${config.API_BASE_URL}/api/auth/register`, {
                 method: 'POST',
                 body: fd
             });
             const data = await res.json();
             if (res.ok) {
-                showAlert('success', 'Registration successful! Please login.');
-                setMode('login');
+                showAlert('success', 'Registration successful! Automatically logging in...');
+                login(data);
+                
+                const target = localStorage.getItem('postLoginTarget') || '/';
+                const intendedType = localStorage.getItem('intendedOrderType');
+                if (intendedType) setOrderType(intendedType);
+                
+                localStorage.removeItem('postLoginTarget');
+                localStorage.removeItem('intendedOrderType');
+                
+                navigate(target);
             } else {
                 showAlert('error', data.message || 'Registration failed');
             }
@@ -130,7 +139,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('${config.API_BASE_URL}/api/auth/forgot-password', {
+            const res = await fetch(`${config.API_BASE_URL}/api/auth/forgot-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email })
@@ -157,7 +166,7 @@ function Auth() {
 
         setLoading(true);
         try {
-            const res = await fetch('${config.API_BASE_URL}/api/auth/reset-password', {
+            const res = await fetch(`${config.API_BASE_URL}/api/auth/reset-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

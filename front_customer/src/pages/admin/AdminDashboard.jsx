@@ -41,6 +41,7 @@ const AdminDashboard = () => {
     const [newMenu, setNewMenu] = useState({ name: '', description: '', price: '', category_id: '', image: '' });
     const [editingMenu, setEditingMenu] = useState(null);
     const [menuImageFile, setMenuImageFile] = useState(null);
+    const [menuImagePreview, setMenuImagePreview] = useState(null);
     const [newCategory, setNewCategory] = useState({ name: '', description: '', image: '' });
 
     // Supplier/Inventory Modal
@@ -158,8 +159,8 @@ const AdminDashboard = () => {
         } catch (e) {}
     }, []);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+    const fetchData = useCallback(async (isSilent = false) => {
+        if (!isSilent) setLoading(true);
         const token = localStorage.getItem('adminToken');
         if (!token) {
             console.error('No admin token found');
@@ -347,7 +348,7 @@ const AdminDashboard = () => {
             });
             alert('Permissions updated successfully!');
             setPermModalOpen(false);
-            fetchData();
+            fetchData(true);
         } catch (err) {
             console.error(err);
         }
@@ -381,7 +382,7 @@ const AdminDashboard = () => {
             alert('Category added successfully!');
             setCatModalOpen(false);
             setNewCategory({ name: '', description: '', image: '' });
-            fetchData();
+            fetchData(true);
         } catch (err) { console.error(err); }
     };
 
@@ -418,7 +419,7 @@ const AdminDashboard = () => {
                 setEditingMenu(null);
                 setMenuImageFile(null);
                 setNewMenu({ name: '', description: '', price: '', category_id: '', image: '' });
-                fetchData();
+                fetchData(true);
             } else {
                 const data = await response.json();
                 alert(data.message || 'Operation failed');
@@ -982,52 +983,72 @@ const AdminDashboard = () => {
                                             <div className="h-0.5 w-8 bg-gold-500" />
                                             <h4 className="text-lg font-bold text-white uppercase tracking-widest text-sm">Menu Items ({menus.length})</h4>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            {menus.map(item => (
-                                                <div key={item.id} className="bg-[#151515] rounded-xl overflow-hidden border border-white/5 hover:border-gold-500/40 transition-all group">
-                                                    <div className="h-40 bg-zinc-800 relative">
-                                                        <img 
-                                                            src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/placeholder-food.jpg'} 
-                                                            alt={item.name}
-                                                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                                                        />
-                                                        <div className="absolute top-2 right-2 bg-black/80 px-2 py-1 rounded text-[10px] font-bold text-gold-500">
-                                                            {item.category}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-4 space-y-3">
-                                                        <div className="flex justify-between items-start">
-                                                            <h5 className="font-bold text-white">{item.name}</h5>
-                                                            <span className="text-gold-500 font-black text-sm">Rs. {Number(item.price).toFixed(0)}</span>
-                                                        </div>
-                                                        <p className="text-[10px] text-gray-500 line-clamp-2 h-8 leading-relaxed font-medium">{item.description}</p>
-                                                        <div className="flex gap-2 pt-2">
-                                                            <button 
-                                                                onClick={() => {
-                                                                    setEditingMenu(item);
-                                                                    setNewMenu({
-                                                                        name: item.name,
-                                                                        description: item.description,
-                                                                        price: item.price,
-                                                                        category_id: item.category_id,
-                                                                        image: item.image
-                                                                    });
-                                                                    setMenuModalOpen(true);
-                                                                }}
-                                                                className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-2 rounded-lg transition-colors border border-white/5"
-                                                            >
-                                                                Edit
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleDeleteMenu(item.id)}
-                                                                className="bg-red-900/20 hover:bg-red-900/40 text-red-500 text-[10px] font-bold px-3 py-2 rounded-lg transition-colors border border-red-500/20"
-                                                            >
-                                                                Delete
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                        <div className="bg-[#111111] rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
+                                            <table id="menu-items-table" className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-white/5 text-[10px] uppercase font-black text-gray-500 tracking-[0.2em] border-b border-white/5">
+                                                        <th className="px-6 py-4">Image</th>
+                                                        <th className="px-6 py-4">Food Name</th>
+                                                        <th className="px-6 py-4">Category</th>
+                                                        <th className="px-6 py-4 text-right">Price</th>
+                                                        <th className="px-6 py-4 text-center">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-white/5">
+                                                    {menus.map(item => (
+                                                        <tr key={item.id} id={`menu-item-${item.id}`} className="hover:bg-white/[0.02] transition-colors group">
+                                                            <td className="px-6 py-4">
+                                                                <div className="w-12 h-12 rounded-lg bg-zinc-800 overflow-hidden border border-white/10">
+                                                                    <img 
+                                                                        src={item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${config.API_BASE_URL}${item.image}` : `${config.API_BASE_URL}/food/${item.image}`)) : '/placeholder-food.jpg'} 
+                                                                        alt={item.name}
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => { e.target.src = '/placeholder-food.jpg'; }}
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-bold text-white text-sm">{item.name}</td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest bg-white/5 px-2 py-1 rounded text-gray-400 group-hover:text-gold-500 transition-colors">
+                                                                    {item.category}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right font-black text-white text-sm">
+                                                                Rs. {Number(item.price).toLocaleString()}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex gap-2 justify-center">
+                                                                    <button 
+                                                                        id={`edit-menu-${item.id}`}
+                                                                        onClick={() => {
+                                                                            setEditingMenu(item);
+                                                                            setNewMenu({
+                                                                                name: item.name,
+                                                                                description: item.description,
+                                                                                price: item.price,
+                                                                                category_id: item.category_id,
+                                                                                image: item.image
+                                                                            });
+                                                                            setMenuImagePreview(item.image ? (item.image.startsWith('http') ? item.image : `${config.API_BASE_URL}${item.image}`) : null);
+                                                                            setMenuModalOpen(true);
+                                                                        }}
+                                                                        className="bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold px-4 py-2 rounded-lg transition-colors border border-white/5"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                    <button 
+                                                                        id={`delete-menu-${item.id}`}
+                                                                        onClick={() => handleDeleteMenu(item.id)}
+                                                                        className="bg-red-900/20 hover:bg-red-900/40 text-red-500 text-[10px] font-bold px-4 py-2 rounded-lg transition-colors border border-red-500/20"
+                                                                    >
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -1696,62 +1717,116 @@ const AdminDashboard = () => {
 
             {menuModalOpen && (
                 <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-                    <form onSubmit={handleAddMenu} className="bg-[#151515] border border-gold-500/30 rounded-2xl p-8 max-w-md w-full space-y-4">
-                        <h3 className="text-xl font-black text-white uppercase">{editingMenu ? 'Edit Menu Item' : 'New Menu Item'}</h3>
-                        <input 
-                            name="name" 
-                            placeholder="Item Name" 
-                            className="w-full bg-black border border-white/10 p-3 rounded text-white" 
-                            required 
-                            value={newMenu.name}
-                            onChange={e => setNewMenu({...newMenu, name: e.target.value})} 
-                        />
-                        <textarea 
-                            name="description" 
-                            placeholder="Description" 
-                            className="w-full bg-black border border-white/10 p-3 rounded text-white" 
-                            required 
-                            value={newMenu.description}
-                            onChange={e => setNewMenu({...newMenu, description: e.target.value})} 
-                        />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input 
-                                name="price" 
-                                type="number" 
-                                placeholder="Price" 
-                                className="w-full bg-black border border-white/10 p-3 rounded text-white" 
-                                required 
-                                value={newMenu.price}
-                                onChange={e => setNewMenu({...newMenu, price: e.target.value})} 
-                            />
-                            <select 
-                                name="category_id" 
-                                className="w-full bg-black border border-white/10 p-3 rounded text-white" 
-                                required 
-                                value={newMenu.category_id}
-                                onChange={e => setNewMenu({...newMenu, category_id: e.target.value})}
-                            >
-                                <option value="">Select Category</option>
-                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                    <div className="bg-[#151515] border border-gold-500/30 rounded-2xl p-0 max-w-md w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+                        <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                            <h3 className="text-xl font-black text-white uppercase">{editingMenu ? 'Edit Menu Item' : 'New Menu Item'}</h3>
+                            <button onClick={() => { setMenuModalOpen(false); setEditingMenu(null); setMenuImagePreview(null); }} className="text-gray-500 hover:text-white transition-colors">✕</button>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-bold">Item Image (JPG/PNG/WEBP)</label>
-                            <input 
-                                type="file" 
-                                accept="image/*"
-                                className="w-full bg-black border border-white/10 p-3 rounded text-white text-xs" 
-                                onChange={e => setMenuImageFile(e.target.files[0])} 
-                            />
-                            {newMenu.image && !menuImageFile && (
-                                <p className="text-[10px] text-gray-600">Current: {newMenu.image}</p>
-                            )}
-                        </div>
-                        <div className="flex gap-4 pt-4">
-                            <Button className="flex-1" variant="secondary" type="button" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); }}>Cancel</Button>
-                            <Button className="flex-1" type="submit">{editingMenu ? 'Update Item' : 'Add Item'}</Button>
-                        </div>
-                    </form>
+                        <form id="menu-item-form" onSubmit={handleAddMenu} className="flex flex-col h-full max-h-[85vh]">
+                            <div className="flex-1 p-8 space-y-5 overflow-y-auto custom-scrollbar">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Food Name</label>
+                                    <input 
+                                        id="menu-item-name"
+                                        name="name" 
+                                        placeholder="Item Name" 
+                                        className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all" 
+                                        required 
+                                        value={newMenu.name}
+                                        onChange={e => setNewMenu({...newMenu, name: e.target.value})} 
+                                    />
+                                </div>
+                                
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Description</label>
+                                    <textarea 
+                                        id="menu-item-description"
+                                        name="description" 
+                                        placeholder="Description" 
+                                        className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-medium focus:border-gold-500 outline-none transition-all min-h-[100px]" 
+                                        required 
+                                        value={newMenu.description}
+                                        onChange={e => setNewMenu({...newMenu, description: e.target.value})} 
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Price (LKR)</label>
+                                        <input 
+                                            id="menu-item-price"
+                                            name="price" 
+                                            type="number" 
+                                            placeholder="Price" 
+                                            className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-black focus:border-gold-500 outline-none transition-all" 
+                                            required 
+                                            value={newMenu.price}
+                                            onChange={e => setNewMenu({...newMenu, price: e.target.value})} 
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Category</label>
+                                        <select 
+                                            id="menu-item-category"
+                                            name="category_id" 
+                                            className="w-full bg-black border border-white/10 p-3.5 rounded-xl text-white font-bold focus:border-gold-500 outline-none transition-all" 
+                                            required 
+                                            value={newMenu.category_id}
+                                            onChange={e => setNewMenu({...newMenu, category_id: e.target.value})}
+                                        >
+                                            <option value="">Select Category</option>
+                                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Upload Food Image</label>
+                                    
+                                    {menuImagePreview && (
+                                        <div className="w-full h-40 rounded-xl overflow-hidden border border-white/10 bg-black relative group shadow-2xl">
+                                            <img src={menuImagePreview} alt="Preview" className="w-full h-full object-contain" />
+                                            <button 
+                                                id="clear-image-preview"
+                                                type="button"
+                                                onClick={() => { setMenuImageFile(null); setMenuImagePreview(null); }}
+                                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg hover:scale-110 active:scale-90"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="relative group">
+                                        <input 
+                                            id="menu-item-image-upload"
+                                            type="file" 
+                                            accept="image/png, image/jpeg, image/webp"
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                                            onChange={e => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    setMenuImageFile(file);
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => setMenuImagePreview(reader.result);
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} 
+                                        />
+                                        <div className="w-full bg-black border border-dashed border-white/20 p-6 rounded-xl text-center group-hover:border-gold-500/50 transition-all bg-gold-500/5">
+                                            <span className="text-xs font-black text-gold-500 uppercase tracking-widest">[ Choose File ]</span>
+                                            <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase">JPG, PNG, WEBP (MAX 5MB)</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 border-t border-white/5 bg-zinc-900/50 flex gap-4">
+                                <Button id="cancel-menu-form" className="flex-1 h-12 text-xs font-black" variant="secondary" type="button" onClick={() => { setMenuModalOpen(false); setEditingMenu(null); setMenuImagePreview(null); }}>CANCEL</Button>
+                                <Button id="save-menu-item" className="flex-[2] h-12 text-xs font-black shadow-[0_0_20px_rgba(212,175,55,0.2)]" type="submit">[ SAVE ITEM ]</Button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 

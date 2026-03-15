@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
+import config from '../config';
 
 function MenuCategory() {
     const navigate = useNavigate();
@@ -10,7 +11,7 @@ function MenuCategory() {
 
     useEffect(() => {
         // Fetch categories from backend
-        fetch('http://192.168.1.3:5000/api/menu')
+        fetch(`${config.API_BASE_URL}/api/menu`)
             .then(res => res.json())
             .then(items => {
                 // Extract unique categories

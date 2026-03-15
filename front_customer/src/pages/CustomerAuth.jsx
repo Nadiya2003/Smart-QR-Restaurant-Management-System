@@ -153,15 +153,31 @@ function CustomerAuth() {
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess(registerRole === 'CUSTOMER' ? 'Registration successful! Please login.' : 'Staff registration successful! Wait for admin approval.');
-        setIsLogin(true); // Switch to login view
-        setLoginEmail(registerEmail);
-        // Reset fields
-        setRegisterName('');
-        setRegisterPhone('');
-        setRegisterEmail('');
-        setRegisterPassword('');
-        setRegisterConfirmPassword('');
+        if (registerRole === 'CUSTOMER' && data.token) {
+          // Auto-login for customers
+          localStorage.setItem('customerAuth', JSON.stringify({
+            id: data.user.id,
+            name: data.user.name,
+            email: data.user.email,
+            phone: data.user.phone,
+            token: data.token,
+          }));
+          refreshAuth();
+          const searchParams = new URLSearchParams(window.location.search);
+          const redirect = searchParams.get('redirect');
+          navigate(redirect || '/customer/dashboard');
+        } else {
+          // Staff / Admin: show approval message, switch to login
+          setSuccess('Staff registration successful! Wait for admin approval.');
+          setIsLogin(true);
+          setLoginEmail(registerEmail);
+          // Reset fields
+          setRegisterName('');
+          setRegisterPhone('');
+          setRegisterEmail('');
+          setRegisterPassword('');
+          setRegisterConfirmPassword('');
+        }
       } else {
         setError(data.message || 'Registration failed');
       }

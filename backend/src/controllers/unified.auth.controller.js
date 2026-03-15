@@ -55,29 +55,45 @@ export const register = async (req, res) => {
         }
 
         const [result] = await connection.query(
-            'INSERT INTO online_customers (name, email, phone, password, profile_image, loyalty_points) VALUES (?, ?, ?, ?, ?, 0)',
+            'INSERT INTO online_customers (name, email, phone, password, profile_image, loyalty_points, is_active) VALUES (?, ?, ?, ?, ?, 0, 1)',
             [finalName, email, phone || null, hashedPassword, finalProfileImage]
         );
         const newId = result.insertId;
 
+        let permissions = [];
         try {
             const permissionValues = DEFAULT_CUSTOMER_PERMISSIONS.map(key => [newId, key, true]);
             await connection.query(
                 'INSERT INTO customer_permissions (customer_id, permission_key, allowed) VALUES ?',
                 [permissionValues]
             );
+            permissions = DEFAULT_CUSTOMER_PERMISSIONS;
         } catch (permErr) {
             console.warn('Failed to assign permissions:', permErr.message);
         }
 
         await connection.commit();
 
+        // Auto-login: generate JWT immediately after registration
+        const token = jwt.sign(
+            { userId: newId, role: 'CUSTOMER' },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
         return res.status(201).json({
             message: 'Registration successful',
-            userId: newId,
-            role: 'CUSTOMER',
-            profile_image: finalProfileImage,
-            loyalty_points: 0
+            token,
+            user: {
+                id: newId,
+                name: finalName,
+                email: email,
+                phone: phone || '',
+                role: 'CUSTOMER',
+                profile_image: finalProfileImage,
+                loyalty_points: 0,
+                permissions
+            }
         });
     } catch (error) {
         if (connection) await connection.rollback();
@@ -87,6 +103,7 @@ export const register = async (req, res) => {
         if (connection) connection.release();
     }
 };
+
 
 export const login = async (req, res) => {
     try {

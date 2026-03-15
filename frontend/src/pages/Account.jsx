@@ -35,7 +35,7 @@ function Account() {
                 return;
             }
             // Using localhost as per standard setup
-            const res = await fetch('${config.API_BASE_URL}/api/customer/account', {
+            const res = await fetch(`${config.API_BASE_URL}/api/customer/account`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();

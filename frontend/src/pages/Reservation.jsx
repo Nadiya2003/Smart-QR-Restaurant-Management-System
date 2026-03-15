@@ -21,7 +21,7 @@ function Reservation() {
 
     const fetchAreas = async () => {
         try {
-            const response = await fetch('${config.API_BASE_URL}/api/reservations/areas');
+            const response = await fetch(`${config.API_BASE_URL}/api/reservations/areas`);
             const data = await response.json();
             if (response.ok) {
                 setAreas(data.areas);
@@ -80,7 +80,7 @@ function Reservation() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('${config.API_BASE_URL}/api/reservations', {
+            const response = await fetch(`${config.API_BASE_URL}/api/reservations`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

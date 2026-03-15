@@ -45,7 +45,24 @@ export const register = async (req, res) => {
             [name, email, phone, password_hash]
         );
 
-        res.status(201).json({ message: 'User registered successfully', userId: result.insertId });
+        const userId = result.insertId;
+
+        // Auto login after registration
+        const token = jwt.sign({ userId: userId, email: email }, process.env.JWT_SECRET, { expiresIn: '24h' });
+
+        // Store session
+        await db.query('INSERT INTO customer_sessions (customer_id, token) VALUES (?, ?)', [userId, token]);
+
+        res.status(201).json({ 
+            message: 'User registered successfully', 
+            token,
+            user: {
+                id: userId,
+                name: name,
+                email: email,
+                phone: phone || ''
+            }
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error', error: error.message });

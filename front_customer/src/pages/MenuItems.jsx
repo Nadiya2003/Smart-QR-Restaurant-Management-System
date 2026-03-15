@@ -127,7 +127,7 @@ function MenuItems() {
                                     </h3>
                                     <div className="flex items-center justify-between">
                                         <span className="text-2xl font-black text-gold-500">
-                                            Rs. {item.price?.toLocaleString()}
+                                            Rs. {Number(item.price || 0).toLocaleString()}
                                         </span>
                                     </div>
                                     <Button

@@ -1,5 +1,6 @@
 import SafeImage from './SafeImage';
 import Button from './Button';
+import config from '../config';
 
 /**
  * MenuItemCard Component - Display food item with image, details, and add to cart
@@ -27,8 +28,8 @@ function MenuItemCard({ item, onAddToCart }) {
 
                 {/* Price and Button */}
                 <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-[#D4AF37]">Rs. {item.price.toLocaleString()}</span>
-                    <Button onClick={() => onAddToCart(item)} size="sm">
+                    <span className="text-2xl font-bold text-[#D4AF37]">Rs. {Number(item.price || 0).toLocaleString()}</span>
+                    <Button onClick={() => onAddToCart(item)} size="sm" variant="primary">
                         Add to Cart
                     </Button>
                 </div>

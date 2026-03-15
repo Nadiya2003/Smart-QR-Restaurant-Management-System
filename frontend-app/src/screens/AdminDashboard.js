@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
@@ -108,10 +109,14 @@ const AdminDashboard = () => {
         'Authorization': `Bearer ${token}`,
     };
 
-    const fetchData = useCallback(async () => {
+    const [showOrderModal, setShowOrderModal] = useState(false);
+    const [newOrder, setNewOrder] = useState({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '', status: 'COOKING', payment_status: 'PAID' });
+    const [orderItem, setOrderItem] = useState({ id: '', name: '', quantity: 1, price: 0 });
+
+    const fetchData = useCallback(async (isSilent = false) => {
         try {
             // Only set major loading on first fetch
-            if (!stats) setLoading(true);
+            if (!stats && !isSilent) setLoading(true);
 
             // Helper to handle individual fetches safely
             const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -182,10 +187,10 @@ const AdminDashboard = () => {
         } catch (error) {
             console.error('FetchData overall error:', error);
         } finally {
-            setLoading(false);
+            if (!isSilent) setLoading(false);
             setRefreshing(false);
         }
-    }, [activeTab, token, attendanceDate]);
+    }, [activeTab, token, attendanceDate]); // Removed stats to prevent infinite render loops
     useEffect(() => {
         fetchData();
     }, [activeTab, fetchData]);
@@ -298,39 +303,62 @@ const AdminDashboard = () => {
         }
     };
 
+    const handlePickImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            });
+
+            if (!result.canceled) {
+                setMenuForm({ ...menuForm, image: result.assets[0].uri });
+            }
+        } catch (error) {
+            console.error("Image pick error", error);
+        }
+    };
+
     const handleSaveMenu = async () => {
         if (!menuForm.name || !menuForm.price || !menuForm.category_id) {
             Alert.alert('Error', 'Please fill all required fields');
             return;
         }
 
-        // Prepare JSON payload instead of FormData to simplify mobile networking logic for now
-        // The mobile API can handle JSON format, we skip image upload for this fast integration
-        const payload = {
-            name: menuForm.name,
-            price: Number(menuForm.price),
-            category_id: menuForm.category_id,
-            description: menuForm.description || '',
-            is_active: menuForm.is_active ? 1 : 0, // Backend expects 'is_active'
-            available: menuForm.is_active ? 1 : 0  // Some systems use 'available'
-        };
+        const formData = new FormData();
+        formData.append('name', menuForm.name);
+        formData.append('price', Number(menuForm.price));
+        formData.append('category_id', menuForm.category_id);
+        formData.append('description', menuForm.description || '');
+        formData.append('is_active', menuForm.is_active ? 1 : 0);
         
+        if (menuForm.image && !menuForm.image.startsWith('http') && !menuForm.image.startsWith('/upload')) {
+            const filename = menuForm.image.split('/').pop();
+            const match = /\\.(\\w+)$/.exec(filename);
+            const type = match ? `image/${match[1]}` : `image`;
+            formData.append('image', { uri: menuForm.image, name: filename, type });
+        }
+
         const url = editingItem ? `${apiConfig.MENU.ALL}/${editingItem.id}` : apiConfig.MENU.ALL;
         const method = editingItem ? 'PUT' : 'POST';
 
         try {
             const res = await fetch(url, {
                 method,
-                headers,
-                body: JSON.stringify(payload)
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json',
+                },
+                body: formData
             });
 
             if (res.ok) {
                 Alert.alert('Success', `Menu item ${editingItem ? 'updated' : 'created'}`);
                 setShowMenuModal(false);
-                setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                setMenuForm({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
                 setEditingItem(null);
-                fetchData();
+                fetchData(true);
             } else {
                 const data = await res.json();
                 Alert.alert('Error', data.message || 'Failed to save menu item');
@@ -575,7 +603,13 @@ const AdminDashboard = () => {
             </View>
 
             <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{orderSubTab} Orders</Text>
+                <View>
+                    <Text style={styles.sectionTitle}>{orderSubTab} Orders</Text>
+                    <Text style={styles.sectionSubtitle}>Manage daily transactions</Text>
+                </View>
+                <TouchableOpacity style={styles.addButtonSmall} onPress={() => setShowOrderModal(true)}>
+                    <Text style={styles.addButtonTextSmall}>+ Add Order</Text>
+                </TouchableOpacity>
             </View>
 
             {orderList.filter(o => o.order_type === orderSubTab).length === 0 ? (
@@ -1320,260 +1354,6 @@ const AdminDashboard = () => {
     );
 
 
-    const AnalyticsModal = () => (
-        <Modal visible={showAnalyticsModal} transparent animationType="fade">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Revenue Analytics</Text>
-                        <TouchableOpacity onPress={() => setShowAnalyticsModal(false)}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={styles.modalSub}>Detailed breakdown for Melissa's Food Court</Text>
-                    
-                    <ScrollView>
-                        <View style={styles.analyticsSection}>
-                            <Text style={styles.chartTitle}>Revenue by Type</Text>
-                            <View style={styles.barChartContainer}>
-                                <View style={styles.barColumn}>
-                                    <View style={[styles.bar, { height: 80, backgroundColor: '#3B82F6' }]} />
-                                    <Text style={styles.barLabel}>Dine</Text>
-                                </View>
-                                <View style={styles.barColumn}>
-                                    <View style={[styles.bar, { height: 60, backgroundColor: '#10B981' }]} />
-                                    <Text style={styles.barLabel}>Take</Text>
-                                </View>
-                                <View style={styles.barColumn}>
-                                    <View style={[styles.bar, { height: 40, backgroundColor: '#F59E0B' }]} />
-                                    <Text style={styles.barLabel}>Del</Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        <View style={[styles.listCard, { marginTop: 20 }]}>
-                            <Text style={styles.listCardName}>Order Breakdown</Text>
-                            <View style={styles.summaryRow}>
-                                <Text style={styles.summaryLabel}>Completed</Text>
-                                <Text style={styles.summaryValue}>85%</Text>
-                            </View>
-                            <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                <Text style={styles.summaryLabel}>Cancelled</Text>
-                                <Text style={styles.summaryValue}>15%</Text>
-                            </View>
-                        </View>
-                    </ScrollView>
-
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => setShowAnalyticsModal(false)}>
-                        <Text style={styles.saveBtnText}>Close Analysis</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
-    const TodayRevenueModal = () => (
-        <Modal visible={showTodayRevenueModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Today's Revenue</Text>
-                        <TouchableOpacity onPress={() => setShowTodayRevenueModal(false)}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>Rs. {Number(stats?.todayRevenue || 0).toLocaleString()}</Text>
-                    
-                    <ScrollView>
-                        <View style={styles.listCard}>
-                            <Text style={styles.listCardName}>Order Breakdown</Text>
-                            <View style={[styles.summaryRow, { marginTop: 10 }]}>
-                                <Text style={styles.summaryLabel}>Dine-In</Text>
-                                <Text style={styles.summaryValue}>{stats?.details?.dineInOrders || 0}</Text>
-                            </View>
-                            <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                <Text style={styles.summaryLabel}>Takeaway</Text>
-                                <Text style={styles.summaryValue}>{stats?.details?.takeawayOrders || 0}</Text>
-                            </View>
-                            <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                <Text style={styles.summaryLabel}>Delivery</Text>
-                                <Text style={styles.summaryValue}>{stats?.details?.deliveryOrders || 0}</Text>
-                            </View>
-                        </View>
-                    </ScrollView>
-                    
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTodayRevenueModal(false)}>
-                        <Text style={styles.saveBtnText}>Close</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
-    const TotalOrdersModal = () => (
-        <Modal visible={showTotalOrdersModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Order History</Text>
-                        <TouchableOpacity onPress={() => setShowTotalOrdersModal(false)}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.totalOrders || 0} Total Orders</Text>
-                    
-                    <ScrollView>
-                        <View style={styles.listCard}>
-                            <Text style={styles.listCardName}>Trend Analysis</Text>
-                            <View style={[styles.summaryRow, { marginTop: 10 }]}>
-                                <Text style={styles.summaryLabel}>This Week</Text>
-                                <Text style={styles.summaryValue}>{stats?.details?.weeklyOrders || 0}</Text>
-                            </View>
-                            <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                <Text style={styles.summaryLabel}>This Month</Text>
-                                <Text style={styles.summaryValue}>{stats?.details?.monthlyOrders || 0}</Text>
-                            </View>
-                        </View>
-                    </ScrollView>
-                    
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTotalOrdersModal(false)}>
-                        <Text style={styles.saveBtnText}>Close</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
-    const ActiveStaffModal = () => (
-        <Modal visible={showActiveStaffModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Active Staff</Text>
-                        <TouchableOpacity onPress={() => setShowActiveStaffModal(false)}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.activeStaff || 0} On Duty</Text>
-                    
-                    <ScrollView>
-                        {staffList.filter(s => s.status === 'active' || s.is_active).map(staff => (
-                            <View key={staff.id} style={styles.permItem}>
-                                <Text style={styles.permItemText}>{staff.name || staff.full_name}</Text>
-                                <Text style={[styles.badgeText, { color: '#3B82F6' }]}>{staff.role}</Text>
-                            </View>
-                        ))}
-                    </ScrollView>
-                    
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => setShowActiveStaffModal(false)}>
-                        <Text style={styles.saveBtnText}>Close</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
-    const TotalCustomersModal = () => (
-        <Modal visible={showTotalCustomersModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Customer Base</Text>
-                        <TouchableOpacity onPress={() => setShowTotalCustomersModal(false)}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.totalCustomers || 0} Registered</Text>
-                    
-                    <ScrollView>
-                        <View style={styles.listCard}>
-                            <Text style={styles.listCardName}>Growth this week</Text>
-                            <Text style={[styles.statValue, { color: '#10B981', marginTop: 10 }]}>+{stats?.details?.newCustomersWeek || 0} New Signups</Text>
-                        </View>
-                    </ScrollView>
-                    
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTotalCustomersModal(false)}>
-                        <Text style={styles.saveBtnText}>Close</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
-    const MenuModal = () => (
-        <Modal visible={showMenuModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</Text>
-                        <TouchableOpacity onPress={() => {
-                            setShowMenuModal(false);
-                            setEditingItem(null);
-                            setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
-                        }}>
-                            <Text style={{ fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    
-                    <ScrollView style={{ marginTop: 15 }}>
-                        <Text style={styles.label}>Item Name *</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="e.g. Chicken Burger"
-                            value={menuForm.name}
-                            onChangeText={(val) => setMenuForm({...menuForm, name: val})}
-                        />
-
-                        <Text style={styles.label}>Price (Rs.) *</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="e.g. 1200"
-                            keyboardType="numeric"
-                            value={menuForm.price.toString()}
-                            onChangeText={(val) => setMenuForm({...menuForm, price: val})}
-                        />
-
-                        <Text style={styles.label}>Category *</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 }}>
-                            {categories.map(cat => (
-                                <TouchableOpacity 
-                                    key={cat.id} 
-                                    style={[styles.catPill, menuForm.category_id === cat.id && styles.activeCatPill]}
-                                    onPress={() => setMenuForm({...menuForm, category_id: cat.id})}
-                                >
-                                    <Text style={[styles.catPillText, menuForm.category_id === cat.id && styles.activeCatPillText]}>{cat.name}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <Text style={styles.label}>Description</Text>
-                        <TextInput 
-                            style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                            placeholder="Brief description..."
-                            multiline
-                            value={menuForm.description}
-                            onChangeText={(val) => setMenuForm({...menuForm, description: val})}
-                        />
-
-                        <TouchableOpacity 
-                            style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}
-                            onPress={() => setMenuForm({...menuForm, is_active: !menuForm.is_active})}
-                        >
-                            <View style={[styles.toggle, menuForm.is_active && styles.toggleActive]}>
-                                <View style={[styles.toggleHandle, menuForm.is_active && styles.toggleHandleActive]} />
-                            </View>
-                            <Text style={{ marginLeft: 10, fontSize: 14, color: '#374151' }}>Item is Available</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-
-                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#111827' }]} onPress={handleSaveMenu}>
-                        <Text style={styles.saveBtnText}>{editingItem ? 'Update Item' : 'Create Item'}</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-
     return (
         <View style={styles.container}>
             {renderTopBar()}
@@ -1587,15 +1367,428 @@ const AdminDashboard = () => {
                 {renderContent()}
                 <View style={{ height: 40 }} />
             </ScrollView>
-            <PermissionsModal />
-            <AnalyticsModal />
-            <TodayRevenueModal />
-            <TotalOrdersModal />
-            <ActiveStaffModal />
-            <TotalCustomersModal />
-            <MenuModal />
+            {renderPermissionsModal()}
+            {renderAnalyticsModal()}
+            {renderTodayRevenueModal()}
+            {renderTotalOrdersModal()}
+            {renderActiveStaffModal()}
+            {renderTotalCustomersModal()}
+            {renderMenuModal()}
+            {renderOrderModal()}
         </View>
     );
+
+    function renderPermissionsModal() {
+        return (
+            <Modal visible={showPermissionsModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Staff Permissions</Text>
+                            <TouchableOpacity onPress={() => setShowPermissionsModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ marginTop: 15 }}>
+                            {staffList.map(staff => (
+                                <View key={staff.id} style={styles.permItem}>
+                                    <View>
+                                        <Text style={styles.permItemText}>{staff.name || staff.full_name}</Text>
+                                        <Text style={{ fontSize: 10, color: '#6B7280' }}>{staff.role}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                                        <TouchableOpacity style={[styles.badge, staff.is_active ? styles.badgeActive : styles.badgeInactive]} onPress={() => handleToggleStatus(staff.id, staff.is_active)}>
+                                            <Text style={styles.badgeText}>{staff.is_active ? 'Active' : 'Inactive'}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowPermissionsModal(false)}>
+                            <Text style={styles.saveBtnText}>Save Changes</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderAnalyticsModal() {
+        return (
+            <Modal visible={showAnalyticsModal} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Revenue Analytics</Text>
+                            <TouchableOpacity onPress={() => setShowAnalyticsModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.modalSub}>Detailed breakdown for Melissa's Food Court</Text>
+                        
+                        <ScrollView>
+                            <View style={styles.analyticsSection}>
+                                <Text style={styles.chartTitle}>Revenue by Type</Text>
+                                <View style={styles.barChartContainer}>
+                                    <View style={styles.barColumn}>
+                                        <View style={[styles.bar, { height: 80, backgroundColor: '#3B82F6' }]} />
+                                        <Text style={styles.barLabel}>Dine</Text>
+                                    </View>
+                                    <View style={styles.barColumn}>
+                                        <View style={[styles.bar, { height: 60, backgroundColor: '#10B981' }]} />
+                                        <Text style={styles.barLabel}>Take</Text>
+                                    </View>
+                                    <View style={styles.barColumn}>
+                                        <View style={[styles.bar, { height: 40, backgroundColor: '#F59E0B' }]} />
+                                        <Text style={styles.barLabel}>Del</Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            <View style={[styles.listCard, { marginTop: 20 }]}>
+                                <Text style={styles.listCardName}>Order Breakdown</Text>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Completed</Text>
+                                    <Text style={styles.summaryValue}>85%</Text>
+                                </View>
+                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                    <Text style={styles.summaryLabel}>Cancelled</Text>
+                                    <Text style={styles.summaryValue}>15%</Text>
+                                </View>
+                            </View>
+                        </ScrollView>
+
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowAnalyticsModal(false)}>
+                            <Text style={styles.saveBtnText}>Close Analysis</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderTodayRevenueModal() {
+        return (
+            <Modal visible={showTodayRevenueModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Today's Revenue</Text>
+                            <TouchableOpacity onPress={() => setShowTodayRevenueModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>Rs. {Number(stats?.todayRevenue || 0).toLocaleString()}</Text>
+                        
+                        <ScrollView>
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Order Breakdown</Text>
+                                <View style={[styles.summaryRow, { marginTop: 10 }]}>
+                                    <Text style={styles.summaryLabel}>Dine-In</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.dineInOrders || 0}</Text>
+                                </View>
+                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                    <Text style={styles.summaryLabel}>Takeaway</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.takeawayOrders || 0}</Text>
+                                </View>
+                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                    <Text style={styles.summaryLabel}>Delivery</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.deliveryOrders || 0}</Text>
+                                </View>
+                            </View>
+                        </ScrollView>
+                        
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTodayRevenueModal(false)}>
+                            <Text style={styles.saveBtnText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderTotalOrdersModal() {
+        return (
+            <Modal visible={showTotalOrdersModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Order History</Text>
+                            <TouchableOpacity onPress={() => setShowTotalOrdersModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.totalOrders || 0} Total Orders</Text>
+                        
+                        <ScrollView>
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Trend Analysis</Text>
+                                <View style={[styles.summaryRow, { marginTop: 10 }]}>
+                                    <Text style={styles.summaryLabel}>This Week</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.weeklyOrders || 0}</Text>
+                                </View>
+                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                    <Text style={styles.summaryLabel}>This Month</Text>
+                                    <Text style={styles.summaryValue}>{stats?.details?.monthlyOrders || 0}</Text>
+                                </View>
+                            </View>
+                        </ScrollView>
+                        
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTotalOrdersModal(false)}>
+                            <Text style={styles.saveBtnText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderActiveStaffModal() {
+        return (
+            <Modal visible={showActiveStaffModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Active Staff</Text>
+                            <TouchableOpacity onPress={() => setShowActiveStaffModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.activeStaff || 0} On Duty</Text>
+                        
+                        <ScrollView>
+                            {staffList.filter(s => s.status === 'active' || s.is_active).map(staff => (
+                                <View key={staff.id} style={styles.permItem}>
+                                    <Text style={styles.permItemText}>{staff.name || staff.full_name}</Text>
+                                    <Text style={[styles.badgeText, { color: '#3B82F6' }]}>{staff.role}</Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowActiveStaffModal(false)}>
+                            <Text style={styles.saveBtnText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderTotalCustomersModal() {
+        return (
+            <Modal visible={showTotalCustomersModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Customer Base</Text>
+                            <TouchableOpacity onPress={() => setShowTotalCustomersModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.statValue, { fontSize: 28, textAlign: 'center', marginVertical: 20 }]}>{stats?.totalCustomers || 0} Registered</Text>
+                        
+                        <ScrollView>
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Growth this week</Text>
+                                <Text style={[styles.statValue, { color: '#10B981', marginTop: 10 }]}>+{stats?.details?.newCustomersWeek || 0} New Signups</Text>
+                            </View>
+                        </ScrollView>
+                        
+                        <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTotalCustomersModal(false)}>
+                            <Text style={styles.saveBtnText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderMenuModal() {
+        return (
+            <Modal visible={showMenuModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</Text>
+                            <TouchableOpacity onPress={() => {
+                                setShowMenuModal(false);
+                                setEditingItem(null);
+                                setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                            }}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <ScrollView style={{ marginTop: 15 }}>
+                            <Text style={styles.label}>Item Name *</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="e.g. Chicken Burger"
+                                value={menuForm.name}
+                                onChangeText={(val) => setMenuForm({...menuForm, name: val})}
+                            />
+
+                            <Text style={styles.label}>Price (Rs.) *</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="e.g. 1200"
+                                keyboardType="numeric"
+                                value={menuForm.price.toString()}
+                                onChangeText={(val) => setMenuForm({...menuForm, price: val})}
+                            />
+
+                            <Text style={styles.label}>Category *</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 }}>
+                                {categories.map(cat => (
+                                    <TouchableOpacity 
+                                        key={cat.id} 
+                                        style={[styles.catPill, menuForm.category_id === cat.id && styles.activeCatPill]}
+                                        onPress={() => setMenuForm({...menuForm, category_id: cat.id})}
+                                    >
+                                        <Text style={[styles.catPillText, menuForm.category_id === cat.id && styles.activeCatPillText]}>{cat.name}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <Text style={styles.label}>Description</Text>
+                            <TextInput 
+                                style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+                                placeholder="Brief description..."
+                                multiline
+                                value={menuForm.description}
+                                onChangeText={(val) => setMenuForm({...menuForm, description: val})}
+                            />
+
+                            <Text style={styles.label}>Food Image URL</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="Image URL (or path)"
+                                value={menuForm.image}
+                                onChangeText={(val) => setMenuForm({...menuForm, image: val})}
+                            />
+                            {menuForm.image ? (
+                                <Image source={{ uri: menuForm.image.startsWith('http') ? menuForm.image : `${apiConfig.API_BASE_URL}${menuForm.image}` }} style={{ width: '100%', height: 150, borderRadius: 10, marginBottom: 15 }} />
+                            ) : null}
+
+                            <TouchableOpacity 
+                                style={[styles.input, { borderStyle: 'dashed', borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center', backgroundColor: 'transparent' }]}
+                                onPress={handlePickImage}
+                            >
+                                <Text style={[styles.label, { marginTop: 0, color: '#9CA3AF' }]}>[ Choose File ]</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25 }}
+                                onPress={() => setMenuForm({...menuForm, is_active: !menuForm.is_active})}
+                            >
+                                <View style={[styles.toggle, menuForm.is_active && styles.toggleActive]}>
+                                    <View style={[styles.toggleHandle, menuForm.is_active && styles.toggleHandleActive]} />
+                                </View>
+                                <Text style={{ marginLeft: 10, fontSize: 14, color: '#374151' }}>Item is Available</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+
+                        <View style={{ paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+                            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#111827', height: 55, justifyContent: 'center' }]} onPress={handleSaveMenu}>
+                                <Text style={[styles.saveBtnText, { fontSize: 16 }]}>[ SAVE ITEM ]</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderOrderModal() {
+        const addItemToOrder = () => {
+            if (!orderItem.id) return Alert.alert('Error', 'Pick an item');
+            setNewOrder({ ...newOrder, items: [...newOrder.items, orderItem] });
+            setOrderItem({ id: '', name: '', quantity: 1, price: 0 });
+        };
+
+        const handleAddOrderLocal = async () => {
+            if (newOrder.items.length === 0) return Alert.alert('Error', 'Add items first');
+            try {
+                const totalPrice = newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ ...newOrder, total_price: totalPrice })
+                });
+                if (res.ok) {
+                    Alert.alert('Success', 'Order created');
+                    setShowOrderModal(false);
+                    setNewOrder({ order_type: 'DINE-IN', customer_name: '', phone: '', items: [], table_id: '', address: '', notes: '', status: 'COOKING', payment_status: 'PAID' });
+                    fetchData(true);
+                }
+            } catch (e) { Alert.alert('Error', 'Network error'); }
+        };
+
+        return (
+            <Modal visible={showOrderModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>New Order</Text>
+                            <TouchableOpacity onPress={() => setShowOrderModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ marginTop: 15 }}>
+                            <Text style={styles.label}>Order Type</Text>
+                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
+                                    <TouchableOpacity key={t} style={[styles.catPill, newOrder.order_type === t && styles.activeCatPill]} onPress={() => setNewOrder({ ...newOrder, order_type: t })}>
+                                        <Text style={[styles.catPillText, newOrder.order_type === t && styles.activeCatPillText]}>{t}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TextInput style={styles.input} placeholder="Customer Name" value={newOrder.customer_name} onChangeText={t => setNewOrder({ ...newOrder, customer_name: t })} />
+                            
+                            <Text style={styles.label}>Add Items</Text>
+                            <View style={{ backgroundColor: '#F3F4F6', borderRadius: 10, marginBottom: 15, padding: 10 }}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                                    {menuList.map(m => (
+                                        <TouchableOpacity key={m.id} style={[styles.catPill, { backgroundColor: 'white' }]} onPress={() => setOrderItem({ id: m.id, name: m.name, price: m.price, quantity: 1 })}>
+                                            <Text style={styles.catPillText}>{m.name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                                {orderItem.id ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <Text style={{ fontWeight: 'bold' }}>{orderItem.name} (Rs.{orderItem.price})</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <TouchableOpacity onPress={() => setOrderItem({...orderItem, quantity: Math.max(1, orderItem.quantity-1)})}><Text style={{ fontSize: 20, padding: 5 }}>-</Text></TouchableOpacity>
+                                            <Text style={{ marginHorizontal: 10 }}>{orderItem.quantity}</Text>
+                                            <TouchableOpacity onPress={() => setOrderItem({...orderItem, quantity: orderItem.quantity+1})}><Text style={{ fontSize: 20, padding: 5 }}>+</Text></TouchableOpacity>
+                                            <TouchableOpacity style={{ backgroundColor: '#111827', padding: 8, borderRadius: 5, marginLeft: 10 }} onPress={addItemToOrder}>
+                                                <Text style={{ color: 'white', fontSize: 10 }}>ADD</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ) : <Text style={{ fontSize: 10, color: '#6B7280' }}>Select an item above</Text>}
+                            </View>
+
+                            <View style={{ marginBottom: 15 }}>
+                                {newOrder.items.map((item, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <Text>{item.quantity}x {item.name}</Text>
+                                        <Text>Rs.{item.price * item.quantity}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </ScrollView>
+                        <View style={{ paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+                            <TouchableOpacity style={[styles.saveBtn, { height: 55, justifyContent: 'center' }]} onPress={handleAddOrderLocal}>
+                                <Text style={[styles.saveBtnText, { fontSize: 16 }]}>CREATE ORDER</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
 
 };
 
