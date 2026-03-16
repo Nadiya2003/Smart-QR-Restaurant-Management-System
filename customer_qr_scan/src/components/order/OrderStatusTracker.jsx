@@ -9,10 +9,11 @@ import {
 
 export function OrderStatusTracker({ currentStatus }) {
   const steps = [
-    { id: 'received', label: 'Order Received', icon: ClockIcon },
-    { id: 'preparing', label: 'Preparing', icon: ChefHatIcon },
-    { id: 'ready', label: 'Ready to Serve', icon: BellIcon },
-    { id: 'served', label: 'Served', icon: UtensilsIcon }
+    { id: 'PENDING', label: 'Order Received', icon: ClockIcon },
+    { id: 'CONFIRMED', label: 'Confirmed', icon: CheckIcon },
+    { id: 'PREPARING', label: 'Preparing', icon: ChefHatIcon },
+    { id: 'READY', label: 'Ready to Serve', icon: BellIcon },
+    { id: 'SERVED', label: 'Served', icon: UtensilsIcon }
   ];
 
   const currentIndex = steps.findIndex((s) => s.id === currentStatus);

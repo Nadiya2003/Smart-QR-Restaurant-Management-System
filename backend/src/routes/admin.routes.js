@@ -23,7 +23,9 @@ import {
     getAllTables,
     addTable,
     updateTable,
-    updateTableStatus
+    updateTableStatus,
+    getCancellationRequests,
+    handleCancellationAction
 } from '../controllers/admin.controller.js';
 import {
     getAttendance,
@@ -59,36 +61,46 @@ import { preventSelfModification, logAccess } from '../middleware/rbac.middlewar
 const router = express.Router();
 
 router.use(protect);
-router.use(adminOnly); // Ensure only admins can access
 
-router.get('/stats', getStats);
-router.get('/revenue-analytics', getRevenueAnalytics);
+// --- ADMIN ONLY SECTION (Metrics & System Management) ---
+router.get('/stats', adminOnly, getStats);
+router.get('/revenue-analytics', adminOnly, getRevenueAnalytics);
+router.get('/audit-logs', adminOnly, getAuditLogs);
+router.get('/notifications', adminOnly, getNotifications);
+router.post('/notifications', adminOnly, sendNotification);
 
-// Staff Management (New)
-router.get('/staff-members', logAccess('VIEW_STAFF'), getStaffMembers);
-router.put('/staff/:id/status', preventSelfModification, logAccess('STAFF_STATUS_CHANGE'), updateStaffStatus);
-router.put('/staff/:id/role', preventSelfModification, logAccess('STAFF_ROLE_CHANGE'), updateStaffRoleManagement);
-
-// Deprecated or legacy staff routes (redirecting to new management if possible)
-router.get('/staff', getAllStaff);
-router.put('/staff/:id/permissions', updateStaffPermissions);
+// Staff Management
+router.get('/staff-members', adminOnly, logAccess('VIEW_STAFF'), getStaffMembers);
+router.put('/staff/:id/status', adminOnly, preventSelfModification, logAccess('STAFF_STATUS_CHANGE'), updateStaffStatus);
+router.put('/staff/:id/role', adminOnly, preventSelfModification, logAccess('STAFF_ROLE_CHANGE'), updateStaffRoleManagement);
+router.get('/staff', adminOnly, getAllStaff);
+router.put('/staff/:id/permissions', adminOnly, updateStaffPermissions);
+router.get('/staff-activity', adminOnly, getStaffActivity);
 
 // Customers
-router.get('/customers', getAllCustomers);
-router.put('/customers/:id/permissions', updateCustomerPermissions);
-router.put('/customers/:id/status', toggleCustomerStatus);
+router.get('/customers', adminOnly, getAllCustomers);
+router.put('/customers/:id/permissions', adminOnly, updateCustomerPermissions);
+router.put('/customers/:id/status', adminOnly, toggleCustomerStatus);
 
-// Orders
-router.get('/orders', getAllOrders);
-router.post('/orders', createOrder);
-router.put('/orders/:id/status', updateOrderStatus);
-router.post('/orders/:id/cancel/:type', cancelOrder);
+// Reports
+router.get('/reports', adminOnly, getReports);
+router.post('/reports/seed', adminOnly, generateSampleReports);
+
+
+// --- SHARED STAFF SECTION (Operations) ---
+// Orders (Steward, Kitchen, Cashier need this)
+router.get('/orders', isStaff, getAllOrders);
+router.post('/orders', isStaff, createOrder);
+router.put('/orders/:id/status', isStaff, updateOrderStatus);
+router.post('/orders/:id/cancel/:type', isStaff, cancelOrder);
+router.get('/orders/cancellation-requests', isStaff, getCancellationRequests);
+router.post('/orders/cancellation-requests/:id/action', adminOnly, handleCancellationAction);
 
 // Reservations
-router.get('/reservations', getAllReservations);
-router.put('/reservations/:id/status', updateReservationStatus);
+router.get('/reservations', isStaff, getAllReservations);
+router.put('/reservations/:id/status', isStaff, updateReservationStatus);
 
-// Table & Area Management (Available to all Staff)
+// Table & Area Management
 router.get('/areas', isStaff, getAllAreas);
 router.post('/areas', isStaff, addArea);
 router.put('/areas/:id', isStaff, updateArea);
@@ -99,40 +111,24 @@ router.put('/tables/:id', isStaff, updateTable);
 router.put('/tables/:id/status', isStaff, updateTableStatus);
 
 // Attendance
-router.get('/attendance', getAttendance);
+router.get('/attendance', isStaff, getAttendance);
+
+// Inventory & Suppliers (Stock Managers need this)
+router.get('/inventory', isStaff, getInventory);
+router.post('/inventory', isStaff, addInventoryItem);
+router.put('/inventory/:id', isStaff, updateInventoryItem);
+router.delete('/inventory/:id', isStaff, deleteInventoryItem);
+router.put('/inventory/:id/stock', isStaff, updateStock);
+
+router.get('/suppliers', isStaff, getSuppliers);
+router.post('/suppliers', isStaff, addSupplier);
+router.put('/suppliers/:id', isStaff, updateSupplier);
+router.delete('/suppliers/:id', isStaff, deleteSupplier);
+router.put('/suppliers/:id/status', isStaff, updateSupplierStatus);
 
 // Permissions
-router.get('/permissions', getAllPermissions);
-router.get('/roles/:roleId/permissions', getRolePermissions);
-router.put('/roles/:roleId/permissions', updateRolePermissions);
-
-// Inventory
-router.get('/inventory', getInventory);
-router.post('/inventory', addInventoryItem);
-router.put('/inventory/:id', updateInventoryItem);
-router.delete('/inventory/:id', deleteInventoryItem);
-router.put('/inventory/:id/stock', updateStock);
-
-// Suppliers
-router.get('/suppliers', getSuppliers);
-router.post('/suppliers', addSupplier);
-router.put('/suppliers/:id', updateSupplier);
-router.delete('/suppliers/:id', deleteSupplier);
-router.put('/suppliers/:id/status', updateSupplierStatus);
-
-// Reports
-router.get('/reports', getReports);
-router.post('/reports/seed', generateSampleReports);
-
-// Notifications
-router.get('/notifications', getNotifications);
-router.post('/notifications', sendNotification);
-
-
-// Staff Activity
-router.get('/staff-activity', getStaffActivity);
-
-// Audit Logs
-router.get('/audit-logs', adminOnly, getAuditLogs);
+router.get('/permissions', adminOnly, getAllPermissions);
+router.get('/roles/:roleId/permissions', adminOnly, getRolePermissions);
+router.put('/roles/:roleId/permissions', adminOnly, updateRolePermissions);
 
 export default router;

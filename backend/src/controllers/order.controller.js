@@ -155,7 +155,7 @@ export const getCustomerOrders = async (req, res) => {
             `SELECT o.*, 
                     os.name as status,
                     ps.name as payment_status,
-                    (SELECT SUM(total_price) FROM order_analytics WHERE order_id = o.id AND order_source = 'DINE-IN') as total_price,
+                    COALESCE(o.total_price, (SELECT SUM(total_price) FROM order_analytics WHERE order_id = o.id AND order_source = 'DINE-IN')) as total_price,
                     "DINE-IN" as type 
              FROM orders o 
              LEFT JOIN order_statuses os ON o.status_id = os.id
@@ -266,7 +266,7 @@ export const cancelTakeawayOrder = async (req, res) => {
 export const createDineInOrder = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { table_number, steward_id, items, total_price, notes } = req.body;
+        const { table_number, steward_id, items, total_price, notes, order_id } = req.body;
         const customer_id = req.user ? req.user.userId : null;
 
         await connection.beginTransaction();
@@ -279,25 +279,26 @@ export const createDineInOrder = async (req, res) => {
         const [tableRows] = await connection.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [table_number]);
         const tableId = tableRows[0]?.id || null;
 
-        // 3. Insert into orders table
-        // Note: orders table doesn't have total_amount or notes, but we can store notes in order_analytics if needed
-        // Or we could add them to orders table. For now, let's stick to current schema.
+        // 3. Always insert a new record into orders table (No merging as per Request 6)
+        const orderType = customer_id ? 'registered' : 'guest';
         const [result] = await connection.query(
-            `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id) 
-             VALUES (?, ?, ?, ?, 1)`,
-            [customer_id, tableId, steward_id || null, statusId]
+            `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id, order_type, total_price) 
+             VALUES (?, ?, ?, ?, 1, ?, ?)`,
+            [customer_id, tableId, steward_id || null, statusId, orderType, total_price]
         );
+        const targetOrderId = result.insertId;
 
-        // 4. Insert into order_analytics for tracking items
+        // 4. Insert into order_analytics & order_items
         if (Array.isArray(items)) {
             for (const item of items) {
                 const menuItem = item.menuItem || item;
+                // Add to order_analytics (for reports)
                 await connection.query(
                     `INSERT INTO order_analytics 
                     (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
                     VALUES (?, 'DINE-IN', 'pending', 'CASH', ?, ?, ?, ?, ?, ?)`,
                     [
-                        result.insertId, 
+                        targetOrderId, 
                         menuItem.id || 0, 
                         menuItem.name, 
                         menuItem.category_name || menuItem.category || 'General', 
@@ -306,18 +307,24 @@ export const createDineInOrder = async (req, res) => {
                         (menuItem.price || 0) * (item.quantity || 1)
                     ]
                 );
+
+                // Add to order_items (for steward view)
+                await connection.query(
+                    'INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)',
+                    [targetOrderId, menuItem.id || 0, item.quantity || 1, menuItem.price || 0]
+                );
             }
         }
 
-        // 5. Update table status to 'occupied'
+        // 5. Update table status to 'not available'
         if (tableId) {
-            await connection.query('UPDATE restaurant_tables SET status = "occupied" WHERE id = ?', [tableId]);
+            await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [tableId]);
         }
 
         await connection.commit();
         res.status(201).json({ 
             message: '✅ Order placed successfully! Your steward will be with you shortly.', 
-            orderId: result.insertId 
+            orderId: targetOrderId 
         });
     } catch (error) {
         await connection.rollback();
@@ -328,3 +335,80 @@ export const createDineInOrder = async (req, res) => {
     }
 };
 
+export const getActiveOrderByTable = async (req, res) => {
+    try {
+        const { tableNumber } = req.params;
+        const [orders] = await pool.query(
+            `SELECT o.*, 
+                    UPPER(os.name) as status,
+                    ps.name as payment_status,
+                    rt.table_number,
+                    (SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
+                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
+                    "DINE-IN" as type 
+             FROM orders o 
+             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+             LEFT JOIN order_statuses os ON o.status_id = os.id
+             LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
+             WHERE rt.table_number = ? AND os.name NOT IN ('COMPLETED', 'CANCELLED')
+             ORDER BY o.created_at DESC LIMIT 1`,
+            [tableNumber]
+        );
+
+        res.json({ order: orders[0] || null });
+    } catch (error) {
+        console.error('Get active order error:', error);
+        res.status(500).json({ message: 'Failed to fetch order' });
+    }
+};
+
+
+export const requestDineInCancellation = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const customer_id = req.user.userId;
+
+        // 1. Check if order exists and belongs to this customer
+        const [orders] = await pool.query(
+            'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id = ?',
+            [id, customer_id]
+        );
+
+        if (orders.length === 0) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        const order = orders[0];
+
+        // 2. Check current status
+        const [statusRows] = await pool.query('SELECT name FROM order_statuses WHERE id = ?', [order.status_id]);
+        const statusName = statusRows[0]?.name;
+
+        if (['CANCELLED', 'COMPLETED', 'SERVED', 'FINISHED'].includes(statusName)) {
+            return res.status(400).json({ message: `Order is already ${statusName}. Cannot cancel now.` });
+        }
+
+        if (order.cancellation_status === 'PENDING') {
+            return res.status(400).json({ message: 'Cancellation request is already pending.' });
+        }
+
+        // 3. Insert into cancel_requests
+        await pool.query(
+            'INSERT INTO cancel_requests (order_id, requested_by, reason, status) VALUES (?, ?, ?, "pending")',
+            [id, customer_id, reason || 'Customer requested cancellation via App']
+        );
+
+        // 4. Update order state
+        await pool.query(
+            'UPDATE orders SET cancellation_status = "PENDING", cancellation_reason = ? WHERE id = ?',
+            [reason, id]
+        );
+
+        res.json({ message: '✅ Cancellation request sent. Please wait for manager approval.' });
+    } catch (error) {
+        console.error('Request dine-in cancellation error:', error);
+        res.status(500).json({ message: 'Failed to request cancellation' });
+    }
+};

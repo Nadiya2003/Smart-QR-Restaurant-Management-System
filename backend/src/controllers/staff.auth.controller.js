@@ -203,6 +203,8 @@ export const loginStaff = async (req, res) => {
                 full_name: user.full_name,
                 email: user.email,
                 role: user.role_name.toUpperCase(),
+                status: user.status,
+                is_active: user.is_active,
                 permissions
             }
         });
@@ -297,6 +299,9 @@ export const logoutStaff = async (req, res) => {
             "UPDATE staff_attendance SET logout_time = ? WHERE staff_id = ? AND date = ? AND logout_time IS NULL",
             [now, userId, today]
         );
+
+        // Also set steward as off-duty if they are a steward
+        await pool.query("UPDATE stewards SET is_available = 0 WHERE staff_id = ?", [userId]);
 
         res.json({ message: 'Logout successful and attendance updated' });
     } catch (error) {

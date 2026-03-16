@@ -6,8 +6,8 @@ import { useOrder } from '../hooks/useOrder';
 export function WelcomePage({ onNavigate }) {
   const { tableNumber } = useOrder();
   
-  // Use the generated Sri Lankan restaurant image
-  const restaurantImage = '/sri_lankan_restaurant_welcome_1773621668644.png';
+  // Use the local image from the public folder
+  const restaurantImage = '/welcome-bg.png';
   
   return (
     <div className="min-h-screen flex flex-col bg-white">

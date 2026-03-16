@@ -61,6 +61,10 @@ app.use('/api/customer', customerPortalRoutes);
 // 5. /orders - Placement & History
 app.use('/api/orders', orderRoutes);
 
+// Steward Dashboard Specifics
+import stewardDashboardRoutes from './routes/steward.dashboard.routes.js';
+app.use('/api/steward-dashboard', stewardDashboardRoutes);
+
 // 6. /menu - Visibility
 app.use('/api/menu', menuRoutes);
 

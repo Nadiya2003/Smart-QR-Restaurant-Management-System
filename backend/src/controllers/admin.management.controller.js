@@ -300,7 +300,8 @@ export const getStaffMembers = async (req, res) => {
     try {
         const { role, status, search } = req.query;
         let query = `
-            SELECT su.id, su.full_name, su.email, su.phone, su.status, su.created_at, sr.role_name as role, su.role_id
+            SELECT su.id, su.full_name, su.email, su.phone, su.status, su.created_at, sr.role_name as role, su.role_id,
+                   EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.logout_time IS NULL) as is_available
             FROM staff_users su
             JOIN staff_roles sr ON su.role_id = sr.id
             WHERE su.role_id != (SELECT id FROM staff_roles WHERE role_name = 'admin')

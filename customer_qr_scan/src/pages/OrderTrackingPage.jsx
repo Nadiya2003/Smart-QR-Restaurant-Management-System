@@ -34,12 +34,17 @@ export function OrderTrackingPage({ onNavigate }) {
     setCancelModalOpen(true);
   };
 
-  const submitCancel = () => {
+  const submitCancel = async () => {
     if (itemToCancel) {
-      cancelItem(itemToCancel);
-      setCancelModalOpen(false);
-      setItemToCancel(null);
-      setCancelReason('');
+      try {
+        await cancelItem(itemToCancel, cancelReason);
+        setCancelModalOpen(false);
+        setItemToCancel(null);
+        setCancelReason('');
+        alert('Cancellation request submitted!');
+      } catch (err) {
+        alert('Failed to request cancellation: ' + err.message);
+      }
     }
   };
 
@@ -50,6 +55,11 @@ export function OrderTrackingPage({ onNavigate }) {
       <div className="flex-1 overflow-y-auto">
         <div className="bg-white mb-2">
           <OrderStatusTracker currentStatus={currentOrder.status} />
+          {currentOrder.cancellation_status === 'PENDING' && (
+            <div className="bg-orange-50 p-3 text-orange-700 text-sm border-y border-orange-100 text-center animate-pulse">
+              ⏳ Cancellation request is pending approval by manager.
+            </div>
+          )}
         </div>
 
         <div className="bg-white p-4 border-y border-gray-100 mb-4">
@@ -63,7 +73,7 @@ export function OrderTrackingPage({ onNavigate }) {
           <div className="space-y-3">
             {currentOrder.items.map((item, idx) => (
               <div
-                key={`${item.menuItem.id}-${idx}`}
+                key={`${item.menuItem?.id || item.id}-${idx}`}
                 className="flex justify-between items-start"
               >
                 <div className="flex gap-3">
@@ -71,10 +81,10 @@ export function OrderTrackingPage({ onNavigate }) {
                     {item.quantity}x
                   </span>
                   <div>
-                    <p className="text-gray-900">{item.menuItem.name}</p>
-                    {currentOrder.status === 'received' && (
+                    <p className="text-gray-900">{item.menuItem?.name || item.name}</p>
+                    {['PENDING', 'received'].includes(currentOrder.status) && (
                       <button
-                        onClick={() => handleCancelRequest(item.menuItem.id)}
+                        onClick={() => handleCancelRequest(item.menuItem?.id || item.id)}
                         className="text-xs text-red-500 hover:text-red-600 mt-1"
                       >
                         Cancel Item
@@ -83,7 +93,7 @@ export function OrderTrackingPage({ onNavigate }) {
                   </div>
                 </div>
                 <span className="font-medium text-gray-900">
-                  Rs. {(item.menuItem.price * item.quantity).toLocaleString()}
+                  Rs. {((item.menuItem?.price || item.price || 0) * item.quantity).toLocaleString()}
                 </span>
               </div>
             ))}
@@ -98,7 +108,7 @@ export function OrderTrackingPage({ onNavigate }) {
         </div>
 
         <div className="p-4 space-y-3">
-          {currentOrder.status !== 'served' && (
+          {!['SERVED', 'COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase()) && (
             <Button
               variant="outline"
               fullWidth
@@ -108,8 +118,7 @@ export function OrderTrackingPage({ onNavigate }) {
             </Button>
           )}
 
-          {(currentOrder.status === 'served' ||
-            currentOrder.status === 'ready') && (
+          {['SERVED', 'READY'].includes(currentOrder.status?.toUpperCase()) && (
             <Button fullWidth onClick={() => onNavigate('payment')}>
               Proceed to Payment
             </Button>

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ShoppingCartIcon } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
 import { CartItem } from '../components/cart/CartItem';
 import { Button } from '../components/ui/Button';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { useCart } from '../hooks/useCart';
 import { useOrder } from '../hooks/useOrder';
 
@@ -19,16 +20,31 @@ export function CartPage({ onNavigate }) {
     clearCart
   } = useCart();
   
-  const { currentOrder, placeOrder, addToExistingOrder } = useOrder();
+  const { currentOrder, placeOrder, addToExistingOrder, selectedStewardId } = useOrder();
+
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const handlePlaceOrder = () => {
     if (cartItems.length === 0) return;
-    if (currentOrder && currentOrder.status !== 'served') {
+    
+    // Logic: New order must have a steward selected
+    if (!selectedStewardId && !currentOrder) {
+      onNavigate('steward');
+      return;
+    }
+    
+    setIsConfirmOpen(true);
+  };
+
+  const onConfirmOrder = () => {
+    const isUpdate = currentOrder && currentOrder.status !== 'SERVED';
+    if (isUpdate) {
       addToExistingOrder(cartItems, total);
     } else {
       placeOrder(cartItems, total);
     }
     clearCart();
+    setIsConfirmOpen(false);
     onNavigate('tracking');
   };
 
@@ -106,6 +122,19 @@ export function CartPage({ onNavigate }) {
           • Rs. {total.toLocaleString()}
         </Button>
       </div>
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={onConfirmOrder}
+        title={currentOrder && currentOrder.status !== 'SERVED' ? "Add to Order?" : "Confirm Order?"}
+        message={
+          currentOrder && currentOrder.status !== 'SERVED' 
+          ? `Extend your current order with these ${cartItems.length} items?`
+          : `Ready to enjoy your meal? Your total is Rs. ${total.toLocaleString()}.`
+        }
+        confirmText={currentOrder && currentOrder.status !== 'SERVED' ? "Add Items" : "Place Order"}
+      />
 
       <BottomNav currentPage="cart" onNavigate={onNavigate} />
     </div>

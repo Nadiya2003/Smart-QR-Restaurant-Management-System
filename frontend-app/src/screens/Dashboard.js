@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import StaffDashboard from './StaffDashboard';
+import StewardDashboard from './steward/StewardDashboard';
 
 const Dashboard = ({ onLogout }) => {
     const { user, logout } = useAuth();
@@ -23,7 +24,9 @@ const Dashboard = ({ onLogout }) => {
         }
 
         // Staff members must be active to access features
-        if (user?.status !== 'active') {
+        const isActive = user?.is_active === 1 || user?.is_active === true || user?.status === 'active';
+
+        if (!isActive && role !== 'CUSTOMER') {
             return (
                 <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                     <Text style={{ fontSize: 50, marginBottom: 20 }}>⏳</Text>
@@ -34,6 +37,24 @@ const Dashboard = ({ onLogout }) => {
                     </TouchableOpacity>
                 </View>
             );
+        }
+
+        if (role === 'CUSTOMER') {
+            return (
+                <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+                    <Text style={{ fontSize: 50, marginBottom: 20 }}>📱</Text>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#111827' }}>Customer Portal</Text>
+                    <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', marginTop: 10 }}>Please use our mobile-optimized web application by scanning the QR code on your table to place orders.</Text>
+                    <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { marginTop: 40, width: '100%' }]}>
+                        <Text style={[styles.logoutText, { textAlign: 'center' }]}>Logout</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        // Steward-specific dashboard
+        if (role === 'STEWARD') {
+            return <StewardDashboard />;
         }
 
         // All other active staff roles

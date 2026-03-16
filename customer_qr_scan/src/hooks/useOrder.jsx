@@ -12,31 +12,89 @@ export function OrderProvider({ children }) {
   
   const getTableNumber = () => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('table') || '05'; // Fallback to 05 for demo
+    const tableFromUrl = params.get('table');
+    
+    if (tableFromUrl) {
+      localStorage.setItem('activeTable', tableFromUrl);
+      return tableFromUrl;
+    }
+    
+    return localStorage.getItem('activeTable') || '05'; // Fallback to 05
   };
 
+  const isGuest = !user;
+
   useEffect(() => {
-    if (user) {
-      fetchOrderHistory();
-    }
-  }, [user]);
+    // Poll for status updates
+    const interval = setInterval(() => {
+      if (user) {
+        fetchOrderHistory();
+      } else if (currentOrder?.id || getTableNumber()) {
+        fetchGuestOrder();
+      }
+    }, 5000); // Improved polling: 5s for real-time feel
+    
+    // Initial fetch
+    if (user) fetchOrderHistory();
+    else fetchGuestOrder();
+    
+    return () => clearInterval(interval);
+  }, [user, currentOrder?.id]);
 
   const fetchOrderHistory = async () => {
     try {
       const data = await api.get('/orders/customer');
-      setOrderHistory(data.orders || []);
+      const orders = data.orders || [];
+      setOrderHistory(orders);
       
       // Check if there's an active dine-in order
-      const activeDineIn = data.orders.find(o => o.type === 'DINE-IN' && o.status !== 'FINISHED' && o.status !== 'CANCELLED');
+      const activeDineIn = orders.find(o => 
+        o.type === 'DINE-IN' && 
+        !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase())
+      );
+      
       if (activeDineIn) {
-        // We'd need detailed info to set as currentOrder, maybe fetch by ID
-        setCurrentOrder({
-          ...activeDineIn,
-          items: [] // Need to fetch items if schema allows
+        // If we found an active order, update currentOrder with its data
+        setCurrentOrder(prev => {
+          // If we had a local order with items, don't overwrite items unless we can fetch them
+          // For now, let's just update the status and basic info
+          return {
+            ...(prev || {}),
+            ...activeDineIn,
+            id: activeDineIn.id,
+            status: activeDineIn.status?.toUpperCase(),
+            tableNumber: activeDineIn.tableNumber || prev?.tableNumber || getTableNumber(),
+            total: activeDineIn.total_price || prev?.total || 0,
+            items: prev?.items || [] // We keep current items for now as schema join might be limited
+          };
         });
+      } else {
+        // If no active order in history, but we have a served one recently, maybe clear?
+        // Let's not clear automatically to allow user to view final status
       }
     } catch (error) {
       console.error('Failed to fetch order history:', error);
+    }
+  };
+
+  const fetchGuestOrder = async () => {
+    try {
+      const tableNumber = getTableNumber();
+      const data = await api.get(`/orders/active-table/${tableNumber}`);
+      if (data.order) {
+        const o = data.order;
+        setCurrentOrder(prev => ({
+          ...(prev || {}),
+          ...o,
+          id: o.id,
+          status: o.status,
+          tableNumber: o.table_number,
+          total: o.total_price,
+          items: o.items || prev?.items || []
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch guest order:', error);
     }
   };
 
@@ -83,14 +141,58 @@ export function OrderProvider({ children }) {
   };
 
   const addToExistingOrder = async (items, additionalTotal) => {
-    // For now, just placing a new order for the same table
-    // In a mature system, we'd append to existing order ID
-    return placeOrder(items, additionalTotal);
+    if (!currentOrder?.id) return placeOrder(items, additionalTotal);
+    
+    try {
+      const tableNumber = getTableNumber();
+      const orderData = {
+        table_number: tableNumber,
+        steward_id: selectedStewardId,
+        order_id: currentOrder.id,
+        items: items.map(item => ({
+          menuItem: item.menuItem,
+          quantity: item.quantity
+        })),
+        total_price: additionalTotal
+      };
+
+      const response = await api.post('/orders/dine-in', orderData);
+      
+      // Update local state items if possible or just refresh
+      setCurrentOrder(prev => ({
+        ...prev,
+        items: [...prev.items, ...items]
+      }));
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to add to order:', error);
+      throw error;
+    }
   };
 
-  const cancelItem = (itemId) => {
-    // Not implemented in backend yet for customers
-    console.warn('Cancel item not implemented in backend');
+  const requestOrderCancellation = async (reason) => {
+    if (!currentOrder?.id) return;
+    try {
+      const response = await api.post(`/orders/dine-in/cancel-request/${currentOrder.id}`, { reason });
+      
+      // Update local state
+      setCurrentOrder(prev => ({
+        ...prev,
+        cancellation_status: 'PENDING'
+      }));
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to request cancellation:', error);
+      throw error;
+    }
+  };
+
+  const cancelItem = async (itemId, reason) => {
+    // For now, if we want to cancel an item, we use the same request mechanism but with a specific reason
+    // In a real app, you might have per-item cancellation
+    return requestOrderCancellation(`Cancel Item ID ${itemId}: ${reason || 'Not specified'}`);
   };
 
   const updateOrderStatus = (status) => {
@@ -115,9 +217,11 @@ export function OrderProvider({ children }) {
       placeOrder,
       addToExistingOrder,
       cancelItem,
+      requestOrderCancellation,
       updateOrderStatus,
       clearCurrentOrder,
-      tableNumber: getTableNumber()
+      tableNumber: getTableNumber(),
+      isGuest
     }}>
       {children}
     </OrderContext.Provider>

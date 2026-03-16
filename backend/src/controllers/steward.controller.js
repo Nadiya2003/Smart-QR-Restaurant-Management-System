@@ -13,6 +13,7 @@ export const getAllStewards = async (req, res) => {
                     JOIN orders o ON f.order_id = o.id
                     WHERE o.steward_id = s.id
                 ), 5.0) as rating,
+                s.is_available,
                 (
                     SELECT COUNT(*) 
                     FROM orders o 
@@ -24,8 +25,7 @@ export const getAllStewards = async (req, res) => {
             JOIN staff_users u ON s.staff_id = u.id
             JOIN staff_roles sr ON u.role_id = sr.id
             WHERE LOWER(sr.role_name) = 'steward' 
-            AND u.is_active = 1 
-            AND s.is_available = 1
+            AND u.is_active = 1
         `;
 
         const [rows] = await pool.query(query);
@@ -36,7 +36,8 @@ export const getAllStewards = async (req, res) => {
             avatar: row.avatar ? `${row.avatar.startsWith('http') ? '' : 'http://192.168.1.4:5000/stewards/'}${row.avatar}` : '/stewards/default.png',
             rating: Number(Number(row.rating).toFixed(1)),
             activeOrders: parseInt(row.activeOrders || 0),
-            status: (row.activeOrders || 0) < 5 ? 'active' : 'busy'
+            isAvailable: row.is_available === 1,
+            status: row.is_available === 1 ? ((row.activeOrders || 0) < 5 ? 'active' : 'busy') : 'offline'
         }));
 
         res.json({ stewards });

@@ -1,20 +1,23 @@
 import pool from './src/config/db.js';
-import fs from 'fs';
 
 async function checkSchema() {
-    let output = '';
     try {
-        const tables = ['orders', 'order_analytics', 'takeaway_orders', 'delivery_orders'];
-        for (const table of tables) {
-            output += `--- ${table} ---\n`;
-            const [rows] = await pool.query(`DESCRIBE ${table}`);
-            output += JSON.stringify(rows, null, 2) + '\n\n';
-        }
-        fs.writeFileSync('schema_output.json', output);
-    } catch (err) {
-        console.error(err);
-    } finally {
-        process.exit();
+        const [stewards] = await pool.query('DESCRIBE stewards');
+        console.log('--- stewards ---');
+        console.log(stewards);
+
+        const [attendance] = await pool.query('DESCRIBE staff_attendance');
+        console.log('--- staff_attendance ---');
+        console.log(attendance);
+
+        const [reservations] = await pool.query('DESCRIBE reservations');
+        console.log('--- reservations ---');
+        console.log(reservations);
+        
+        process.exit(0);
+    } catch (e) {
+        console.error(e);
+        process.exit(1);
     }
 }
 

@@ -59,7 +59,10 @@ const AdminDashboard = () => {
     const [notificationList, setNotificationList] = useState([]);
     const [inventoryList, setInventoryList] = useState([]);
     const [reportList, setReportList] = useState([]);
+    const [cancelRequestList, setCancelRequestList] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [tables, setTables] = useState([]);
+    const [diningAreas, setDiningAreas] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -67,9 +70,7 @@ const AdminDashboard = () => {
     const [userSubTab, setUserSubTab] = useState('customers');
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
     const [selectedCategory, setSelectedCategory] = useState('All');
-    const [showPermissionsModal, setShowPermissionsModal] = useState(false);
     const [selectedStaff, setSelectedStaff] = useState(null);
-    const [staffPermissions, setStaffPermissions] = useState({});
 
     // New CRUD modals
     const [showMenuModal, setShowMenuModal] = useState(false);
@@ -146,6 +147,13 @@ const AdminDashboard = () => {
                 if (custData) setCustomerList(custData.customers || []);
             }
 
+            if (activeTab === 'tables' || activeTab === 'reservations') {
+                const tableData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/tables`, { headers: reqHeaders });
+                const areaData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers: reqHeaders });
+                if (tableData) setTables(tableData.tables || []);
+                if (areaData) setDiningAreas(areaData.areas || []);
+            }
+
             if (activeTab === 'attendance') {
                 const attData = await safeFetch(`${apiConfig.ADMIN.ATTENDANCE}?date=${attendanceDate}`, { headers: reqHeaders });
                 if (attData) setAttendanceList(attData.attendance || []);
@@ -172,6 +180,9 @@ const AdminDashboard = () => {
             if (activeTab === 'orders' || activeTab === 'reports') {
                 const orderData = await safeFetch(apiConfig.ADMIN.ORDERS, { headers: reqHeaders });
                 if (orderData) setOrderList(orderData.orders || []);
+                
+                const cancelData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests`, { headers: reqHeaders });
+                if (cancelData) setCancelRequestList(cancelData.requests || []);
             }
 
             if (activeTab === 'activity') {
@@ -215,11 +226,25 @@ const AdminDashboard = () => {
                     const s = await statsData.json();
                     setStats(s.stats);
                 }
+
+                // If on orders tab, poll for new orders specifically
+                if (activeTab === 'orders') {
+                    const orderRes = await fetch(apiConfig.ADMIN.ORDERS, { headers: reqHeaders });
+                    if (orderRes.ok) {
+                        const o = await orderRes.json();
+                        setOrderList(o.orders || []);
+                    }
+                    
+                    const cancelRes = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests`, { headers: reqHeaders });
+                    if (cancelRes.ok) {
+                        const c = await cancelRes.json();
+                        setCancelRequestList(c.requests || []);
+                    }
+                }
             } catch (e) { /* silent */ }
-        }, 60000); // Poll stats every 60s only
+        }, 10000); // Poll every 10s for better synchronization
         return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
+    }, [token, activeTab]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -251,54 +276,19 @@ const AdminDashboard = () => {
         }
     };
 
-    const savePermissions = async () => {
-        try {
-            // Convert object { "perm": true } to array ["perm"] for backend
-            const permsArray = Object.keys(staffPermissions).filter(k => staffPermissions[k]);
-            
-            const res = await fetch(`${apiConfig.ADMIN.STAFF}/${selectedStaff.id}/permissions`, {
-                method: 'PUT',
-                headers,
-                body: JSON.stringify({ permissions: permsArray })
-            });
-            if (res.ok) {
-                Alert.alert('Success', 'Permissions updated');
-                setShowPermissionsModal(false);
-                fetchData();
-            } else {
-                const errData = await res.json();
-                Alert.alert('Error', errData.message || 'Failed to update permissions');
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to update permissions');
-        }
-    };
-
-
-    const togglePermission = (permKey) => {
-        setStaffPermissions(prev => ({
-            ...prev,
-            [permKey]: !prev[permKey]
-        }));
-    };
 
     const toggleStatus = async (id, currentStatus, type = 'staff') => {
         const action = currentStatus === 1 || currentStatus === true ? 'deactivate' : 'activate';
         const baseUrl = type === 'staff' ? apiConfig.ADMIN.STAFF : apiConfig.ADMIN.CUSTOMERS;
         
         try {
-            // For customers, we use the status endpoint as per web
-            const endpoint = type === 'staff' 
-                ? `${baseUrl}/${id}/${action}` 
-                : `${baseUrl}/${id}/status`;
+            const endpoint = `${baseUrl}/${id}/status`;
+            const statusValue = action === 'activate' ? 'active' : (type === 'staff' ? 'disabled' : 'inactive');
             
-            const method = type === 'staff' ? 'POST' : 'PUT';
-            const body = type === 'customer' ? JSON.stringify({ status: action === 'activate' ? 'active' : 'inactive' }) : null;
-
             const res = await fetch(endpoint, {
-                method,
+                method: 'PUT',
                 headers,
-                body
+                body: JSON.stringify({ status: statusValue })
             });
 
             if (res.ok) {
@@ -427,6 +417,7 @@ const AdminDashboard = () => {
 
     const tabs = [
         { key: 'overview', label: 'Dashboard', icon: '📊' },
+        { key: 'tables', label: 'Tables', icon: '🪑' },
         { key: 'users', label: 'Users', icon: '👥' },
         { key: 'attendance', label: 'Attendance', icon: '🕒' },
         { key: 'menu', label: 'Menu', icon: '🍽️' },
@@ -529,13 +520,26 @@ const AdminDashboard = () => {
                 staffList.map((staff) => (
                     <View key={staff.id} style={styles.listCard}>
                         <View style={styles.listCardHeader}>
-                            <View style={[styles.avatarCircle, { backgroundColor: '#DBEAFE' }]}>
-                                <Text style={styles.avatarText}>{staff.name?.charAt(0) || 'S'}</Text>
+                            <View style={[styles.avatarCircle, { backgroundColor: '#DBEAFE', overflow: 'hidden' }]}>
+                                {staff.steward_image ? (
+                                    <Image 
+                                        source={{ uri: staff.steward_image.startsWith('http') ? staff.steward_image : `${apiConfig.API_BASE_URL}${staff.steward_image}` }} 
+                                        style={{ width: '100%', height: '100%' }}
+                                    />
+                                ) : (
+                                    <Text style={styles.avatarText}>{staff.name?.charAt(0) || 'S'}</Text>
+                                )}
                             </View>
 
                             <View style={styles.listCardInfo}>
                                 <Text style={styles.listCardName}>{staff.name}</Text>
-                                <Text style={styles.listCardSub}>{staff.role} • {staff.email}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={styles.listCardSub}>{staff.role} • {staff.email}</Text>
+                                    <View style={[styles.statusDot, { backgroundColor: staff.is_available ? '#10B981' : '#9CA3AF' }]} />
+                                    <Text style={[styles.listCardSub, { color: staff.is_available ? '#10B981' : '#6B7280', fontSize: 10 }]}>
+                                        {staff.is_available ? ' On Duty' : ' Off Duty'}
+                                    </Text>
+                                </View>
                                 <Text style={styles.listCardSub}>📞 {staff.phone || 'No Phone'}</Text>
 
                                 <View style={styles.badgeRow}>
@@ -548,33 +552,7 @@ const AdminDashboard = () => {
                                         </Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity 
-                                        style={styles.permBtn} 
-                                        onPress={() => {
-                                            setSelectedStaff(staff);
-                                            // staff.permissions is an array from backend, convert to object for UI
-                                            const permsObj = {};
-                                            if (Array.isArray(staff.permissions)) {
-                                                staff.permissions.forEach(p => {
-                                                    permsObj[p] = true;
-                                                });
-                                            } else if (typeof staff.permissions === 'string') {
-                                                try {
-                                                    const parsed = JSON.parse(staff.permissions);
-                                                    if (Array.isArray(parsed)) {
-                                                        parsed.forEach(p => permsObj[p] = true);
-                                                    } else {
-                                                        Object.assign(permsObj, parsed);
-                                                    }
-                                                } catch(e) {}
-                                            }
-                                            setStaffPermissions(permsObj);
-                                            setShowPermissionsModal(true);
-                                        }}
-                                    >
-                                        <Text style={styles.permBtnText}>🔐 Perms</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.permBtn, { marginLeft: 5, backgroundColor: '#FEF3C7' }]} 
+                                        style={[styles.permBtn, { marginLeft: 0, backgroundColor: '#FEF3C7' }]} 
                                         onPress={() => {
                                             setSelectedStaff(staff);
                                             setSelectedRole(staff.role.toLowerCase());
@@ -635,7 +613,7 @@ const AdminDashboard = () => {
     const renderOrders = () => (
         <>
             <View style={styles.subTabRow}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY'].map(tab => (
+                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => (
                     <TouchableOpacity 
                         key={tab} 
                         style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
@@ -656,7 +634,44 @@ const AdminDashboard = () => {
                 </TouchableOpacity>
             </View>
 
-            {orderList.filter(o => o.order_type === orderSubTab).length === 0 ? (
+            {orderSubTab === 'CANCELLATIONS' ? (
+                cancelRequestList.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyIcon}>🤝</Text>
+                        <Text style={styles.emptyText}>No pending cancellation requests</Text>
+                    </View>
+                ) : (
+                    cancelRequestList.map((req) => (
+                        <View key={req.id} style={[styles.listCard, { borderColor: '#FCA5A5', borderWidth: 1 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={styles.listCardName}>Order #{req.order_id} (Table {req.table_number})</Text>
+                                <View style={[styles.badge, { backgroundColor: '#FEE2E2' }]}>
+                                    <Text style={[styles.badgeText, { color: '#B91C1C' }]}>PENDING APPROVAL</Text>
+                                </View>
+                            </View>
+                            <Text style={styles.listCardSub}>Requested by: {req.steward_name}</Text>
+                            <Text style={[styles.listCardSub, { marginTop: 5, color: '#374151', fontStyle: 'italic' }]}>
+                                Reason: "{req.reason}"
+                            </Text>
+                            
+                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                                <TouchableOpacity 
+                                    style={[styles.editBtn, { backgroundColor: '#10B981', flex: 1 }]} 
+                                    onPress={() => handleCancellationAction(req.id, 'approve')}
+                                >
+                                    <Text style={[styles.editBtnText, { color: 'white' }]}>Approve</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
+                                    onPress={() => handleCancellationAction(req.id, 'reject')}
+                                >
+                                    <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    ))
+                )
+            ) : orderList.filter(o => o.order_type === orderSubTab).length === 0 ? (
                 <View style={styles.emptyState}>
                     <Text style={styles.emptyIcon}>🛍️</Text>
                     <Text style={styles.emptyText}>No {orderSubTab} orders found</Text>
@@ -711,21 +726,6 @@ const AdminDashboard = () => {
     );
 
 
-    // ===== PERMISSIONS TAB =====
-    const renderPermissions = () => (
-        <>
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Role Permissions</Text>
-                <Text style={styles.headerSubtitle}>Manage access tokens for each staff role</Text>
-            </View>
-            {permissionList.map((perm) => (
-                <View key={perm.id} style={styles.listCard}>
-                    <Text style={styles.listCardName}>{perm.name}</Text>
-                    <Text style={styles.listCardSub}>{perm.description}</Text>
-                </View>
-            ))}
-        </>
-    );
 
     // ===== ATTENDANCE TAB =====
     const renderAttendance = () => (
@@ -1484,6 +1484,88 @@ const AdminDashboard = () => {
         }
     };
 
+    const renderTables = () => {
+        const areas = diningAreas; 
+
+        return (
+            <>
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Restaurant Layout</Text>
+                    <Text style={styles.headerSubtitle}>Monitor and manage table statuses in real-time</Text>
+                </View>
+
+                {areas.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyIcon}>🪑</Text>
+                        <Text style={styles.emptyText}>No dining areas configured</Text>
+                    </View>
+                ) : (
+                    areas.map(area => (
+                        <View key={area.id} style={{ marginBottom: 25 }}>
+                            <View style={styles.areaHeader}>
+                                <Text style={styles.areaTitle}>{area.area_name}</Text>
+                                <Text style={styles.areaSub}>{area.description || 'General Seating Area'}</Text>
+                            </View>
+                            <View style={styles.tableGrid}>
+                                {tables.filter(t => t.area_id === area.id).map(table => (
+                                    <TouchableOpacity 
+                                        key={table.id} 
+                                        style={[
+                                            styles.tableBox,
+                                            (table.status === 'not available' || table.status === 'occupied') ? styles.tableBoxOccupied : styles.tableBoxAvailable
+                                        ]}
+                                        onPress={() => {
+                                            Alert.alert(
+                                                `Table ${table.table_number}`,
+                                                `Capacity: ${table.capacity} | Status: ${table.status.toUpperCase()}`,
+                                                [
+                                                    { text: 'Close' },
+                                                    { 
+                                                        text: (table.status === 'available') ? 'Mark Not Available' : 'Mark Available',
+                                                        onPress: () => updateTableStatus(table.id, table.status === 'available' ? 'not available' : 'available')
+                                                    }
+                                                ]
+                                            );
+                                        }}
+                                    >
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Text style={styles.tableNum}>T-{table.table_number}</Text>
+                                            <Text style={{ fontSize: 12 }}>{(table.status === 'not available' || table.status === 'occupied') ? '🔴' : '🟢'}</Text>
+                                        </View>
+                                        <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
+                                        {table.steward_name && (
+                                            <Text style={{ fontSize: 10, color: '#059669', marginTop: 4, fontWeight: '700' }}>👤 {table.steward_name}</Text>
+                                        )}
+                                        {table.today_reservations > 0 && (
+                                            <View style={{ marginTop: 5, backgroundColor: '#FDE68A', padding: 2, borderRadius: 4 }}>
+                                                <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center' }}>📅 Reserved Today</Text>
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    ))
+                )}
+            </>
+        );
+    };
+
+    const updateTableStatus = async (id, status) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/tables/${id}/status`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ status })
+            });
+            if (res.ok) {
+                fetchData();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update table');
+        }
+    };
+
     const updateStatus = async (id, status, type) => {
         try {
             const res = await fetch(`${apiConfig.ADMIN.ORDERS}/${id}/status`, {
@@ -1500,6 +1582,25 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleCancellationAction = async (id, action) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests/${id}/action`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, admin_notes: 'Processed via Mobile' })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Cancellation request ${action}ed`);
+                fetchData();
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Action failed');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Connection failed');
+        }
+    };
+
     const renderContent = () => {
         if (loading && !refreshing) {
             return (
@@ -1512,6 +1613,7 @@ const AdminDashboard = () => {
  
         switch (activeTab) {
             case 'overview': return renderOverview();
+            case 'tables': return renderTables();
             case 'users': return renderUsers();
             case 'attendance': return renderAttendance();
             case 'menu': return renderMenuManagement();
@@ -1609,7 +1711,6 @@ const AdminDashboard = () => {
                 {renderContent()}
                 <View style={{ height: 40 }} />
             </ScrollView>
-            {renderPermissionsModal()}
             {renderAnalyticsModal()}
             {renderTodayRevenueModal()}
             {renderTotalOrdersModal()}
@@ -1621,51 +1722,6 @@ const AdminDashboard = () => {
         </View>
     );
 
-    function renderPermissionsModal() {
-        return (
-            <Modal visible={showPermissionsModal} transparent animationType="slide">
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Manage Permissions</Text>
-                            <TouchableOpacity onPress={() => setShowPermissionsModal(false)}>
-                                <Text style={{ fontSize: 24 }}>✕</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.modalSub}>{selectedStaff?.name || selectedStaff?.full_name} ({selectedStaff?.role})</Text>
-                        
-                        <ScrollView style={{ marginVertical: 10 }}>
-                            {[
-                                { key: 'orders.view', label: 'View Orders' },
-                                { key: 'orders.manage', label: 'Manage Orders' },
-                                { key: 'menu.manage', label: 'Manage Menu' },
-                                { key: 'inventory.manage', label: 'Manage Inventory' },
-                                { key: 'reports.view', label: 'View Reports' },
-                                { key: 'staff.manage', label: 'Manage Staff' },
-                                { key: 'suppliers.manage', label: 'Manage Suppliers' }
-                            ].map(perm => (
-                                <TouchableOpacity key={perm.key} style={styles.permItem} onPress={() => togglePermission(perm.key)}>
-                                    <Text style={styles.permItemText}>{perm.label}</Text>
-                                    <View style={[styles.toggle, staffPermissions[perm.key] && styles.toggleActive]}>
-                                        <View style={[styles.toggleCircle, staffPermissions[perm.key] && styles.toggleCircleActive]} />
-                                    </View>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPermissionsModal(false)}>
-                                <Text style={styles.cancelBtnText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.saveBtn} onPress={savePermissions}>
-                                <Text style={styles.saveBtnText}>Save Changes</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-        );
-    }
 
     function renderAnalyticsModal() {
         return (
@@ -2536,6 +2592,61 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 10,
+    },
+    statusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginLeft: 8,
+        marginRight: 2,
+    },
+    areaHeader: {
+        backgroundColor: '#F9FAFB',
+        padding: 12,
+        borderRadius: 10,
+        marginBottom: 10,
+        borderLeftWidth: 4,
+        borderLeftColor: '#3B82F6',
+    },
+    areaTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    areaSub: {
+        fontSize: 11,
+        color: '#6B7280',
+    },
+    tableGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        marginBottom: 20,
+    },
+    tableBox: {
+        width: (screenWidth - 42) / 2,
+        backgroundColor: 'white',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    tableBoxOccupied: {
+        backgroundColor: '#FEF2F2',
+        borderColor: '#FCA5A5',
+    },
+    tableBoxAvailable: {
+        backgroundColor: '#F0FDF4',
+        borderColor: '#86EFAC',
+    },
+    tableNum: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    tableCap: {
+        fontSize: 12,
+        color: '#6B7280',
     },
     permBtnText: {
         fontSize: 10,

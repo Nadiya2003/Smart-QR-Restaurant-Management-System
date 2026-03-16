@@ -74,8 +74,16 @@ export function MenuPage({ onNavigate }) {
       <div className="bg-white px-4 py-3 border-b border-gray-100 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-700 font-bold">
-              {steward?.avatar || steward?.name?.charAt(0) || <UserIcon className="w-5 h-5" />}
+            <div className="w-10 h-10 bg-gray-100 rounded-full overflow-hidden flex items-center justify-center text-gray-700 font-bold border-2 border-white shadow-sm">
+              {steward?.image ? (
+                <img 
+                  src={steward.image.startsWith('http') ? steward.image : `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${steward.image}`} 
+                  alt={steward.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : steward?.avatar || steward?.name?.charAt(0) || (
+                <UserIcon className="w-5 h-5" />
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500">Your Steward</p>
@@ -127,8 +135,12 @@ export function MenuPage({ onNavigate }) {
             {filteredItems.map((item) => (
               <FoodCard key={item.id} menuItem={{
                 ...item,
-                image: item.image_url ? `http://localhost:5000${item.image_url}` : item.image,
-                isAvailable: item.is_active === 1 || item.is_active === true || item.is_active === '1'
+                image: (item.image_url || item.image) ? (
+                  (item.image_url || item.image).startsWith('http') 
+                    ? (item.image_url || item.image) 
+                    : `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${item.image_url || item.image}`
+                ) : null,
+                isAvailable: item.is_active !== 0 && item.is_active !== false && item.is_active !== '0'
               }} onAddToCart={addItem} />
             ))}
           </div>

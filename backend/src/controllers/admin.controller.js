@@ -5,9 +5,12 @@ export const getAllStaff = async (req, res) => {
     try {
         const [staff] = await pool.query(
             `SELECT su.id, su.full_name as name, su.email, su.phone,
-                    sr.role_name as role, su.is_active, su.created_at, su.permissions
+                    sr.role_name as role, su.is_active, su.created_at, su.permissions,
+                    st.image as steward_image,
+                    EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.logout_time IS NULL) as is_available
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
+             LEFT JOIN stewards st ON su.id = st.staff_id
              ORDER BY su.created_at DESC`
         );
 
@@ -56,10 +59,10 @@ export const toggleStaffStatus = async (req, res) => {
         const staffUser = staffBefore[0];
         const newIsActive = status === 'active' ? 1 : 0;
 
-        // Update staff status
+        // Update staff status - Unify status ('active'/'inactive') and is_active (1/0)
         await connection.query(
-            'UPDATE staff_users SET is_active = ? WHERE id = ?',
-            [newIsActive, id]
+            'UPDATE staff_users SET is_active = ?, status = ? WHERE id = ?',
+            [newIsActive, status, id]
         );
 
         // Log the action in audit_logs
@@ -249,10 +252,19 @@ export const getAllOrders = async (req, res) => {
         const [deliveryOrders] = await pool.query('SELECT *, "DELIVERY" as order_type FROM delivery_orders ORDER BY created_at DESC');
         const [takeawayOrders] = await pool.query('SELECT *, "TAKEAWAY" as order_type FROM takeaway_orders ORDER BY created_at DESC');
         const [dineInOrders] = await pool.query(`
-            SELECT o.*, "DINE-IN" as order_type, rt.table_number, os.name as status
+            SELECT o.*, "DINE-IN" as order_type, rt.table_number, os.name as status, c.name as customer_name,
+                   su.full_name as steward_name,
+                   CASE WHEN o.customer_id IS NOT NULL THEN 'Registered' ELSE 'Guest' END as customer_type,
+                   (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', mi.name) SEPARATOR ', ')
+                    FROM order_items oi
+                    JOIN menu_items mi ON oi.menu_item_id = mi.id
+                    WHERE oi.order_id = o.id) as items_summary
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN online_customers c ON o.customer_id = c.id
+            LEFT JOIN stewards s ON o.steward_id = s.id
+            LEFT JOIN staff_users su ON s.staff_id = su.id
             ORDER BY o.created_at DESC
         `);
         
@@ -271,7 +283,7 @@ export const getAllOrders = async (req, res) => {
 
         const allOrders = [...deliveryOrders, ...takeawayOrders, ...dineInOrders].map(o => ({
             ...o,
-            status: statusMap[o.status.toUpperCase()] || o.status
+            status: o.status ? (statusMap[(o.status || '').toUpperCase()] || o.status) : 'Pending'
         })).sort((a, b) => 
             new Date(b.created_at) - new Date(a.created_at)
         );
@@ -291,23 +303,21 @@ export const createOrder = async (req, res) => {
         const performerId = req.user?.userId || 0;
 
         if (order_type === 'DINE-IN') {
-            // Find a valid customer ID to satisfy FK constraint (must exist in online_customers)
-            const [custRows] = await connection.query('SELECT id FROM online_customers LIMIT 1');
-            const finalCustomerId = custRows[0]?.id;
-            
-            if (!finalCustomerId) {
-                await connection.rollback();
-                return res.status(400).json({ message: 'No registered customers found. Please Register at least one user first.' });
-            }
-
             const [pendingStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
             const statusId = pendingStatus[0]?.id || 1;
 
-            // 'orders' table for DINE-IN (using default steward_id if nullable or omitting)
+            const finalOrderType = 'guest'; // Admin orders via this route are usually guest or we'd have a customer selection
+            
+            // 'orders' table for DINE_IN
             const [result] = await connection.query(
-                'INSERT INTO orders (customer_id, table_id, status_id, order_type_id) VALUES (?, ?, ?, 1)',
-                [finalCustomerId, table_id || null, statusId]
+                'INSERT INTO orders (customer_id, table_id, status_id, order_type_id, order_type, total_price) VALUES (?, ?, ?, 1, ?, ?)',
+                [null, table_id || null, statusId, finalOrderType, total_price || 0]
             );
+
+            // Update table status to 'not available'
+            if (table_id) {
+                await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [table_id]);
+            }
             
             for (const item of items) {
                 await connection.query(
@@ -371,12 +381,16 @@ export const cancelOrder = async (req, res) => {
         const cancelStatusId = cancelStatus[0]?.id;
 
         if (type === 'DELIVERY') {
-            await pool.query('UPDATE delivery_orders SET status = "CANCELLED", cancellation_reason = ? WHERE id = ?', [reason, id]);
+            await pool.query('UPDATE delivery_orders SET order_status = "CANCELLED", status_notes = ? WHERE id = ?', [reason, id]);
         } else if (type === 'TAKEAWAY') {
-            await pool.query('UPDATE takeaway_orders SET status = "CANCELLED", cancellation_reason = ? WHERE id = ?', [reason, id]);
+            await pool.query('UPDATE takeaway_orders SET order_status = "CANCELLED", status_notes = ? WHERE id = ?', [reason, id]);
         } else if (type === 'DINE-IN') {
+            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+            const cancelStatusId = statusRows[0]?.id;
             if (cancelStatusId) {
-                await pool.query('UPDATE orders SET status_id = ?, cancellation_reason = ? WHERE id = ?', [cancelStatusId, reason, id]);
+                // For DINE-IN, if it's from admin, we might bypass request or use the same flow
+                // But generally admin can direct cancel
+                await pool.query('UPDATE orders SET status_id = ?, cancellation_reason = ?, cancellation_status = "APPROVED" WHERE id = ?', [cancelStatusId, reason, id]);
             }
         }
 
@@ -384,6 +398,84 @@ export const cancelOrder = async (req, res) => {
     } catch (err) {
         console.error('Cancel order error:', err);
         res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export const getCancellationRequests = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT cr.*, o.table_id, rt.table_number,
+                   (SELECT full_name FROM staff_users WHERE id = cr.requested_by LIMIT 1) as staff_name,
+                   (SELECT name FROM online_customers WHERE id = cr.requested_by LIMIT 1) as customer_name
+            FROM cancel_requests cr
+            JOIN orders o ON cr.order_id = o.id
+            JOIN restaurant_tables rt ON o.table_id = rt.id
+            WHERE cr.status = 'pending'
+            ORDER BY cr.created_at DESC
+        `);
+
+        const requests = rows.map(r => ({
+            ...r,
+            steward_name: r.staff_name || r.customer_name || 'Guest'
+        }));
+
+        res.json({ requests });
+    } catch (error) {
+        console.error('Get cancellation requests error:', error);
+        res.status(500).json({ message: 'Failed to fetch requests' });
+    }
+};
+
+export const handleCancellationAction = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { id } = req.params; // request id
+        const { action, admin_notes } = req.body; // action: approve, reject
+
+        await connection.beginTransaction();
+
+        const [requestRows] = await connection.query('SELECT * FROM cancel_requests WHERE id = ?', [id]);
+        if (requestRows.length === 0) return res.status(404).json({ message: 'Request not found' });
+        
+        const request = requestRows[0];
+        const status = action === 'approve' ? 'approved' : 'rejected';
+
+        // 1. Update request status
+        await connection.query(
+            'UPDATE cancel_requests SET status = ?, admin_notes = ? WHERE id = ?',
+            [status, admin_notes, id]
+        );
+
+        if (action === 'approve') {
+            // 2. Cancel the actual order
+            const [cancelStatus] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+            const cancelStatusId = cancelStatus[0]?.id;
+            
+            await connection.query(
+                'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
+                [cancelStatusId, request.reason, request.order_id]
+            );
+
+            // 3. Free up table if it was DINE-IN
+            const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
+            if (orderRows.length > 0 && orderRows[0].table_id) {
+                await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+            }
+        } else {
+             await connection.query(
+                'UPDATE orders SET cancellation_status = "REJECTED" WHERE id = ?',
+                [request.order_id]
+            );
+        }
+
+        await connection.commit();
+        res.json({ message: `Cancellation successfully ${status}` });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Handle cancel action error:', error);
+        res.status(500).json({ message: 'Action failed' });
+    } finally {
+        connection.release();
     }
 };
 
@@ -409,9 +501,19 @@ export const updateOrderStatus = async (req, res) => {
         } else if (type === 'TAKEAWAY') {
             await pool.query('UPDATE takeaway_orders SET status = ? WHERE id = ?', [status, id]);
         } else {
-            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = ?', [dbStatus]);
+            const [statusRows] = await pool.query('SELECT id, name FROM order_statuses WHERE name = ?', [dbStatus]);
             if (statusRows.length > 0) {
-                await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusRows[0].id, id]);
+                const statusId = statusRows[0].id;
+                const statusName = statusRows[0].name;
+                await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusId, id]);
+
+                // If completed/finished, free the table
+                if (['COMPLETED', 'FINISHED', 'SERVED'].includes(statusName)) {
+                    const [orderRows] = await pool.query('SELECT table_id FROM orders WHERE id = ?', [id]);
+                    if (orderRows.length > 0 && orderRows[0].table_id) {
+                        await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                    }
+                }
             }
         }
         res.json({ message: 'Order status updated' });

@@ -72,7 +72,7 @@ const StaffDashboard = () => {
     const CAPABILITIES = [
         {
             id: 'orders',
-            perm: 'orders.view',
+            perm: 'orders',
             title: 'Order Terminal',
             desc: 'View incoming orders and update preparation status.',
             icon: '📋',
@@ -80,7 +80,7 @@ const StaffDashboard = () => {
         },
         {
             id: 'menu',
-            perm: 'menu.manage',
+            perm: 'menu',
             title: 'Menu Engine',
             desc: 'Manage categories, items and availability.',
             icon: '🍽️',
@@ -88,7 +88,7 @@ const StaffDashboard = () => {
         },
         {
             id: 'inventory',
-            perm: 'inventory.manage',
+            perm: 'inventory',
             title: 'Stock Control',
             desc: 'Monitor inventory levels and supplier stock.',
             icon: '📦',
@@ -96,7 +96,7 @@ const StaffDashboard = () => {
         },
         {
             id: 'reports',
-            perm: 'reports.view',
+            perm: 'reports',
             title: 'Analytics',
             desc: 'View sales trends and performance reports.',
             icon: '📈',
@@ -104,7 +104,7 @@ const StaffDashboard = () => {
         },
         {
             id: 'attendance',
-            perm: 'attendance.view',
+            perm: 'attendance',
             title: 'My Attendance',
             desc: 'Review your check-in history and shifts.',
             icon: '🕒',

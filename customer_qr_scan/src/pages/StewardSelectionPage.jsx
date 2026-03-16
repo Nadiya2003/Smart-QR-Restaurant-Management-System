@@ -39,7 +39,7 @@ export function StewardSelectionPage({
   };
 
   const handleRandom = () => {
-    const available = stewards.filter((s) => s.is_active || s.isAvailable);
+    const available = stewards.filter((s) => s.isAvailable);
     if (available.length > 0) {
       const randomSteward =
         available[Math.floor(Math.random() * available.length)];
@@ -67,14 +67,9 @@ export function StewardSelectionPage({
 
       <div className="p-4 flex-1 overflow-y-auto">
         {/* Banner Section */}
-        <div className="relative h-32 rounded-2xl overflow-hidden mb-6 shadow-sm">
-          <img 
-            src="/sri_lankan_steward_service_1773621746436.png" 
-            alt="Steward Service" 
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center p-4">
-            <p className="text-white text-sm font-medium text-center">
+        <div className="relative h-32 rounded-2xl overflow-hidden mb-6 shadow-sm bg-gradient-to-r from-gray-900 to-gray-700">
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <p className="text-white text-sm font-medium text-center opacity-90">
               Our dedicated staff is here to make your dining experience exceptional
             </p>
           </div>
@@ -85,18 +80,20 @@ export function StewardSelectionPage({
         </p>
 
         <div className="space-y-3 mb-8">
-          {stewards.map((steward) => (
-            <StewardCard
-              key={steward.id}
-              steward={{
-                ...steward,
-                avatar: steward.avatar || steward.name?.charAt(0) || 'S',
-                isAvailable: steward.is_active || steward.isAvailable
-              }}
-              isSelected={localSelectedId === steward.id}
-              onSelect={(s) => setLocalSelectedId(s.id)}
-            />
-          ))}
+          {stewards.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl text-center border border-dashed border-gray-200">
+              <p className="text-gray-500">No stewards are currently on duty. You can still order and our team will assist you!</p>
+            </div>
+          ) : (
+            stewards.map((steward) => (
+              <StewardCard
+                key={steward.id}
+                steward={steward}
+                isSelected={localSelectedId === steward.id}
+                onSelect={(s) => setLocalSelectedId(s.id)}
+              />
+            ))
+          )}
         </div>
 
         <Button variant="secondary" fullWidth onClick={handleRandom}>
