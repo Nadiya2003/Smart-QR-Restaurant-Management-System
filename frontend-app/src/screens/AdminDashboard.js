@@ -1075,6 +1075,10 @@ const AdminDashboard = () => {
         }
     };
     const generateReport = async () => {
+        if (!reportFilters.startDate || !reportFilters.endDate) {
+            Alert.alert('Error', 'Please select a date range');
+            return;
+        }
         setReportLoading(true);
         try {
             let endpoint = '';
@@ -1088,8 +1092,14 @@ const AdminDashboard = () => {
                 default: endpoint = '/api/reports/revenue';
             }
 
-            const query = new URLSearchParams(reportFilters).toString();
-            const res = await fetch(`${apiConfig.API_BASE_URL}${endpoint}?${query}`, {
+            const queryParams = new URLSearchParams();
+            queryParams.append('startDate', reportFilters.startDate);
+            queryParams.append('endDate', reportFilters.endDate);
+            queryParams.append('hourStart', reportFilters.hourStart);
+            queryParams.append('hourEnd', reportFilters.hourEnd);
+            if (reportFilters.category) queryParams.append('category', reportFilters.category);
+
+            const res = await fetch(`${apiConfig.API_BASE_URL}${endpoint}?${queryParams.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1136,14 +1146,48 @@ const AdminDashboard = () => {
                     <View style={styles.modalActions}>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.filterLabel}>Start Date</Text>
-                            <TouchableOpacity style={styles.filterRow} onPress={() => {/* Show Date Picker */}}>
-                                <Text style={styles.timeText}>{reportFilters.startDate}</Text>
+                            <TouchableOpacity 
+                                style={styles.filterRow} 
+                                onPress={() => {
+                                    Alert.prompt('Start Date', 'Format: YYYY-MM-DD', [
+                                        { text: 'Cancel' },
+                                        { 
+                                            text: 'OK', 
+                                            onPress: (val) => {
+                                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                                    setReportFilters(f => ({ ...f, startDate: val }));
+                                                } else {
+                                                    Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                                                }
+                                            }
+                                        }
+                                    ], 'plain-text', reportFilters.startDate);
+                                }}
+                            >
+                                <Text style={styles.timeText}>📅 {reportFilters.startDate}</Text>
                             </TouchableOpacity>
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.filterLabel}>End Date</Text>
-                            <TouchableOpacity style={styles.filterRow} onPress={() => {/* Show Date Picker */}}>
-                                <Text style={styles.timeText}>{reportFilters.endDate}</Text>
+                            <TouchableOpacity 
+                                style={styles.filterRow} 
+                                onPress={() => {
+                                    Alert.prompt('End Date', 'Format: YYYY-MM-DD', [
+                                        { text: 'Cancel' },
+                                        { 
+                                            text: 'OK', 
+                                            onPress: (val) => {
+                                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                                    setReportFilters(f => ({ ...f, endDate: val }));
+                                                } else {
+                                                    Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                                                }
+                                            }
+                                        }
+                                    ], 'plain-text', reportFilters.endDate);
+                                }}
+                            >
+                                <Text style={styles.timeText}>📅 {reportFilters.endDate}</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -1179,23 +1223,42 @@ const AdminDashboard = () => {
                             <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{new Date().toLocaleDateString()}</Text>
                         </View>
 
-                        {reportType === 'Food Wise' && generatedReport.items && (
+                        {reportType === 'Food Wise' && (
                             <View style={{ marginTop: 10 }}>
-                                <Text style={styles.summaryLabel}>Top Selling Items</Text>
-                                {generatedReport.items.slice(0, 5).map((item, idx) => (
-                                    <View key={idx} style={styles.permItem}>
-                                        <Text style={styles.permItemText}>{item.item_name}</Text>
-                                        <Text style={styles.summaryValue}>{item.total_sold} units</Text>
-                                    </View>
-                                ))}
-                                <View style={styles.barChartContainer}>
-                                    {generatedReport.items.slice(0, 6).map((item, idx) => (
-                                        <View key={idx} style={styles.barColumn}>
-                                            <View style={[styles.bar, { height: (item.total_sold / (generatedReport.items[0]?.total_sold || 1)) * 80 + 5, backgroundColor: '#10B981' }]} />
-                                            <Text style={styles.barLabel}>{item.item_name.substring(0, 4)}</Text>
+                                {generatedReport.items && (
+                                    <>
+                                        <Text style={styles.summaryLabel}>Top Selling Items</Text>
+                                        {generatedReport.items.slice(0, 4).map((item, idx) => (
+                                            <View key={idx} style={styles.permItem}>
+                                                <Text style={styles.permItemText}>{item.item_name}</Text>
+                                                <Text style={styles.summaryValue}>{item.total_sold} units</Text>
+                                            </View>
+                                        ))}
+                                        <View style={styles.barChartContainer}>
+                                            {generatedReport.items.slice(0, 6).map((item, idx) => {
+                                                const maxSold = Math.max(...generatedReport.items.map(i => Number(i.total_sold) || 1), 1);
+                                                return (
+                                                    <View key={idx} style={styles.barColumn}>
+                                                        <View style={[styles.bar, { height: (Number(item.total_sold) / maxSold) * 80 + 5, backgroundColor: '#10B981' }]} />
+                                                        <Text style={styles.barLabel}>{item.item_name.substring(0, 4)}</Text>
+                                                    </View>
+                                                );
+                                            })}
                                         </View>
-                                    ))}
-                                </View>
+                                    </>
+                                )}
+
+                                {generatedReport.categories && (
+                                    <View style={{ marginTop: 20 }}>
+                                        <Text style={styles.summaryLabel}>Sales by Category</Text>
+                                        {generatedReport.categories.map((cat, idx) => (
+                                            <View key={idx} style={styles.summaryRow}>
+                                                <Text style={styles.summaryLabel}>{cat.category_name}</Text>
+                                                <Text style={styles.summaryValue}>Rs. {Number(cat.revenue || 0).toLocaleString()}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
                             </View>
                         )}
 
@@ -1203,13 +1266,67 @@ const AdminDashboard = () => {
                             <View style={{ marginTop: 10 }}>
                                 <Text style={styles.summaryLabel}>Revenue Trend</Text>
                                 <View style={styles.barChartContainer}>
-                                    {generatedReport.trend.map((day, idx) => (
-                                        <View key={idx} style={styles.barColumn}>
-                                            <View style={[styles.bar, { height: Math.min(80, (day.revenue / 10000) * 80), backgroundColor: '#3B82F6' }]} />
-                                            <Text style={styles.barLabel}>{new Date(day.date).getDate()}/{new Date(day.date).getMonth() + 1}</Text>
-                                        </View>
-                                    ))}
+                                    {generatedReport.trend.map((day, idx) => {
+                                        const dateLabel = day.date ? (new Date(day.date).getDate() + '/' + (new Date(day.date).getMonth() + 1)) : '??';
+                                        const maxRev = Math.max(...generatedReport.trend.map(d => Number(d.revenue) || 1), 1);
+                                        return (
+                                            <View key={idx} style={styles.barColumn}>
+                                                <View style={[styles.bar, { height: Math.min(80, (Number(day.revenue) / maxRev) * 80), backgroundColor: '#3B82F6' }]} />
+                                                <Text style={styles.barLabel}>{dateLabel}</Text>
+                                            </View>
+                                        );
+                                    })}
                                 </View>
+                            </View>
+                        )}
+
+                        {reportType === 'Orders' && generatedReport.byStatus && (
+                            <View style={{ marginTop: 10 }}>
+                                <Text style={styles.summaryLabel}>Orders by Status</Text>
+                                {generatedReport.byStatus.map((s, idx) => (
+                                    <View key={idx} style={styles.permItem}>
+                                        <Text style={styles.permItemText}>{s.status}</Text>
+                                        <Text style={styles.summaryValue}>{s.count} orders</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+
+                        {reportType === 'Customers' && generatedReport.summary && (
+                            <View style={{ marginTop: 10 }}>
+                                <Text style={styles.summaryLabel}>Customer Growth</Text>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Total Customers</Text>
+                                    <Text style={styles.summaryValue}>{generatedReport.summary.total}</Text>
+                                </View>
+                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                    <Text style={styles.summaryLabel}>New This Week</Text>
+                                    <Text style={[styles.summaryValue, { color: '#10B981' }]}>+{generatedReport.summary.newThisWeek}</Text>
+                                </View>
+                                
+                                {generatedReport.loyal && (
+                                    <>
+                                        <Text style={[styles.summaryLabel, { marginTop: 15 }]}>Top Customers</Text>
+                                        {generatedReport.loyal.slice(0, 3).map((c, idx) => (
+                                            <View key={idx} style={styles.permItem}>
+                                                <Text style={styles.permItemText}>{c.name}</Text>
+                                                <Text style={styles.summaryValue}>{c.order_count} orders</Text>
+                                            </View>
+                                        ))}
+                                    </>
+                                )}
+                            </View>
+                        )}
+
+                        {reportType === 'Staff' && generatedReport.attendance && (
+                            <View style={{ marginTop: 10 }}>
+                                <Text style={styles.summaryLabel}>Staff Performance</Text>
+                                {generatedReport.attendance.map((s, idx) => (
+                                    <View key={idx} style={styles.permItem}>
+                                        <Text style={styles.permItemText}>{s.full_name}</Text>
+                                        <Text style={styles.summaryValue}>{s.days_present} days / {Number(s.avg_hours || 0).toFixed(1)}h avg</Text>
+                                    </View>
+                                ))}
                             </View>
                         )}
 
@@ -1217,12 +1334,32 @@ const AdminDashboard = () => {
                             <View style={{ marginTop: 10 }}>
                                 <View style={styles.summaryRow}>
                                     <Text style={styles.summaryLabel}>Delivery Cancellations</Text>
-                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{generatedReport.deliveryCancels?.length || 0}</Text>
+                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
+                                        {generatedReport.deliveryCancels?.reduce((acc, curr) => acc + Number(curr.count || 0), 0) || 0}
+                                    </Text>
                                 </View>
                                 <View style={[styles.summaryRow, { marginTop: 10 }]}>
                                     <Text style={styles.summaryLabel}>Takeaway Cancellations</Text>
-                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{generatedReport.takeawayCancels?.length || 0}</Text>
+                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
+                                        {generatedReport.takeawayCancels?.reduce((acc, curr) => acc + Number(curr.count || 0), 0) || 0}
+                                    </Text>
                                 </View>
+                                
+                                {(generatedReport.deliveryCancels?.length > 0 || generatedReport.takeawayCancels?.length > 0) && (
+                                    <View style={{ marginTop: 15 }}>
+                                        <Text style={styles.summaryLabel}>Top Reasons</Text>
+                                        {[...(generatedReport.deliveryCancels || []), ...(generatedReport.takeawayCancels || [])]
+                                            .sort((a,b) => b.count - a.count)
+                                            .slice(0, 3)
+                                            .map((c, i) => (
+                                                <View key={i} style={styles.permItem}>
+                                                    <Text style={styles.permItemText}>{c.cancellation_reason || 'Unknown'}</Text>
+                                                    <Text style={styles.summaryValue}>{c.count}</Text>
+                                                </View>
+                                            ))
+                                        }
+                                    </View>
+                                )}
                             </View>
                         )}
 

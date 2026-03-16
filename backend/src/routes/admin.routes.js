@@ -44,7 +44,10 @@ import {
     generateSampleReports,
     getNotifications,
     sendNotification,
-    getStaffActivity
+    getStaffActivity,
+    getStaffMembers,
+    updateStaffStatus,
+    updateStaffRole as updateStaffRoleManagement
 } from '../controllers/admin.management.controller.js';
 
 
@@ -61,27 +64,14 @@ router.use(adminOnly); // Ensure only admins can access
 router.get('/stats', getStats);
 router.get('/revenue-analytics', getRevenueAnalytics);
 
-// Staff
+// Staff Management (New)
+router.get('/staff-members', logAccess('VIEW_STAFF'), getStaffMembers);
+router.put('/staff/:id/status', preventSelfModification, logAccess('STAFF_STATUS_CHANGE'), updateStaffStatus);
+router.put('/staff/:id/role', preventSelfModification, logAccess('STAFF_ROLE_CHANGE'), updateStaffRoleManagement);
+
+// Deprecated or legacy staff routes (redirecting to new management if possible)
 router.get('/staff', getAllStaff);
-
-// Explicit Activation/Deactivation Endpoints
-router.post('/staff/:id/activate',
-    preventSelfModification,
-    logAccess('STAFF_ACTIVATION'),
-    (req, res, next) => { req.body.status = 'active'; next(); },
-    toggleStaffStatus
-);
-
-router.post('/staff/:id/deactivate',
-    preventSelfModification,
-    logAccess('STAFF_DEACTIVATION'),
-    (req, res, next) => { req.body.status = 'inactive'; next(); },
-    toggleStaffStatus
-);
-
-router.put('/staff/:id/status', preventSelfModification, logAccess('STAFF_STATUS_CHANGE'), toggleStaffStatus);
 router.put('/staff/:id/permissions', updateStaffPermissions);
-router.put('/staff/:id/role', updateStaffRole);
 
 // Customers
 router.get('/customers', getAllCustomers);

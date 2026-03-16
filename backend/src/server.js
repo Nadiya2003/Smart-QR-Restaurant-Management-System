@@ -7,7 +7,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);
     console.log(`🚀 Backend is running successfully!`);
     console.log(`👉 Server running on: http://localhost:${PORT}`);
-    console.log(`👉 LAN access: http://192.168.1.3:${PORT}`);
+    console.log(`👉 LAN access: http://192.168.1.4:${PORT}`);
     console.log(`👉 API available at: http://localhost:${PORT}/api/menu`);
     console.log(`=================================================\n`);
 });

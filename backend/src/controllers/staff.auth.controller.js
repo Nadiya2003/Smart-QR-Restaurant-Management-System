@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import { getPermissionsForRole } from '../utils/staffPermissions.js';
 
 // Role name to table name mapping
 const ROLE_TABLE_MAP = {
@@ -61,8 +62,8 @@ export const registerStaff = async (req, res) => {
         const defaultPermissions = JSON.stringify([]);
 
         const [staffResult] = await connection.query(
-            `INSERT INTO staff_users (full_name, email, phone, password, role_id, is_active, permissions)
-             VALUES (?, ?, ?, ?, ?, 0, ?)`,
+            `INSERT INTO staff_users (full_name, email, phone, password, role_id, status, permissions)
+             VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
             [full_name, email, phone || null, hashedPassword, roleId, defaultPermissions]
         );
 
@@ -131,12 +132,27 @@ export const loginStaff = async (req, res) => {
         }
 
         const user = staffRows[0];
+        const userRole = user.role_name.toLowerCase();
+
+        // 3. Device Restriction check (Staff can only access from mobile)
+        const { deviceType } = req.body; // 'mobile' or 'desktop'
+        
+        if (userRole !== 'admin' && deviceType === 'desktop') {
+            return res.status(403).json({
+                message: 'Staff accounts can only access the system from mobile devices. Please login using a mobile phone.',
+                code: 'MOBILE_ONLY'
+            });
+        }
 
         // Check if account is active
-        if (user.is_active === 0) {
+        if (user.status !== 'active') {
+            const statusMsg = user.status === 'pending' 
+                ? 'Wait for admin to activate your account.' 
+                : 'Your account has been disabled. Please contact admin.';
+            
             return res.status(403).json({
-                message: 'Wait for admin to activate your account.',
-                code: 'ACCOUNT_INACTIVE'
+                message: statusMsg,
+                code: `ACCOUNT_${user.status.toUpperCase()}`
             });
         }
 

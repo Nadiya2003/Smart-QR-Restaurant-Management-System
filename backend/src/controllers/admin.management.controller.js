@@ -1,5 +1,6 @@
 
 import pool from '../config/db.js';
+import { getPermissionsForRole } from '../utils/staffPermissions.js';
 
 // --- Permissions Management ---
 export const getAllPermissions = async (req, res) => {
@@ -291,5 +292,100 @@ export const getStaffActivity = async (req, res) => {
         res.json({ activity: rows });
     } catch (err) {
         res.status(500).json({ message: 'Error fetching staff activity', error: err.message });
+    }
+};
+
+// --- Staff Management ---
+export const getStaffMembers = async (req, res) => {
+    try {
+        const { role, status, search } = req.query;
+        let query = `
+            SELECT su.id, su.full_name, su.email, su.phone, su.status, su.created_at, sr.role_name as role, su.role_id
+            FROM staff_users su
+            JOIN staff_roles sr ON su.role_id = sr.id
+            WHERE su.role_id != (SELECT id FROM staff_roles WHERE role_name = 'admin')
+        `;
+        const params = [];
+
+        if (role) {
+            query += " AND sr.role_name = ?";
+            params.push(role);
+        }
+        if (status) {
+            query += " AND su.status = ?";
+            params.push(status);
+        }
+        if (search) {
+            query += " AND (su.full_name LIKE ? OR su.email LIKE ?)";
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        query += " ORDER BY su.created_at DESC";
+
+        const [rows] = await pool.query(query, params);
+        res.json({ staff: rows });
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching staff members', error: err.message });
+    }
+};
+
+export const updateStaffStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body; // active, disabled, pending
+
+        if (!['active', 'disabled', 'pending'].includes(status)) {
+            return res.status(400).json({ message: 'Invalid status' });
+        }
+
+        // Get current role to apply permissions if activating
+        const [user] = await pool.query(`
+            SELECT sr.role_name 
+            FROM staff_users su
+            JOIN staff_roles sr ON su.role_id = sr.id
+            WHERE su.id = ?
+        `, [id]);
+
+        if (user.length === 0) {
+            return res.status(404).json({ message: 'Staff not found' });
+        }
+
+        let updateQuery = "UPDATE staff_users SET status = ?, is_active = ? WHERE id = ?";
+        const updateParams = [status, status === 'active' ? 1 : 0, id];
+
+        // If activating, sync permissions based on role
+        if (status === 'active') {
+            const permissions = getPermissionsForRole(user[0].role_name);
+            updateQuery = "UPDATE staff_users SET status = ?, is_active = ?, permissions = ? WHERE id = ?";
+            updateParams.splice(2, 0, JSON.stringify(permissions));
+        }
+
+        await pool.query(updateQuery, updateParams);
+        res.json({ message: `Staff status updated to ${status}` });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating staff status', error: err.message });
+    }
+};
+
+export const updateStaffRole = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { roleId } = req.body;
+
+        const [role] = await pool.query("SELECT role_name FROM staff_roles WHERE id = ?", [roleId]);
+        if (role.length === 0) {
+            return res.status(400).json({ message: 'Invalid role ID' });
+        }
+
+        const permissions = getPermissionsForRole(role[0].role_name);
+        
+        await pool.query(
+            "UPDATE staff_users SET role_id = ?, permissions = ? WHERE id = ?",
+            [roleId, JSON.stringify(permissions), id]
+        );
+
+        res.json({ message: 'Staff role and permissions updated successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating staff role', error: err.message });
     }
 };

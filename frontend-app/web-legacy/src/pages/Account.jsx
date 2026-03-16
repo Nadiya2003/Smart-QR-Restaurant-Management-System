@@ -15,7 +15,7 @@ function Account() {
     const fetchAccountData = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://192.168.1.3:5000/api/customer/account', {
+            const res = await fetch('http://192.168.1.4:5000/api/customer/account', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();

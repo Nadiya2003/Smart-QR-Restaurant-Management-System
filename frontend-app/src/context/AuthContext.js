@@ -38,7 +38,12 @@ export const AuthProvider = ({ children }) => {
             const response = await fetch(apiConfig.STAFF.LOGIN, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, email: username, password }),
+                body: JSON.stringify({ 
+                    username, 
+                    email: username, 
+                    password,
+                    deviceType: 'mobile' 
+                }),
             });
 
             const data = await response.json();

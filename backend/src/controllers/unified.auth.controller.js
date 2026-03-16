@@ -8,6 +8,7 @@ const DEFAULT_CUSTOMER_PERMISSIONS = [
     'menu.view',
     'orders.place',
     'payments.make',
+    'orders.view',
     'orders.view_status',
     'stewards.rate',
     'account.manage'

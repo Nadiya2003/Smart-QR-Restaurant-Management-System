@@ -2,19 +2,17 @@ import pool from '../config/db.js';
 
 export const getAllStewards = async (req, res) => {
     try {
-        // Fetch stewards by joining staff_users, stewards, and staff_roles tables
-        // We filter by role_name = 'steward' and staff_users.is_active = 1
         const query = `
             SELECT 
                 s.id, 
                 u.full_name as name, 
                 s.image as avatar,
-                (
-                    SELECT COALESCE(AVG(f.rating), 5.0)
+                COALESCE((
+                    SELECT AVG(f.rating)
                     FROM feedback f
                     JOIN orders o ON f.order_id = o.id
                     WHERE o.steward_id = s.id
-                ) as rating,
+                ), 5.0) as rating,
                 (
                     SELECT COUNT(*) 
                     FROM orders o 
@@ -25,7 +23,9 @@ export const getAllStewards = async (req, res) => {
             FROM stewards s
             JOIN staff_users u ON s.staff_id = u.id
             JOIN staff_roles sr ON u.role_id = sr.id
-            WHERE sr.role_name = 'steward' AND u.is_active = 1 AND s.is_available = 1
+            WHERE LOWER(sr.role_name) = 'steward' 
+            AND u.is_active = 1 
+            AND s.is_available = 1
         `;
 
         const [rows] = await pool.query(query);
@@ -33,10 +33,10 @@ export const getAllStewards = async (req, res) => {
         const stewards = rows.map(row => ({
             id: row.id,
             name: row.name,
-            avatar: row.avatar ? `http://192.168.1.3:5000/stewards/${row.avatar}` : '/stewards/default.png',
+            avatar: row.avatar ? `${row.avatar.startsWith('http') ? '' : 'http://192.168.1.4:5000/stewards/'}${row.avatar}` : '/stewards/default.png',
             rating: Number(Number(row.rating).toFixed(1)),
-            activeOrders: row.activeOrders,
-            status: row.activeOrders < 5 ? 'active' : 'busy'
+            activeOrders: parseInt(row.activeOrders || 0),
+            status: (row.activeOrders || 0) < 5 ? 'active' : 'busy'
         }));
 
         res.json({ stewards });
