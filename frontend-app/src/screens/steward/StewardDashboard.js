@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, SafeAreaView, Dimensions, Switch
+    FlatList, Image, SafeAreaView, Dimensions, Switch, Vibration, Platform
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
@@ -32,6 +32,14 @@ const StewardDashboard = () => {
     const [showAddItems, setShowAddItems] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
+    const [showStatusModal, setShowStatusModal] = useState(false);
+    const [selectedStatusOrder, setSelectedStatusOrder] = useState(null);
+    const [selectedMenuCategory, setSelectedMenuCategory] = useState('');
+    
+    // New Order System States
+    const [cart, setCart] = useState([]);
+    const [activeOrderContext, setActiveOrderContext] = useState(null); // { table, orderId, type: 'new' | 'update' }
+    const [showCart, setShowCart] = useState(false);
 
     const headers = {
         'Content-Type': 'application/json',
@@ -54,7 +62,15 @@ const StewardDashboard = () => {
             if (tableRes.ok) setTables((await tableRes.json()).tables || []);
             if (orderRes.ok) setOrders((await orderRes.json()).orders || []);
             if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
-            if (menuRes.ok) setMenuItems((await menuRes.json()) || []);
+            const menuData = await menuRes.json();
+            setMenuItems(menuData || []);
+            
+            // Set default category if not set
+            if (menuData.length > 0 && !selectedMenuCategory) {
+               const cats = [...new Set(menuData.map(item => item.category))];
+               if (cats.length > 0) setSelectedMenuCategory(cats[0]);
+            }
+
             if (dutyRes.ok) setIsOnDuty((await dutyRes.json()).onDuty);
             if (resvRes.ok) setReservations((await resvRes.json()).reservations || []);
 
@@ -140,46 +156,106 @@ const StewardDashboard = () => {
         }
     };
 
-    const handleAddItem = async (menuItem) => {
-        try {
-            const res = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/${orderDetail.id}/add-item`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    menu_item_id: menuItem.id,
-                    quantity: 1,
-                    price: menuItem.price
-                })
-            });
-            if (res.ok) {
-                Alert.alert('Added', `${menuItem.name} added to order`);
-                fetchData();
+    const addToCart = (menuItem) => {
+        setCart(prev => {
+            const existing = prev.find(i => i.id === menuItem.id);
+            if (existing) {
+                return prev.map(i => i.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i);
             }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to add item');
-        }
+            return [...prev, { ...menuItem, quantity: 1 }];
+        });
+        Vibration && Vibration.vibrate(50);
     };
 
-    const startOrder = async (table) => {
+    const removeFromCart = (itemId) => {
+        setCart(prev => prev.filter(i => i.id !== itemId));
+    };
+
+    const updateCartQty = (itemId, delta) => {
+        setCart(prev => prev.map(i => {
+            if (i.id === itemId) {
+                const newQty = Math.max(1, i.quantity + delta);
+                return { ...i, quantity: newQty };
+            }
+            return i;
+        }));
+    };
+
+    const placeFinalOrder = async () => {
+        if (!activeOrderContext) return Alert.alert('Error', 'No table selected');
+        if (cart.length === 0) return Alert.alert('Empty Cart', 'Please add items before placing order');
+
+        setLoading(true);
         try {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/orders/dine-in`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    table_number: table.table_number,
+                    table_number: activeOrderContext.table.table_number,
                     steward_id: user.id,
-                    items: [], 
-                    total_price: 0
+                    order_id: activeOrderContext.orderId, // Existing order ID for updates
+                    items: cart.map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        price: item.price,
+                        category: item.category,
+                        quantity: item.quantity
+                    })),
+                    total_price: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
                 })
             });
+
             if (res.ok) {
-                Alert.alert('Success', `Order started for Table ${table.table_number}`);
+                const data = await res.json();
+                Alert.alert('Success', 'Order updated and sent to Kitchen/Bar');
+                setCart([]);
+                setShowCart(false);
+                setActiveOrderContext(null);
+                setActiveTab('orders');
                 fetchData();
+            } else {
+                const errorData = await res.json();
+                Alert.alert('Order Failed', errorData.message || 'Server error');
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to start order');
+            console.error('Place order error:', error);
+            Alert.alert('Error', 'Failed to reach server');
+        } finally {
+            setLoading(false);
         }
     };
+
+
+    const handleRemovePlacedItem = async (orderId, itemId, itemName) => {
+        Alert.alert(
+            'Remove Item',
+            `Are you sure you want to remove "${itemName}" from Order #${orderId}? This will update the total price automatically.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                    text: 'Remove', 
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const res = await fetch(`${apiConfig.API_BASE_URL}/api/orders/${orderId}/items/${itemId}`, {
+                                method: 'DELETE',
+                                headers
+                            });
+                            if (res.ok) {
+                                fetchData(true);
+                            } else {
+                                const err = await res.json();
+                                Alert.alert('Error', err.message || 'Failed to remove item');
+                            }
+                        } catch (error) {
+                            Alert.alert('Error', 'Connection failed');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
 
     const handleTableStatusUpdate = async (id, status) => {
         try {
@@ -324,24 +400,35 @@ const StewardDashboard = () => {
             onPress={() => {
                 if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
                 setSelectedTable(table);
+                
                 if (table.current_order_id) {
-                    const ord = orders.find(o => o.id === table.current_order_id);
-                    if (ord) setOrderDetail(ord);
                     Alert.alert(
                         `Table ${table.table_number}`,
-                        `Order #${table.current_order_id} is active (${table.order_status})\nStatus: NOT AVAILABLE\nAssigned to: ${table.steward_name || 'You'}`,
+                        `Existing Order #${table.current_order_id} active.`,
                         [
-                            { text: 'Manage Order', onPress: () => setActiveTab('orders') },
-                            { text: 'Mark Available', style: 'destructive', onPress: () => handleTableStatusUpdate(table.id, 'available') },
+                            { 
+                                text: 'Add Items (Existing)', 
+                                onPress: () => {
+                                    setActiveOrderContext({ type: 'update', table, orderId: table.current_order_id });
+                                    setActiveTab('menu');
+                                }
+                            },
+                            { text: 'Mark Available (Clear)', style: 'destructive', onPress: () => handleTableStatusUpdate(table.id, 'available') },
                             { text: 'Close', style: 'cancel' }
                         ]
                     );
                 } else {
                     Alert.alert(
                         `Table ${table.table_number}`,
-                        `Status: ${table.status.toUpperCase()}\nArea: ${table.area_name}\nCapacity: ${table.capacity || 4} seats\nToday's Booking: ${table.today_reservations}`,
+                        `Capacity: ${table.capacity || 4} seats.`,
                         [
-                            { text: 'Start Order', onPress: () => startOrder(table) },
+                            { 
+                                text: 'Start New Order', 
+                                onPress: () => {
+                                    setActiveOrderContext({ type: 'new', table, orderId: null });
+                                    setActiveTab('menu');
+                                }
+                            },
                             { text: 'Mark Not Available', onPress: () => handleTableStatusUpdate(table.id, 'not available') },
                             { text: 'Cancel', style: 'cancel' }
                         ]
@@ -397,8 +484,20 @@ const StewardDashboard = () => {
                         <Text style={styles.orderTable}>Table {order.table_number}</Text>
                         <View style={styles.orderItems}>
                             {order.items?.map((item, idx) => (
-                                <Text key={idx} style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                    {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
+                                        <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
+                                            <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             ))}
+                        </View>
+
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ color: '#6B7280', fontSize: 12 }}>Items Total</Text>
+                            <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {order.total_price}</Text>
                         </View>
                         
                         <View style={styles.actionRow}>
@@ -406,7 +505,8 @@ const StewardDashboard = () => {
                                 style={styles.actionBtn} 
                                 onPress={() => {
                                     setOrderDetail(order);
-                                    setShowAddItems(true);
+                                    setActiveOrderContext({ type: 'update', table: { table_number: order.table_number }, orderId: order.id });
+                                    setActiveTab('menu');
                                 }}
                             >
                                 <Text style={styles.actionBtnText}>Add Items</Text>
@@ -414,14 +514,11 @@ const StewardDashboard = () => {
                             <TouchableOpacity 
                                 style={[styles.actionBtn, { backgroundColor: '#3B82F6' }]} 
                                 onPress={() => {
-                                    const nextStatus = order.status === 'PENDING' ? 'CONFIRMED' : 
-                                                      order.status === 'CONFIRMED' ? 'PREPARING' : 
-                                                      order.status === 'PREPARING' ? 'READY' : 
-                                                      order.status === 'READY' ? 'SERVED' : 'COMPLETED';
-                                    handleUpdateStatus(order.id, nextStatus);
+                                    setSelectedStatusOrder(order);
+                                    setShowStatusModal(true);
                                 }}
                             >
-                                <Text style={styles.actionBtnText}>Update</Text>
+                                <Text style={styles.actionBtnText}>Status</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
                                 style={[styles.actionBtn, { backgroundColor: '#EF4444' }]} 
@@ -439,32 +536,87 @@ const StewardDashboard = () => {
         </ScrollView>
     );
 
-    const renderMenu = () => (
-        <View style={styles.content}>
-             <FlatList
-                data={menuItems}
-                keyExtractor={item => item.id.toString()}
-                renderItem={({ item }) => (
-                    <View style={styles.menuCard}>
-                        <Image 
-                            source={{ uri: item.image ? (item.image.startsWith('http') ? item.image : `${apiConfig.API_BASE_URL}${item.image}`) : 'https://via.placeholder.com/100' }} 
-                            style={styles.menuImg} 
-                        />
-                        <View style={styles.menuInfo}>
-                            <Text style={styles.menuName}>{item.name}</Text>
-                            <Text style={styles.menuPrice}>Rs. {item.price}</Text>
-                        </View>
-                        {orderDetail && (
-                            <TouchableOpacity style={styles.addBtn} onPress={() => handleAddItem(item)}>
-                                <Text style={styles.addBtnText}>+</Text>
+    const renderMenu = () => {
+        const categories = [...new Set(menuItems.map(item => item.category))];
+        const filteredItems = menuItems.filter(item => item.category === selectedMenuCategory);
+
+        return (
+            <View style={{ flex: 1 }}>
+                {/* Context Header */}
+                <View style={styles.menuContextHeader}>
+                    <View>
+                        <Text style={styles.menuContextTitle}>
+                            {activeOrderContext ? `Ordering for T-${activeOrderContext.table.table_number}` : 'Select a Table First'}
+                        </Text>
+                        <Text style={styles.menuContextSub}>
+                            {activeOrderContext?.type === 'update' ? `Updating Order #${activeOrderContext.orderId}` : 'Starting New Session'}
+                        </Text>
+                    </View>
+                    {!activeOrderContext && (
+                        <TouchableOpacity style={styles.contextSwitchBtn} onPress={() => setActiveTab('home')}>
+                            <Text style={styles.contextSwitchText}>Go to Map</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                <View style={{ marginBottom: 15, paddingHorizontal: 15 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                        {categories.map(cat => (
+                            <TouchableOpacity 
+                                key={cat} 
+                                style={[styles.catPill, selectedMenuCategory === cat && styles.activeCatPill]}
+                                onPress={() => setSelectedMenuCategory(cat)}
+                            >
+                                <Text style={[styles.catPillText, selectedMenuCategory === cat && styles.activeCatPillText]}>{cat}</Text>
                             </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+
+                {filteredItems.length === 0 ? (
+                    <View style={styles.emptyState}><Text style={styles.emptyText}>No items in this category</Text></View>
+                ) : (
+                    <FlatList
+                        data={filteredItems}
+                        keyExtractor={item => item.id.toString()}
+                        contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
+                        renderItem={({ item }) => (
+                            <View style={styles.menuCard}>
+                                <Image 
+                                    source={{ uri: (item.image && item.image.startsWith('http')) ? item.image : (item.image ? `${apiConfig.API_BASE_URL}${item.image}` : 'https://via.placeholder.com/100') }} 
+                                    style={styles.menuImg} 
+                                />
+                                <View style={styles.menuInfo}>
+                                    <Text style={styles.menuName}>{item.name}</Text>
+                                    <Text style={styles.menuPrice}>Rs. {item.price}</Text>
+                                </View>
+                                {activeOrderContext && (
+                                    <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(item)}>
+                                        <Text style={styles.addBtnText}>+</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         )}
+                    />
+                )}
+
+                {/* Floating Cart Button */}
+                {cart.length > 0 && (
+                    <View style={styles.floatingCartContainer}>
+                        <TouchableOpacity style={styles.floatingCart} onPress={() => setShowCart(true)}>
+                            <View style={styles.cartContent}>
+                                <View style={styles.cartLeft}>
+                                    <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cart.reduce((s,i)=>s+i.quantity, 0)}</Text></View>
+                                    <Text style={styles.cartLabel}>View Order Cart</Text>
+                                </View>
+                                <Text style={styles.cartTotal}>Rs. {cart.reduce((s,i)=>s+(i.price*i.quantity), 0)}</Text>
+                            </View>
+                        </TouchableOpacity>
                     </View>
                 )}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            />
-        </View>
-    );
+            </View>
+        );
+    };
 
     const renderReservations = () => (
         <ScrollView 
@@ -599,15 +751,95 @@ const StewardDashboard = () => {
                 </View>
             </Modal>
 
-            {/* Add Items Modal */}
-            <Modal visible={showAddItems} transparent animationType="fade">
+            {/* Cart Modal */}
+            <Modal visible={showCart} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { height: '80%' }]}>
+                    <View style={[styles.modalContent, { height: '85%' }]}>
                         <View style={styles.modalHeader}>
-                          <Text style={styles.modalTitle}>Add to Order #{orderDetail?.id}</Text>
-                          <TouchableOpacity onPress={() => setShowAddItems(false)}><Text style={{fontSize: 20}}>✕</Text></TouchableOpacity>
+                            <View>
+                                <Text style={styles.modalTitle}>Table T-{activeOrderContext?.table.table_number}</Text>
+                                <Text style={styles.modalSub}>Confirm items to place order</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setShowCart(false)}>
+                                <Text style={{fontSize: 24, padding: 5}}>✕</Text>
+                            </TouchableOpacity>
                         </View>
-                        {renderMenu()}
+
+                        <ScrollView style={styles.cartList}>
+                            {cart.map(item => (
+                                <View key={item.id} style={styles.cartItem}>
+                                    <View style={{flex: 1}}>
+                                        <Text style={styles.cartItemName}>{item.name}</Text>
+                                        <Text style={styles.cartItemPrice}>Rs. {item.price}</Text>
+                                    </View>
+                                    <View style={styles.qtyRow}>
+                                        <TouchableOpacity style={styles.qtyBtn} onPress={() => updateCartQty(item.id, -1)}>
+                                            <Text style={styles.qtyBtnText}>-</Text>
+                                        </TouchableOpacity>
+                                        <Text style={styles.qtyText}>{item.quantity}</Text>
+                                        <TouchableOpacity style={styles.qtyBtn} onPress={() => updateCartQty(item.id, 1)}>
+                                            <Text style={styles.qtyBtnText}>+</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                    <TouchableOpacity onPress={() => removeFromCart(item.id)} style={styles.removeBtn}>
+                                        <Text style={{fontSize: 18}}>🗑️</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </ScrollView>
+
+                        <View style={styles.cartFooter}>
+                            <View style={styles.totalRow}>
+                                <Text style={styles.totalLabel}>Total Amount</Text>
+                                <Text style={styles.totalValue}>Rs. {cart.reduce((s,i)=>s+(i.price*i.quantity), 0)}</Text>
+                            </View>
+                            <TouchableOpacity 
+                                style={[styles.finalOrderBtn, loading && { opacity: 0.7 }]} 
+                                onPress={placeFinalOrder}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <Text style={styles.finalOrderBtnText}>Place Order Now</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Status Update Modal */}
+            <Modal visible={showStatusModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Update Status</Text>
+                            <TouchableOpacity onPress={() => setShowStatusModal(false)}><Text style={{fontSize: 20}}>✕</Text></TouchableOpacity>
+                        </View>
+                        <Text style={{ marginBottom: 20, color: '#6B7280' }}>Order #{selectedStatusOrder?.id} - Table {selectedStatusOrder?.table_number}</Text>
+                        
+                        <View style={{ gap: 10 }}>
+                            {['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED'].map((status) => (
+                                <TouchableOpacity 
+                                    key={status} 
+                                    style={[
+                                        styles.statusOption, 
+                                        selectedStatusOrder?.status === status && { backgroundColor: '#DBEAFE', borderColor: '#3B82F6' }
+                                    ]}
+                                    onPress={() => {
+                                        handleUpdateStatus(selectedStatusOrder.id, status);
+                                        setShowStatusModal(false);
+                                    }}
+                                >
+                                    <Text style={[
+                                        styles.statusOptionText,
+                                        selectedStatusOrder?.status === status && { color: '#1E40AF', fontWeight: 'bold' }
+                                    ]}>{status}</Text>
+                                    {selectedStatusOrder?.status === status && <Text>✅</Text>}
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -750,7 +982,72 @@ const styles = StyleSheet.create({
     input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, padding: 15, height: 120, textAlignVertical: 'top', backgroundColor: '#F9FAFB' },
     modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
     cancelBtn: { flex: 1, padding: 16, alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12 },
-    confirmBtn: { flex: 2, padding: 16, alignItems: 'center', backgroundColor: '#EF4444', borderRadius: 12 }
+    confirmBtn: { flex: 2, padding: 16, alignItems: 'center', backgroundColor: '#EF4444', borderRadius: 12 },
+    catScroll: { paddingVertical: 5 },
+    catPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    activeCatPill: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+    catPillText: { fontSize: 13, color: '#4B5563', fontWeight: '600' },
+    activeCatPillText: { color: 'white' },
+    statusOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
+    statusOptionText: { fontSize: 16, color: '#111827' },
+    
+    // New Order System Styles
+    menuContextHeader: {
+        padding: 15,
+        backgroundColor: '#F3F4F6',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB'
+    },
+    menuContextTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+    menuContextSub: { fontSize: 11, color: '#6B7280' },
+    contextSwitchBtn: { backgroundColor: '#3B82F6', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
+    contextSwitchText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
+    
+    floatingCartContainer: {
+        position: 'absolute',
+        bottom: 20,
+        left: 0,
+        right: 0,
+        paddingHorizontal: 15,
+        zIndex: 100
+    },
+    floatingCart: {
+        backgroundColor: '#111827',
+        borderRadius: 16,
+        padding: 16,
+        shadowColor: '#000',
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 10
+    },
+    cartContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cartLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    cartBadge: { backgroundColor: '#3B82F6', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    cartBadgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+    cartLabel: { color: 'white', fontWeight: 'bold', fontSize: 15 },
+    cartTotal: { color: 'white', fontWeight: 'bold', fontSize: 18 },
+    
+    // Modal Styles
+    modalSub: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+    cartList: { flex: 1, paddingVertical: 10 },
+    cartItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    cartItemName: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+    cartItemPrice: { fontSize: 14, color: '#3B82F6', fontWeight: '600', marginTop: 2 },
+    qtyRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, padding: 4, marginHorizontal: 10 },
+    qtyBtn: { width: 30, height: 30, justifyContent: 'center', alignItems: 'center' },
+    qtyBtnText: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+    qtyText: { marginHorizontal: 10, fontWeight: 'bold', fontSize: 16, minWidth: 20, textAlign: 'center' },
+    removeBtn: { padding: 5 },
+    cartFooter: { borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingVertical: 20 },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+    totalLabel: { fontSize: 16, color: '#6B7280' },
+    totalValue: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
+    finalOrderBtn: { backgroundColor: '#10B981', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    finalOrderBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' }
 });
 
 export default StewardDashboard;

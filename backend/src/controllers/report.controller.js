@@ -186,7 +186,7 @@ export const getStaffReport = async (req, res) => {
 
         const [attendance] = await pool.query(`
             SELECT su.full_name, COUNT(*) as days_present, 
-                   AVG(TIMESTAMPDIFF(HOUR, login_time, IFNULL(logout_time, NOW()))) as avg_hours
+                   AVG(TIMESTAMPDIFF(HOUR, check_in_time, IFNULL(check_out_time, NOW()))) as avg_hours
             FROM staff_attendance a
             JOIN staff_users su ON a.staff_id = su.id
             ${where}
@@ -314,7 +314,7 @@ export const generateUnifiedReport = async (req, res) => {
                 title = "Staff Performance Report";
                 const [staffPerformance] = await pool.query(`
                     SELECT su.full_name, sr.role_name as role, COUNT(a.id) as attendance_days, 
-                           SUM(TIMESTAMPDIFF(HOUR, a.login_time, IFNULL(a.logout_time, NOW()))) as total_hours
+                           SUM(TIMESTAMPDIFF(HOUR, a.check_in_time, IFNULL(a.check_out_time, NOW()))) as total_hours
                     FROM staff_users su
                     LEFT JOIN staff_roles sr ON su.role_id = sr.id
                     LEFT JOIN staff_attendance a ON su.id = a.staff_id

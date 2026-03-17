@@ -48,8 +48,9 @@ const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
 
     return (
         <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : null}
             style={styles.container}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
         >
             <View style={styles.card}>
                 <View style={styles.header}>
@@ -65,7 +66,9 @@ const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
                         <View style={styles.errorContainer}>
                             <Text style={styles.errorText}>⚠️ {error}</Text>
                         </View>
-                    ) : null}
+                    ) : (
+                        <View style={{ height: 0, marginBottom: error ? 15 : 0 }} />
+                    )}
 
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Username / Email</Text>
@@ -147,12 +150,15 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F3F4F6',
         justifyContent: 'center',
+        alignItems: 'center',
         padding: 20,
     },
     card: {
         backgroundColor: 'white',
         borderRadius: 16,
         overflow: 'hidden',
+        width: '100%',
+        maxWidth: 420,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,

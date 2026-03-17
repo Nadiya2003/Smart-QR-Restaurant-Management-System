@@ -161,12 +161,15 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
 
     return (
         <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : null}
             style={styles.container}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
         >
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
             >
                 {/* Back Button */}
                 <TouchableOpacity
@@ -193,7 +196,9 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                             <View style={styles.errorContainer}>
                                 <Text style={styles.errorText}>⚠️ {error}</Text>
                             </View>
-                        ) : null}
+                        ) : (
+                            <View style={{ height: 0, marginBottom: error ? 15 : 0 }} />
+                        )}
 
                         {/* Full Name */}
                         <View style={styles.inputGroup}>
@@ -417,10 +422,10 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         flexGrow: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         padding: 20,
-        paddingTop: 40,
-        paddingBottom: 40,
+        paddingTop: 80,
+        paddingBottom: 60,
     },
     backButton: {
         position: 'absolute',

@@ -16,7 +16,7 @@ function Menu() {
     const [menuItems, setMenuItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeCategory, setActiveCategory] = useState('All');
+    const [activeCategory, setActiveCategory] = useState('');
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -43,11 +43,15 @@ function Menu() {
         }
     };
 
-    const categories = ['All', ...new Set(menuItems.map(item => item.category))];
+    const categories = [...new Set(menuItems.map(item => item.category))];
 
-    const filteredItems = activeCategory === 'All'
-        ? menuItems
-        : menuItems.filter(item => item.category === activeCategory);
+    useEffect(() => {
+        if (categories.length > 0 && !activeCategory) {
+            setActiveCategory(categories[0]);
+        }
+    }, [categories, activeCategory]);
+
+    const filteredItems = menuItems.filter(item => item.category === activeCategory);
 
     const handleCheckout = () => {
         navigate('/delivery');

@@ -185,8 +185,8 @@ export const loginStaff = async (req, res) => {
             );
             if (atRows.length === 0) {
                 await pool.query(
-                    "INSERT INTO staff_attendance (staff_id, date, login_time, status) VALUES (?, ?, ?, 'PRESENT')",
-                    [user.id, today, now]
+                    "INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, ?, ?, 'PRESENT')",
+                    [user.id, user.full_name, user.role_name, today, now]
                 );
             }
         } catch (attErr) {
@@ -296,7 +296,7 @@ export const logoutStaff = async (req, res) => {
         const now = new Date();
 
         await pool.query(
-            "UPDATE staff_attendance SET logout_time = ? WHERE staff_id = ? AND date = ? AND logout_time IS NULL",
+            "UPDATE staff_attendance SET check_out_time = ? WHERE staff_id = ? AND date = ? AND check_out_time IS NULL",
             [now, userId, today]
         );
 

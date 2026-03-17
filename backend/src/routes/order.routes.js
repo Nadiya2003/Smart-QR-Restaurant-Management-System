@@ -7,7 +7,8 @@ import {
     getActiveOrderByTable,
     cancelDeliveryOrder,
     cancelTakeawayOrder,
-    requestDineInCancellation
+    requestDineInCancellation,
+    removeOrderItem
 } from '../controllers/order.controller.js';
 import { protect, resolveUser } from '../middleware/authMiddleware.js';
 
@@ -21,6 +22,6 @@ router.get('/active-table/:tableNumber', getActiveOrderByTable);
 router.put('/delivery/cancel/:id', protect, cancelDeliveryOrder);
 router.put('/takeaway/cancel/:id', protect, cancelTakeawayOrder);
 router.post('/dine-in/cancel-request/:id', protect, requestDineInCancellation);
+router.delete('/:orderId/items/:itemId', resolveUser, removeOrderItem);
 
 export default router;
-

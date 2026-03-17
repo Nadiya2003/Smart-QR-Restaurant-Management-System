@@ -6,6 +6,10 @@ import { useAuth } from '../context/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import StaffDashboard from './StaffDashboard';
 import StewardDashboard from './steward/StewardDashboard';
+import CashierDashboard from './CashierDashboard';
+import KitchenDashboard from './KitchenDashboard';
+import BarDashboard from './BarDashboard';
+import InventoryDashboard from './InventoryDashboard';
 
 const Dashboard = ({ onLogout }) => {
     const { user, logout } = useAuth();
@@ -24,14 +28,15 @@ const Dashboard = ({ onLogout }) => {
         }
 
         // Staff members must be active to access features
-        const isActive = user?.is_active === 1 || user?.is_active === true || user?.status === 'active';
+        // We rely on backend status, but if it exists, it must be 'active'
+        const isActive = user?.status === 'active' || user?.is_active === 1 || user?.role === 'ADMIN';
 
         if (!isActive && role !== 'CUSTOMER') {
             return (
                 <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                     <Text style={{ fontSize: 50, marginBottom: 20 }}>⏳</Text>
                     <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#111827' }}>Waiting for Admin Permission</Text>
-                    <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', marginTop: 10 }}>Your account has been created successfully. Please wait for an administrator to activate your account.</Text>
+                    <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', marginTop: 10 }}>Your account is pending activation. Please wait for an administrator to approve your access.</Text>
                     <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { marginTop: 40, width: '100%' }]}>
                         <Text style={[styles.logoutText, { textAlign: 'center' }]}>Logout</Text>
                     </TouchableOpacity>
@@ -55,6 +60,22 @@ const Dashboard = ({ onLogout }) => {
         // Steward-specific dashboard
         if (role === 'STEWARD') {
             return <StewardDashboard />;
+        }
+
+        if (role === 'CASHIER') {
+            return <CashierDashboard />;
+        }
+
+        if (role === 'KITCHEN_STAFF') {
+            return <KitchenDashboard onLogout={handleLogout} />;
+        }
+
+        if (role === 'BAR_STAFF') {
+            return <BarDashboard onLogout={handleLogout} />;
+        }
+
+        if (role === 'INVENTORY_MANAGER') {
+            return <InventoryDashboard onLogout={handleLogout} />;
         }
 
         // All other active staff roles

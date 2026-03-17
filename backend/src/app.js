@@ -74,6 +74,18 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/reports', reportRoutes);
 
+// Cashier Routes
+import cashierRoutes from './routes/cashier.routes.js';
+app.use('/api/cashier', cashierRoutes);
+
+// Kitchen & Bar Routes
+import kitchenBarRoutes from './routes/kitchen.bar.routes.js';
+app.use('/api/kitchen-bar', kitchenBarRoutes);
+
+// Inventory Routes
+import inventoryRoutes from './routes/inventory.routes.js';
+app.use('/api/inventory', inventoryRoutes);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);

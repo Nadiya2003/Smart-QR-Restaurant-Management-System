@@ -47,30 +47,26 @@ export function OrderProvider({ children }) {
       const orders = data.orders || [];
       setOrderHistory(orders);
       
-      // Check if there's an active dine-in order
-      const activeDineIn = orders.find(o => 
-        o.type === 'DINE-IN' && 
-        !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase())
-      );
+      setOrderHistory(orders);
       
-      if (activeDineIn) {
-        // If we found an active order, update currentOrder with its data
-        setCurrentOrder(prev => {
-          // If we had a local order with items, don't overwrite items unless we can fetch them
-          // For now, let's just update the status and basic info
-          return {
+      // Check if we have a current session order to track
+      const storedOrderId = localStorage.getItem('activeOrderId');
+      if (storedOrderId) {
+        const matchingOrder = orders.find(o => o.id.toString() === storedOrderId);
+        if (matchingOrder && !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(matchingOrder.status?.toUpperCase())) {
+          setCurrentOrder(prev => ({
             ...(prev || {}),
-            ...activeDineIn,
-            id: activeDineIn.id,
-            status: activeDineIn.status?.toUpperCase(),
-            tableNumber: activeDineIn.tableNumber || prev?.tableNumber || getTableNumber(),
-            total: activeDineIn.total_price || prev?.total || 0,
-            items: prev?.items || [] // We keep current items for now as schema join might be limited
-          };
-        });
-      } else {
-        // If no active order in history, but we have a served one recently, maybe clear?
-        // Let's not clear automatically to allow user to view final status
+            ...matchingOrder,
+            id: matchingOrder.id,
+            status: matchingOrder.status?.toUpperCase(),
+            total: matchingOrder.total_price || prev?.total || 0,
+            items: matchingOrder.items || prev?.items || []
+          }));
+        } else if (matchingOrder) {
+          // If it was completed/cancelled, clear it from current focus
+          localStorage.removeItem('activeOrderId');
+          setCurrentOrder(null);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch order history:', error);
@@ -80,8 +76,15 @@ export function OrderProvider({ children }) {
   const fetchGuestOrder = async () => {
     try {
       const tableNumber = getTableNumber();
+      const storedOrderId = localStorage.getItem('activeOrderId');
+      
+      // Guest should only resume if they have a stored Order ID in their browser session
+      if (!storedOrderId) {
+        return; 
+      }
+
       const data = await api.get(`/orders/active-table/${tableNumber}`);
-      if (data.order) {
+      if (data.order && data.order.id.toString() === storedOrderId) {
         const o = data.order;
         setCurrentOrder(prev => ({
           ...(prev || {}),
@@ -92,6 +95,9 @@ export function OrderProvider({ children }) {
           total: o.total_price,
           items: o.items || prev?.items || []
         }));
+      } else if (data.order && data.order.id.toString() !== storedOrderId) {
+        // If the table order has changed, clear our local storage
+        localStorage.removeItem('activeOrderId');
       }
     } catch (error) {
       console.error('Failed to fetch guest order:', error);
@@ -132,6 +138,7 @@ export function OrderProvider({ children }) {
       };
 
       setCurrentOrder(newOrder);
+      localStorage.setItem('activeOrderId', response.orderId.toString());
       setOrderHistory((prev) => [newOrder, ...prev]);
       return response;
     } catch (error) {
@@ -158,10 +165,11 @@ export function OrderProvider({ children }) {
 
       const response = await api.post('/orders/dine-in', orderData);
       
-      // Update local state items if possible or just refresh
+      // Update local state items and total
       setCurrentOrder(prev => ({
         ...prev,
-        items: [...prev.items, ...items]
+        items: [...(prev.items || []), ...items],
+        total: (Number(prev.total) || 0) + additionalTotal
       }));
       
       return response;

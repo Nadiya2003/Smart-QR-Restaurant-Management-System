@@ -20,10 +20,19 @@ const StaffDashboard = () => {
             setLoading(true);
 
             // Fetch colleagues
-            const res = await fetch(`${apiConfig.API_URL}/staff/auth/team`, { headers });
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/staff/auth/team`, { headers });
             if (res.ok) {
                 const data = await res.json();
                 setColleagues(data.staff || []);
+            }
+
+            // Fetch current attendance status
+            const attendRes = await fetch(`${apiConfig.API_BASE_URL}/api/cashier/attendance`, { headers });
+            if (attendRes.ok) {
+                const attData = await attendRes.json();
+                const today = new Date().toISOString().split('T')[0];
+                const myAttendance = attData.attendance.find(a => a.staff_id === user.id && a.date.split('T')[0] === today && !a.check_out_time);
+                setIsCheckedIn(!!myAttendance);
             }
         } catch (error) {
             console.error('Fetch error:', error);
@@ -42,8 +51,23 @@ const StaffDashboard = () => {
         fetchData();
     };
 
-    const handleCheckIn = () => {
-        setIsCheckedIn(!isCheckedIn);
+    const handleCheckInToggle = async () => {
+        const endpoint = isCheckedIn ? 'checkout' : 'checkin';
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/cashier/attendance/${endpoint}`, {
+                method: 'POST',
+                headers
+            });
+            if (res.ok) {
+                setIsCheckedIn(!isCheckedIn);
+                Alert.alert('Success', `Shift ${isCheckedIn ? 'Ended' : 'Started'}`);
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Operation failed');
+            }
+        } catch (err) {
+            Alert.alert('Error', 'Server connection failed');
+        }
     };
 
     // Ensure permissions is an array
@@ -155,7 +179,7 @@ const StaffDashboard = () => {
                     </View>
                     <TouchableOpacity
                         style={[styles.checkInBtn, isCheckedIn ? styles.checkInBtnActive : styles.checkInBtnInactive]}
-                        onPress={handleCheckIn}
+                        onPress={handleCheckInToggle}
                     >
                         <Text style={styles.checkInBtnText}>
                             {isCheckedIn ? 'CHECK OUT' : 'CHECK IN'}

@@ -275,18 +275,64 @@ export const createDineInOrder = async (req, res) => {
         const [statusRows] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
         const statusId = statusRows[0]?.id || 1;
 
-        // 2. Get table id from table number
+        // 2. Resolve steward_id (staff_id -> steward_id)
+        let resolvedStewardId = steward_id;
+        if (steward_id) {
+            const [stewardRows] = await connection.query('SELECT id FROM stewards WHERE staff_id = ?', [steward_id]);
+            if (stewardRows.length > 0) {
+                resolvedStewardId = stewardRows[0].id;
+            }
+        }
+
+        // 3. Get table id from table number
         const [tableRows] = await connection.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [table_number]);
         const tableId = tableRows[0]?.id || null;
 
-        // 3. Always insert a new record into orders table (No merging as per Request 6)
+        // 3. Identify Target Order & Update Price if needed
+        let targetOrderId = order_id;
         const orderType = customer_id ? 'registered' : 'guest';
-        const [result] = await connection.query(
-            `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id, order_type, total_price) 
-             VALUES (?, ?, ?, ?, 1, ?, ?)`,
-            [customer_id, tableId, steward_id || null, statusId, orderType, total_price]
-        );
-        const targetOrderId = result.insertId;
+        
+        // Calculate inclusive total for the NEW items being added
+        const baseTotal = Array.isArray(items) 
+            ? items.reduce((sum, item) => sum + ((item.menuItem?.price || item.price || 0) * (item.quantity || 1)), 0)
+            : total_price;
+        const inclusiveNewTotal = baseTotal * 1.15; // 10% SC + 5% Tax
+
+        if (targetOrderId) {
+            // If explicit ID provided, update its total
+            console.log(`[DineIn] Updating existing order ${targetOrderId} with additional total: ${inclusiveNewTotal}`);
+            await connection.query(
+                'UPDATE orders SET total_price = total_price + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                [inclusiveNewTotal, targetOrderId]
+            );
+        } else if (tableId && customer_id) {
+            // Auto-merge logic for registered customers
+            const [activeOrderRows] = await connection.query(
+                `SELECT o.id FROM orders o 
+                 JOIN order_statuses os ON o.status_id = os.id
+                 WHERE o.table_id = ? AND o.customer_id = ? AND os.name NOT IN ("COMPLETED", "CANCELLED")
+                 ORDER BY o.created_at DESC LIMIT 1`,
+                [tableId, customer_id]
+            );
+            if (activeOrderRows.length > 0) {
+                targetOrderId = activeOrderRows[0].id;
+                console.log(`[DineIn] Auto-merging to existing order ${targetOrderId} for customer ${customer_id}`);
+                await connection.query(
+                    'UPDATE orders SET total_price = total_price + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    [inclusiveNewTotal, targetOrderId]
+                );
+            }
+        }
+
+        // 4. Create new order if still no target
+        if (!targetOrderId) {
+            const [result] = await connection.query(
+                `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id, order_type, total_price) 
+                 VALUES (?, ?, ?, ?, 1, ?, ?)`,
+                [customer_id, tableId, resolvedStewardId || null, statusId, orderType, inclusiveNewTotal]
+            );
+            targetOrderId = result.insertId;
+        }
 
         // 4. Insert into order_analytics & order_items
         if (Array.isArray(items)) {
@@ -410,5 +456,58 @@ export const requestDineInCancellation = async (req, res) => {
     } catch (error) {
         console.error('Request dine-in cancellation error:', error);
         res.status(500).json({ message: 'Failed to request cancellation' });
+    }
+};
+
+/**
+ * DELETE /api/orders/:orderId/items/:itemId
+ * Remove a single item from an order and update total price
+ */
+export const removeOrderItem = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { orderId, itemId } = req.params;
+        await connection.beginTransaction();
+
+        // 1. Get info about the item being removed
+        const [itemRows] = await connection.query(
+            "SELECT quantity, price FROM order_items WHERE id = ? AND order_id = ?",
+            [itemId, orderId]
+        );
+
+        if (itemRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Item not found in this order" });
+        }
+
+        const { quantity, price } = itemRows[0];
+        const baseAmount = price * quantity;
+        const inclusiveAmount = baseAmount * 1.15; // Including 10% SC and 5% Tax
+
+        // 2. Delete from order_items
+        await connection.query("DELETE FROM order_items WHERE id = ? AND order_id = ?", [itemId, orderId]);
+        
+        // 3. Update orders total_price
+        await connection.query(
+            "UPDATE orders SET total_price = GREATEST(0, total_price - ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [inclusiveAmount, orderId]
+        );
+
+        // 4. Update order_analytics (remove matching record for consistent reporting)
+        // Note: This is an approximation since analytics doesn't have oi.id, 
+        // but it's consistent with how createDineInOrder inserts them.
+        await connection.query(
+            "DELETE FROM order_analytics WHERE order_id = ? AND unit_price = ? AND quantity = ? LIMIT 1",
+            [orderId, price, quantity]
+        );
+
+        await connection.commit();
+        res.json({ success: true, message: "Item removed and total price updated" });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error("Remove order item error:", error);
+        res.status(500).json({ message: "Failed to remove item" });
+    } finally {
+        if (connection) connection.release();
     }
 };

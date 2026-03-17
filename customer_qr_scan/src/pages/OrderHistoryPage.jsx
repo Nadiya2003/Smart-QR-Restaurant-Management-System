@@ -4,7 +4,23 @@ import { Badge } from '../components/ui/Badge';
 import { useOrder } from '../hooks/useOrder';
 
 export function OrderHistoryPage({ onNavigate }) {
-  const { orderHistory } = useOrder();
+  const { orderHistory, isGuest } = useOrder();
+
+  if (isGuest) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header title="Order History" showBack onBack={() => onNavigate('dashboard')} />
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+             <span className="text-2xl text-gray-400">🔒</span>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Login Required</h2>
+          <p className="text-gray-500 mb-6">Please login to access this feature and view your historical orders.</p>
+          <button onClick={() => onNavigate('login')} className="bg-gray-900 text-white px-6 py-2 rounded-xl font-semibold">Login Now</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

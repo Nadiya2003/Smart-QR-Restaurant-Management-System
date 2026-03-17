@@ -30,15 +30,23 @@ export const getAllStewards = async (req, res) => {
 
         const [rows] = await pool.query(query);
 
-        const stewards = rows.map(row => ({
-            id: row.id,
-            name: row.name,
-            avatar: row.avatar ? `${row.avatar.startsWith('http') ? '' : 'http://192.168.1.4:5000/stewards/'}${row.avatar}` : '/stewards/default.png',
-            rating: Number(Number(row.rating).toFixed(1)),
-            activeOrders: parseInt(row.activeOrders || 0),
-            isAvailable: row.is_available === 1,
-            status: row.is_available === 1 ? ((row.activeOrders || 0) < 5 ? 'active' : 'busy') : 'offline'
-        }));
+        const stewards = rows.map(row => {
+            const host = req.get('host') || 'localhost:5000';
+            const protocol = req.protocol === 'https' ? 'https' : 'http';
+            const baseUrl = `${protocol}://${host}`;
+            
+            return {
+                id: row.id,
+                name: row.name,
+                avatar: row.avatar 
+                    ? (row.avatar.startsWith('http') ? row.avatar : `${baseUrl}/stewards/${row.avatar}`) 
+                    : `${baseUrl}/stewards/default.png`,
+                rating: Number(Number(row.rating).toFixed(1)),
+                activeOrders: parseInt(row.activeOrders || 0),
+                isAvailable: row.is_available === 1,
+                status: row.is_available === 1 ? ((row.activeOrders || 0) < 5 ? 'active' : 'busy') : 'offline'
+            };
+        });
 
         res.json({ stewards });
     } catch (error) {

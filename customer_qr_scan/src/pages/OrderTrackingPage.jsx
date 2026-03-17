@@ -98,12 +98,26 @@ export function OrderTrackingPage({ onNavigate }) {
               </div>
             ))}
           </div>
-
-          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-            <span className="font-bold text-gray-900">Total</span>
-            <span className="font-bold text-gray-900 text-lg">
-              Rs. {currentOrder.total.toLocaleString()}
-            </span>
+          
+          <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span>Rs. {(currentOrder.items.reduce((sum, item) => sum + (item.menuItem?.price || item.price || 0) * item.quantity, 0)).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Service Charge (10%)</span>
+              <span>Rs. {(currentOrder.items.reduce((sum, item) => sum + (item.menuItem?.price || item.price || 0) * item.quantity, 0) * 0.1).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Tax (5%)</span>
+              <span>Rs. {(currentOrder.items.reduce((sum, item) => sum + (item.menuItem?.price || item.price || 0) * item.quantity, 0) * 0.05).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+              <span className="font-bold text-gray-900">Total</span>
+              <span className="font-bold text-gray-900 text-lg">
+                Rs. {currentOrder.total.toLocaleString()}
+              </span>
+            </div>
           </div>
         </div>
 

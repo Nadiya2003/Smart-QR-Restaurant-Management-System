@@ -52,20 +52,12 @@ export function WelcomePage({ onNavigate }) {
             <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => onNavigate('login')}
-              className="py-4 px-4 rounded-2xl font-bold text-gray-900 border-2 border-gray-100 hover:border-gray-900 transition-all active:scale-[0.95]"
-            >
-              Login
-            </button>
-            <button
-              onClick={() => onNavigate('register')}
-              className="py-4 px-4 rounded-2xl font-bold text-gray-900 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.95]"
-            >
-              Register
-            </button>
-          </div>
+          <button
+            onClick={() => onNavigate('login')}
+            className="w-full py-4 px-4 rounded-2xl font-bold text-gray-900 border-2 border-gray-100 hover:border-gray-900 transition-all active:scale-[0.95]"
+          >
+            Login
+          </button>
         </div>
         
         <div className="mt-auto pt-8 text-center">

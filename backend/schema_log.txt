@@ -1,0 +1,62 @@
+--- TABLES ---
+bar_staff
+bookings
+cancel_deliveries
+cancel_requests
+cancel_reservations
+cancel_takeaways
+cashiers
+categories
+contact_messages
+customer_permissions
+customers
+delivery_orders
+delivery_riders
+dining_areas
+feedback
+inventory
+inventory_managers
+kitchen_staff
+managers
+menu_items
+notifications
+online_customers
+order_analytics
+order_items
+order_statuses
+order_types
+orders
+payment_methods
+payment_statuses
+permissions
+report_logs
+reports
+reservations
+restaurant_tables
+role_permissions
+staff_attendance
+staff_permissions
+staff_roles
+staff_users
+stewards
+supplier_orders
+supplier_payments
+supplier_staff
+suppliers
+table_reservations
+takeaway_orders
+
+--- SCHEMA: bookings ---
+id (int), customer_name (varchar(255)), phone (varchar(20)), guests (int), table_id (int), date (date), time (time), notes (text), status (varchar(50))
+
+--- SCHEMA: orders ---
+id (int), customer_id (int), steward_id (int), order_type_id (int), status_id (int), payment_method_id (int), payment_status_id (int), table_id (int), total_price (decimal(10,2)), created_at (timestamp), updated_at (timestamp), cancellation_reason (text), cancellation_status (varchar(50)), order_type (enum('guest','registered')), cashier_id (int), customer_name (varchar(255)), phone (varchar(20)), address (text)
+
+--- SCHEMA: reservations ---
+id (int), customer_id (int), table_id (int), area_id (int), reservation_date (date), reservation_time (time), guest_count (int), customer_name (varchar(100)), mobile_number (varchar(20)), special_requests (text), reservation_status (enum('PENDING','CONFIRMED','CANCELLED','COMPLETED')), status_notes (text), created_at (timestamp), updated_at (timestamp), status (enum('pending','confirmed','cancelled','completed'))
+
+--- SCHEMA: staff_attendance ---
+id (int), staff_id (int), date (date), check_in_time (datetime), check_out_time (datetime), status (enum('PRESENT','ABSENT','LATE')), name (varchar(255)), role (varchar(100))
+
+--- SCHEMA: table_reservations ---
+id (int), table_id (int), customer_name (varchar(255)), phone (varchar(20)), guests (int), date (date), time (time), notes (text), status (varchar(50))

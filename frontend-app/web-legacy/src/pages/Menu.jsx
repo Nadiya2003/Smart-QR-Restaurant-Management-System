@@ -139,19 +139,16 @@ function Menu() {
     ];
 
     // Category filter state
-    const [activeCategory, setActiveCategory] = useState('All');
+    const [activeCategory, setActiveCategory] = useState('Sri Lankan');
 
     // Cart state
     const [cart, setCart] = useState([]);
 
     // Categories
-    const categories = ['All', 'Sri Lankan', 'Italian', 'Beverages'];
+    const categories = ['Sri Lankan', 'Italian', 'Beverages'];
 
     // Filter items by category
-    const filteredItems =
-        activeCategory === 'All'
-            ? menuItems
-            : menuItems.filter((item) => item.category === activeCategory);
+    const filteredItems = menuItems.filter((item) => item.category === activeCategory);
 
     // Add item to cart
     const handleAddToCart = (item) => {

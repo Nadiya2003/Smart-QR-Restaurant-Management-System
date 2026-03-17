@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
     try {
       const data = await api.post('/auth/login', { email, password });
       localStorage.setItem('token', data.token);
+      localStorage.removeItem('activeOrderId'); // Clear current session order on new login
       setUser(data.user);
       return data;
     } catch (error) {
@@ -41,6 +42,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('activeOrderId');
     setUser(null);
   };
 

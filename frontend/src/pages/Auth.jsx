@@ -190,8 +190,8 @@ function Auth() {
     };
 
     return (
-        <div className="min-h-[calc(100vh-80px)] flex items-center justify-center px-4 py-12">
-            <GlassCard className="w-full max-w-md animate-fade-in">
+        <div className="min-h-[calc(100vh-80px)] flex items-start justify-center px-4 py-12 pt-[10vh]">
+            <GlassCard className="w-full max-w-md">
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold text-white mb-2">
                         {mode === 'login' && 'Welcome Back'}

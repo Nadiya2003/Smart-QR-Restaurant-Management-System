@@ -11,7 +11,7 @@ import { Button } from '../components/ui/Button';
 import { useOrder } from '../hooks/useOrder';
 
 export function PaymentPage({ onNavigate }) {
-  const { currentOrder, clearCurrentOrder } = useOrder();
+  const { currentOrder, clearCurrentOrder, isGuest } = useOrder();
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('idle');
 
@@ -106,16 +106,29 @@ export function PaymentPage({ onNavigate }) {
           </button>
 
           <button
-            onClick={() => setSelectedMethod('online')}
-            className={`w-full flex items-center p-4 rounded-xl border ${selectedMethod === 'online' ? 'border-gray-900 ring-1 ring-gray-900 bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+            onClick={() => {
+              if (isGuest) {
+                alert("Please login to access this feature.");
+                return;
+              }
+              setSelectedMethod('online');
+            }}
+            className={`w-full flex items-center p-4 rounded-xl border ${selectedMethod === 'online' ? 'border-gray-900 ring-1 ring-gray-900 bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-300'} ${isGuest ? 'opacity-70' : ''}`}
           >
             <div
               className={`w-12 h-12 rounded-full flex items-center justify-center mr-4 ${selectedMethod === 'online' ? 'bg-gray-100 text-gray-900' : 'bg-gray-100 text-gray-500'}`}
             >
-              <SmartphoneIcon className="w-6 h-6" />
+              {isGuest ? (
+                 <span className="text-gray-400">🔒</span>
+              ) : (
+                 <SmartphoneIcon className="w-6 h-6" />
+              )}
             </div>
             <div className="text-left flex-1">
-              <h4 className="font-semibold text-gray-900">Online Transfer</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-gray-900">Online Transfer</h4>
+                {isGuest && <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">Login Required</span>}
+              </div>
               <p className="text-sm text-gray-500">Bank transfer</p>
             </div>
           </button>

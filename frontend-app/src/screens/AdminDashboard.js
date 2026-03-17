@@ -58,6 +58,7 @@ const AdminDashboard = () => {
     const [activityList, setActivityList] = useState([]);
     const [notificationList, setNotificationList] = useState([]);
     const [inventoryList, setInventoryList] = useState([]);
+    const [restockRequestList, setRestockRequestList] = useState([]);
     const [reportList, setReportList] = useState([]);
     const [cancelRequestList, setCancelRequestList] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -69,7 +70,8 @@ const AdminDashboard = () => {
 
     const [userSubTab, setUserSubTab] = useState('customers');
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
-    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [inventorySubTab, setInventorySubTab] = useState('ITEMS');
+    const [selectedCategory, setSelectedCategory] = useState('');
     const [selectedStaff, setSelectedStaff] = useState(null);
 
     // New CRUD modals
@@ -164,7 +166,11 @@ const AdminDashboard = () => {
                 if (menuData) setMenuList(menuData.items || menuData || []);
 
                 const catData = await safeFetch(apiConfig.MENU.CATEGORIES, { headers: reqHeaders });
-                if (catData) setCategories(catData.categories || catData || []);
+                const fetchedCats = catData?.categories || catData || [];
+                setCategories(fetchedCats);
+                if (fetchedCats.length > 0 && !selectedCategory) {
+                    setSelectedCategory(fetchedCats[0].name);
+                }
             }
 
             if (activeTab === 'suppliers') {
@@ -175,6 +181,9 @@ const AdminDashboard = () => {
             if (activeTab === 'inventory') {
                 const invData = await safeFetch(apiConfig.ADMIN.INVENTORY, { headers: reqHeaders });
                 if (invData) setInventoryList(invData.inventory || []);
+                
+                const restockData = await safeFetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers: reqHeaders });
+                if (restockData) setRestockRequestList(restockData.requests || []);
             }
 
             if (activeTab === 'orders' || activeTab === 'reports') {
@@ -770,16 +779,16 @@ const AdminDashboard = () => {
                     <View key={att.id} style={styles.listCard}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                             <Text style={styles.listCardName}>{att.staff_name}</Text>
-                            <View style={[styles.badge, { backgroundColor: att.logout_time ? '#E5E7EB' : '#10B981' }]}>
-                                <Text style={[styles.badgeText, { color: att.logout_time ? '#6B7280' : 'white' }]}>
-                                    {att.logout_time ? 'Checked Out' : 'Active'}
+                            <View style={[styles.badge, { backgroundColor: att.check_out_time ? '#E5E7EB' : '#10B981' }]}>
+                                <Text style={[styles.badgeText, { color: att.check_out_time ? '#6B7280' : 'white' }]}>
+                                    {att.check_out_time ? 'Checked Out' : 'Active'}
                                 </Text>
                             </View>
                         </View>
                         <Text style={styles.listCardSub}>{att.role}</Text>
                         <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8 }}>
-                            <Text style={styles.timeText}>🕒 Check In: {new Date(att.login_time).toLocaleTimeString()}</Text>
-                            <Text style={styles.timeText}>🕒 Check Out: {att.logout_time ? new Date(att.logout_time).toLocaleTimeString() : '---'}</Text>
+                            <Text style={styles.timeText}>🕒 Check In: {new Date(att.check_in_time).toLocaleTimeString()}</Text>
+                            <Text style={styles.timeText}>🕒 Check Out: {att.check_out_time ? new Date(att.check_out_time).toLocaleTimeString() : '---'}</Text>
                         </View>
                     </View>
                 ))
@@ -806,12 +815,6 @@ const AdminDashboard = () => {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                <TouchableOpacity 
-                    style={[styles.catPill, selectedCategory === 'All' && styles.activeCatPill]}
-                    onPress={() => setSelectedCategory('All')}
-                >
-                    <Text style={[styles.catPillText, selectedCategory === 'All' && styles.activeCatPillText]}>All Items</Text>
-                </TouchableOpacity>
                 {categories.map(cat => {
                     const itemCount = menuList.filter(item => item.category === cat.name).length;
                     const isLow = itemCount === 0;
@@ -832,7 +835,7 @@ const AdminDashboard = () => {
                 </TouchableOpacity>
             </ScrollView>
 
-            {menuList.filter(item => selectedCategory === 'All' || item.category === selectedCategory).map((item) => (
+            {menuList.filter(item => item.category === selectedCategory).map((item) => (
                 <View key={item.id} style={styles.listCard}>
                     <View style={styles.listCardHeader}>
                         <Image source={{ uri: item.image ? (item.image.startsWith('http') ? item.image : (item.image.startsWith('/') ? `${apiConfig.API_BASE_URL}${item.image}` : `${apiConfig.API_BASE_URL}/food/${item.image}`)) : 'https://via.placeholder.com/150' }} style={styles.itemImage} />
@@ -1016,45 +1019,121 @@ const AdminDashboard = () => {
     // ===== INVENTORY TAB =====
     const renderInventory = () => (
         <>
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Inventory</Text>
-                <Text style={styles.headerSubtitle}>Stock levels and suppliers</Text>
-            </View>
-            {inventoryList.map((item) => {
-                const isLow = Number(item.quantity) <= 5; // Default threshold for now
-                return (
+            <View style={styles.subTabRow}>
+                {['ITEMS', 'REQUESTS'].map(tab => (
                     <TouchableOpacity 
-                        key={item.id} 
-                        style={styles.listCard}
+                        key={tab} 
+                        style={[styles.subTab, inventorySubTab === tab && styles.activeSubTab]}
+                        onPress={() => setInventorySubTab(tab)}
+                    >
+                        <Text style={[styles.subTabText, inventorySubTab === tab && styles.activeSubTabText]}>{tab}</Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                <View>
+                    <Text style={styles.headerTitle}>Inventory Management</Text>
+                    <Text style={styles.headerSubtitle}>{inventorySubTab === 'ITEMS' ? 'Stock levels and suppliers' : 'Restock requested by managers'}</Text>
+                </View>
+                {inventorySubTab === 'ITEMS' && (
+                    <TouchableOpacity 
+                        style={styles.addButtonSmall} 
                         onPress={() => {
-                            if (Platform.OS === 'ios') {
-                                Alert.prompt(
-                                    'Update Stock',
-                                    `Enter new quantity for ${item.item_name} (${item.unit || 'pcs'})`,
-                                    [
-                                        { text: 'Cancel' },
-                                        { text: 'Update', onPress: (val) => updateInventoryStock(item.id, val) }
-                                    ],
-                                    'plain-text',
-                                    item.quantity.toString()
-                                );
-                            } else {
-                                Alert.alert('Update Stock', 'Quantity updates via prompt are iOS only. Please use the Edit form.');
-                            }
+                            setEditingInventory(null);
+                            setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '' });
+                            setShowInventoryModal(true);
                         }}
                     >
-                        <View style={styles.badgeRow}>
-                            <Text style={styles.listCardName}>{item.item_name}</Text>
-                            {isLow && <View style={styles.lowStockBadge}><Text style={styles.lowStockText}>Low Stock</Text></View>}
-                        </View>
-                        <Text style={styles.listCardSub}>Supplier: {item.supplier_name || 'N/A'}</Text>
-                        <Text style={[styles.statValue, { fontSize: 18, color: isLow ? '#DC2626' : '#10B981' }]}>
-                            {item.quantity} {item.unit || 'pcs'}
-                        </Text>
-                        <Text style={styles.updateStockHint}>Tap to update stock</Text>
+                        <Text style={styles.addButtonTextSmall}>+ Add Stock Item</Text>
                     </TouchableOpacity>
-                );
-            })}
+                )}
+            </View>
+
+            {inventorySubTab === 'ITEMS' ? (
+                inventoryList.map((item) => {
+                    const isLow = Number(item.quantity) <= (item.min_level || 5);
+                    return (
+                        <TouchableOpacity 
+                            key={item.id} 
+                            style={styles.listCard}
+                            onPress={() => {
+                                if (Platform.OS === 'ios') {
+                                    Alert.prompt(
+                                        'Update Stock',
+                                        `Enter new quantity for ${item.item_name} (${item.unit || 'pcs'})`,
+                                        [
+                                            { text: 'Cancel' },
+                                            { text: 'Update', onPress: (val) => updateInventoryStock(item.id, val) }
+                                        ],
+                                        'plain-text',
+                                        item.quantity.toString()
+                                    );
+                                } else {
+                                    Alert.alert('Update Stock', 'Android updates coming soon. Please use admin panel.');
+                                }
+                            }}
+                        >
+                            <View style={styles.badgeRow}>
+                                <Text style={styles.listCardName}>{item.item_name}</Text>
+                                {isLow && <View style={styles.lowStockBadge}><Text style={styles.lowStockText}>Low Stock</Text></View>}
+                            </View>
+                            <Text style={styles.listCardSub}>Supplier: {item.supplier_name || 'N/A'} · Min Level: {item.min_level}</Text>
+                            <Text style={[styles.statValue, { fontSize: 18, color: isLow ? '#DC2626' : '#10B981' }]}>
+                                {item.quantity} {item.unit || 'pcs'}
+                            </Text>
+                            <Text style={styles.updateStockHint}>Tap to update stock</Text>
+                        </TouchableOpacity>
+                    );
+                })
+            ) : (
+                restockRequestList.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyIcon}>🚚</Text>
+                        <Text style={styles.emptyText}>No pending restock requests</Text>
+                    </View>
+                ) : (
+                    restockRequestList.map((req) => (
+                        <View key={req.id} style={[styles.listCard, req.status === 'PENDING' && { borderColor: '#F59E0B', borderLeftWidth: 4 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={styles.listCardName}>{req.item_name}</Text>
+                                <View style={[styles.badge, { backgroundColor: req.status === 'COMPLETED' ? '#D1FAE5' : '#FEF3C7' }]}>
+                                    <Text style={[styles.badgeText, { color: req.status === 'COMPLETED' ? '#059669' : '#D97706' }]}>{req.status}</Text>
+                                </View>
+                            </View>
+                            <Text style={styles.listCardSub}>Requested Qty: {req.quantity} {req.unit}</Text>
+                            <Text style={styles.listCardSub}>Supplier: {req.supplier_name}</Text>
+                            <Text style={styles.listCardSub}>Requested By: {req.requester_name} on {new Date(req.created_at).toLocaleDateString()}</Text>
+                            
+                            {req.status === 'PENDING' && (
+                                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                                    <TouchableOpacity 
+                                        style={[styles.editBtn, { backgroundColor: '#10B981', flex: 1 }]} 
+                                        onPress={() => handleRestockAction(req.id, 'APPROVED')}
+                                    >
+                                        <Text style={[styles.editBtnText, { color: 'white' }]}>Approve</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
+                                        onPress={() => handleRestockAction(req.id, 'REJECTED')}
+                                    >
+                                        <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {req.status === 'APPROVED' && (
+                                <TouchableOpacity 
+                                    style={[styles.saveBtn, { backgroundColor: '#3B82F6', marginTop: 15 }]} 
+                                    onPress={() => handleRestockAction(req.id, 'COMPLETED')}
+                                >
+                                    <Text style={styles.saveBtnText}>Mark as Received & Update Stock</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    ))
+                )
+            )}
         </>
     );
 
@@ -1068,10 +1147,86 @@ const AdminDashboard = () => {
             });
             if (res.ok) {
                 Alert.alert('Success', 'Stock updated');
-                fetchData();
+                fetchData(true);
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to update stock');
+        }
+    };
+
+    const handleSaveInventory = async () => {
+        if (!inventoryForm.item_name || !inventoryForm.quantity || !inventoryForm.unit) {
+            return Alert.alert('Error', 'Please fill all required fields');
+        }
+        
+        const method = editingInventory ? 'PUT' : 'POST';
+        const url = editingInventory 
+            ? `${apiConfig.ADMIN.INVENTORY}/${editingInventory.id}` 
+            : apiConfig.ADMIN.INVENTORY;
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify({
+                    ...inventoryForm,
+                    quantity: Number(inventoryForm.quantity),
+                    min_level: 5 // Default
+                })
+            });
+
+            if (res.ok) {
+                Alert.alert('Success', `Inventory item ${editingInventory ? 'updated' : 'added'}`);
+                setShowInventoryModal(false);
+                setEditingInventory(null);
+                fetchData(true);
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to save item');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
+        }
+    };
+
+    const deleteInventoryItem = async (id) => {
+        Alert.alert('Delete', 'Delete this item?', [
+            { text: 'Cancel' },
+            { 
+                text: 'Delete', 
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        const res = await fetch(`${apiConfig.ADMIN.INVENTORY}/${id}`, {
+                            method: 'DELETE',
+                            headers
+                        });
+                        if (res.ok) {
+                            Alert.alert('Success', 'Item deleted');
+                            fetchData(true);
+                        }
+                    } catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                }
+            }
+        ]);
+    };
+
+    const handleRestockAction = async (id, status) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests/${id}/status`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ status })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Request marked as ${status}`);
+                fetchData(true);
+            } else {
+                const err = await res.json();
+                Alert.alert('Error', err.message || 'Action failed');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
         }
     };
     const generateReport = async () => {
@@ -1719,6 +1874,7 @@ const AdminDashboard = () => {
             {renderMenuModal()}
             {renderOrderModal()}
             {renderRoleModal()}
+            {renderInventoryModal()}
         </View>
     );
 
@@ -2244,6 +2400,85 @@ const AdminDashboard = () => {
                                 disabled={newOrder.items.length === 0}
                             >
                                 <Text style={{ color: 'white', fontSize: 15, fontWeight: 'bold' }}>✅ Place Order</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderInventoryModal() {
+        return (
+            <Modal visible={showInventoryModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { flex: 1, maxHeight: '90%' }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>{editingInventory ? '✏️ Edit Stock Item' : '📦 New Stock Item'}</Text>
+                            <TouchableOpacity onPress={() => {
+                                setShowInventoryModal(false);
+                                setEditingInventory(null);
+                                setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '' });
+                            }}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ flex: 1, marginTop: 15 }} showsVerticalScrollIndicator={false}>
+                            <Text style={styles.label}>Item Name *</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. Basmati Rice"
+                                value={inventoryForm.item_name}
+                                onChangeText={(val) => setInventoryForm({ ...inventoryForm, item_name: val })}
+                            />
+
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.label}>Quantity *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="0"
+                                        keyboardType="numeric"
+                                        value={inventoryForm.quantity.toString()}
+                                        onChangeText={(val) => setInventoryForm({ ...inventoryForm, quantity: val })}
+                                    />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.label}>Unit *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="kg, Liters, Pcs"
+                                        value={inventoryForm.unit}
+                                        onChangeText={(val) => setInventoryForm({ ...inventoryForm, unit: val })}
+                                    />
+                                </View>
+                            </View>
+
+                            <Text style={styles.label}>Supplier (Optional)</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                                {supplierList.map(sup => (
+                                    <TouchableOpacity
+                                        key={sup.id}
+                                        style={[styles.catPill, inventoryForm.supplier_id == sup.id && styles.activeCatPill]}
+                                        onPress={() => setInventoryForm({ ...inventoryForm, supplier_id: sup.id })}
+                                    >
+                                        <Text style={[styles.catPillText, inventoryForm.supplier_id == sup.id && styles.activeCatPillText]}>
+                                            {sup.brand_name || sup.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </ScrollView>
+
+                        <View style={{ paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
+                            <TouchableOpacity
+                                style={{ backgroundColor: '#111827', height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
+                                onPress={handleSaveInventory}
+                            >
+                                <Text style={{ color: 'white', fontSize: 15, fontWeight: 'bold' }}>
+                                    {editingInventory ? '💾 Save Changes' : '✅ Add Stock Item'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>

@@ -7,7 +7,7 @@ export const getAllStaff = async (req, res) => {
             `SELECT su.id, su.full_name as name, su.email, su.phone,
                     sr.role_name as role, su.is_active, su.created_at, su.permissions,
                     st.image as steward_image,
-                    EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.logout_time IS NULL) as is_available
+                    EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.check_out_time IS NULL) as is_available
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
              LEFT JOIN stewards st ON su.id = st.staff_id
@@ -508,7 +508,7 @@ export const updateOrderStatus = async (req, res) => {
                 await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusId, id]);
 
                 // If completed/finished, free the table
-                if (['COMPLETED', 'FINISHED', 'SERVED'].includes(statusName)) {
+                if (['COMPLETED', 'FINISHED'].includes(statusName)) {
                     const [orderRows] = await pool.query('SELECT table_id FROM orders WHERE id = ?', [id]);
                     if (orderRows.length > 0 && orderRows[0].table_id) {
                         await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
@@ -530,7 +530,7 @@ export const getStats = async (req, res) => {
         const [[{ takeawayCount }]] = await pool.query('SELECT COUNT(*) as takeawayCount FROM takeaway_orders');
         const [[{ customerCount }]] = await pool.query('SELECT COUNT(*) as customerCount FROM online_customers');
         const [[{ staffCount }]] = await pool.query('SELECT COUNT(*) as staffCount FROM staff_users');
-        const [[{ activeStaffCount }]] = await pool.query('SELECT COUNT(*) as activeStaffCount FROM staff_attendance WHERE date = CURDATE() AND logout_time IS NULL');
+        const [[{ activeStaffCount }]] = await pool.query('SELECT COUNT(*) as activeStaffCount FROM staff_attendance WHERE date = CURDATE() AND check_out_time IS NULL');
         const [[{ count: newCustomersWeekCount }]] = await pool.query('SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
 
         

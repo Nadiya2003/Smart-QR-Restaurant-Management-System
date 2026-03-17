@@ -1,22 +1,20 @@
-import pool from './src/config/db.js';
+import db from './src/config/db.js';
 
 async function checkSchema() {
     try {
-        const [stewards] = await pool.query('DESCRIBE stewards');
-        console.log('--- stewards ---');
-        console.log(stewards);
-
-        const [attendance] = await pool.query('DESCRIBE staff_attendance');
-        console.log('--- staff_attendance ---');
-        console.log(attendance);
-
-        const [reservations] = await pool.query('DESCRIBE reservations');
-        console.log('--- reservations ---');
-        console.log(reservations);
-        
+        const tables = ['orders', 'order_items', 'staff_attendance', 'reservations', 'bookings', 'restaurant_tables'];
+        for (const table of tables) {
+            console.log(`\n--- ${table} ---`);
+            try {
+                const [rows] = await db.query(`DESCRIBE \`${table}\``);
+                console.table(rows);
+            } catch (err) {
+                console.log(`${table} might not exist: ${err.message}`);
+            }
+        }
         process.exit(0);
-    } catch (e) {
-        console.error(e);
+    } catch (err) {
+        console.error(err);
         process.exit(1);
     }
 }

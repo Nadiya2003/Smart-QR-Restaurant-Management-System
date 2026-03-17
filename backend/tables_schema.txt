@@ -1,0 +1,1 @@
+id (int), area_id (int), table_number (int), capacity (int), location (varchar(50)), status (enum('available','occupied','reserved','not available')), created_at (timestamp)

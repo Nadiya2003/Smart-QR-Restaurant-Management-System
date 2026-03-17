@@ -70,7 +70,7 @@ export const getAttendance = async (req, res) => {
             query += " AND a.staff_id = ?";
             params.push(staffId);
         }
-        query += " ORDER BY a.date DESC, a.login_time DESC";
+        query += " ORDER BY a.date DESC, a.check_in_time DESC";
 
         const [rows] = await pool.query(query, params);
         res.json({ attendance: rows });
@@ -278,7 +278,7 @@ export const getStaffActivity = async (req, res) => {
         // This is a dynamic view of currently logged in staff with active attendance records
         const today = new Date().toISOString().split('T')[0];
         const [rows] = await pool.query(`
-            SELECT su.id, su.full_name, sr.role_name as role, a.login_time,
+            SELECT su.id, su.full_name, sr.role_name as role, a.check_in_time,
                    (SELECT COUNT(*) 
                     FROM feedback f 
                     JOIN orders o ON f.order_id = o.id 
@@ -286,7 +286,7 @@ export const getStaffActivity = async (req, res) => {
             FROM staff_users su
             JOIN staff_roles sr ON su.role_id = sr.id
             JOIN staff_attendance a ON su.id = a.staff_id
-            WHERE a.date = ? AND a.logout_time IS NULL
+            WHERE a.date = ? AND a.check_out_time IS NULL
         `, [today]);
 
         res.json({ activity: rows });
@@ -301,7 +301,7 @@ export const getStaffMembers = async (req, res) => {
         const { role, status, search } = req.query;
         let query = `
             SELECT su.id, su.full_name, su.email, su.phone, su.status, su.created_at, sr.role_name as role, su.role_id,
-                   EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.logout_time IS NULL) as is_available
+                   EXISTS(SELECT 1 FROM staff_attendance sa WHERE sa.staff_id = su.id AND sa.date = CURDATE() AND sa.check_out_time IS NULL) as is_available
             FROM staff_users su
             JOIN staff_roles sr ON su.role_id = sr.id
             WHERE su.role_id != (SELECT id FROM staff_roles WHERE role_name = 'admin')

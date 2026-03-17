@@ -1,0 +1,1 @@
+id (int), category_id (int), name (varchar(255)), description (text), price (decimal(10,2)), image (varchar(255)), tags (json), is_active (tinyint(1)), created_at (timestamp)

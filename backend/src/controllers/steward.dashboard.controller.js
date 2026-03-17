@@ -11,7 +11,7 @@ export const getTableStatus = async (req, res) => {
                    o.id as current_order_id, o.status_id, os.name as order_status,
                    su.full_name as steward_name,
                    (SELECT COUNT(*) FROM reservations r 
-                    WHERE r.table_id = rt.id AND r.status = 'confirmed' 
+                    WHERE r.table_id = rt.id AND r.reservation_status IN ('CONFIRMED', 'PENDING') 
                     AND r.reservation_date = CURDATE()) as today_reservations
             FROM restaurant_tables rt
             LEFT JOIN dining_areas da ON rt.area_id = da.id
@@ -183,6 +183,12 @@ export const checkIn = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         const userId = req.user.userId;
+        const [staff] = await connection.query(
+            "SELECT su.full_name, sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
+            [userId]
+        );
+        const name = staff[0]?.full_name || 'Staff';
+        const role = staff[0]?.role_name || 'STEWARD';
         const today = new Date().toISOString().split('T')[0];
 
         await connection.beginTransaction();
@@ -198,12 +204,13 @@ export const checkIn = async (req, res) => {
 
         if (existing.length === 0) {
             await connection.query(
-                'INSERT INTO staff_attendance (staff_id, date, login_time, status) VALUES (?, ?, NOW(), "PRESENT")',
-                [userId, today]
+                'INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, ?, NOW(), "PRESENT")',
+                [userId, name, role, today]
             );
         } else {
+            // Idempotent: ensure check_out_time is null if previously checked out
             await connection.query(
-                'UPDATE staff_attendance SET status = "PRESENT" WHERE id = ?',
+                'UPDATE staff_attendance SET check_out_time = NULL, status = "PRESENT" WHERE id = ?',
                 [existing[0].id]
             );
         }
@@ -234,7 +241,7 @@ export const checkOut = async (req, res) => {
 
         // 2. Update attendance logout
         await connection.query(
-            'UPDATE staff_attendance SET logout_time = NOW() WHERE staff_id = ? AND date = ? AND logout_time IS NULL',
+            'UPDATE staff_attendance SET check_out_time = NOW() WHERE staff_id = ? AND date = ? AND check_out_time IS NULL',
             [userId, today]
         );
 
@@ -269,12 +276,9 @@ export const getUpcomingReservations = async (req, res) => {
     try {
         const [reservations] = await pool.query(`
             SELECT r.*, 
-                   COALESCE(c.name, oc.name, 'Guest') as customer_name, 
                    rt.table_number,
-                   r.guests as guests_count
+                   r.guest_count as guests_count
             FROM reservations r
-            LEFT JOIN customers c ON r.customer_id = c.id
-            LEFT JOIN online_customers oc ON r.customer_id = oc.id
             LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
             WHERE r.reservation_date >= CURDATE()
             ORDER BY r.reservation_date ASC, r.reservation_time ASC
