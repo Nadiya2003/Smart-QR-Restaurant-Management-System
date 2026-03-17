@@ -102,7 +102,7 @@ const AdminDashboard = () => {
     // Form States
     const [menuForm, setMenuForm] = useState({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
     const [supplierForm, setSupplierForm] = useState({ name: '', contact_number: '', email: '', address: '', products_supplied: '' });
-    const [inventoryForm, setInventoryForm] = useState({ item_name: '', quantity: '', unit: '', supplier_id: '' });
+    const [inventoryForm, setInventoryForm] = useState({ item_name: '', quantity: '', unit: '', supplier_id: '', category: 'General', min_level: '5' });
 
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -179,6 +179,9 @@ const AdminDashboard = () => {
             }
 
             if (activeTab === 'inventory') {
+                const supData = await safeFetch(apiConfig.ADMIN.SUPPLIERS, { headers: reqHeaders });
+                if (supData) setSupplierList(supData.suppliers || []);
+
                 const invData = await safeFetch(apiConfig.ADMIN.INVENTORY, { headers: reqHeaders });
                 if (invData) setInventoryList(invData.inventory || []);
                 
@@ -248,6 +251,21 @@ const AdminDashboard = () => {
                     if (cancelRes.ok) {
                         const c = await cancelRes.json();
                         setCancelRequestList(c.requests || []);
+                    }
+                }
+
+                // If on inventory tab, poll for latest stock
+                if (activeTab === 'inventory') {
+                    const invRes = await fetch(apiConfig.ADMIN.INVENTORY, { headers: reqHeaders });
+                    if (invRes.ok) {
+                        const i = await invRes.json();
+                        setInventoryList(i.inventory || []);
+                    }
+
+                    const reqRes = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers: reqHeaders });
+                    if (reqRes.ok) {
+                        const r = await reqRes.json();
+                        setRestockRequestList(r.requests || []);
                     }
                 }
             } catch (e) { /* silent */ }
@@ -1041,7 +1059,7 @@ const AdminDashboard = () => {
                         style={styles.addButtonSmall} 
                         onPress={() => {
                             setEditingInventory(null);
-                            setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '' });
+                            setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '', category: 'General', min_level: '5' });
                             setShowInventoryModal(true);
                         }}
                     >
@@ -1051,41 +1069,74 @@ const AdminDashboard = () => {
             </View>
 
             {inventorySubTab === 'ITEMS' ? (
-                inventoryList.map((item) => {
-                    const isLow = Number(item.quantity) <= (item.min_level || 5);
+                (() => {
+                    const allMainCats = ['Kitchen', 'Bar', 'General'];
+                    const groups = {};
+                    inventoryList.forEach(item => {
+                        const cat = allMainCats.includes(item.category) ? item.category : 'General';
+                        if (!groups[cat]) groups[cat] = [];
+                        groups[cat].push(item);
+                    });
+
+                    return allMainCats.map(cat => {
+                        const filteredItems = groups[cat] || [];
+                        if (filteredItems.length === 0) return null;
+                    
                     return (
-                        <TouchableOpacity 
-                            key={item.id} 
-                            style={styles.listCard}
-                            onPress={() => {
-                                if (Platform.OS === 'ios') {
-                                    Alert.prompt(
-                                        'Update Stock',
-                                        `Enter new quantity for ${item.item_name} (${item.unit || 'pcs'})`,
-                                        [
-                                            { text: 'Cancel' },
-                                            { text: 'Update', onPress: (val) => updateInventoryStock(item.id, val) }
-                                        ],
-                                        'plain-text',
-                                        item.quantity.toString()
-                                    );
-                                } else {
-                                    Alert.alert('Update Stock', 'Android updates coming soon. Please use admin panel.');
-                                }
-                            }}
-                        >
-                            <View style={styles.badgeRow}>
-                                <Text style={styles.listCardName}>{item.item_name}</Text>
-                                {isLow && <View style={styles.lowStockBadge}><Text style={styles.lowStockText}>Low Stock</Text></View>}
+                        <View key={cat} style={{ marginBottom: 20 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 10 }}>
+                                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#374151', marginRight: 10 }}>{cat} Stock</Text>
+                                <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
                             </View>
-                            <Text style={styles.listCardSub}>Supplier: {item.supplier_name || 'N/A'} · Min Level: {item.min_level}</Text>
-                            <Text style={[styles.statValue, { fontSize: 18, color: isLow ? '#DC2626' : '#10B981' }]}>
-                                {item.quantity} {item.unit || 'pcs'}
-                            </Text>
-                            <Text style={styles.updateStockHint}>Tap to update stock</Text>
-                        </TouchableOpacity>
+                            {filteredItems.map((item) => {
+                                const isLow = Number(item.quantity) <= (item.min_level || 5);
+                                return (
+                                    <View key={item.id} style={styles.listCard}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <View style={{ flex: 1 }}>
+                                                <View style={styles.badgeRow}>
+                                                    <Text style={styles.listCardName}>{item.item_name}</Text>
+                                                    {isLow && <View style={styles.lowStockBadge}><Text style={styles.lowStockText}>Low Stock</Text></View>}
+                                                </View>
+                                                <Text style={styles.listCardSub}>
+                                                    Supplier: {item.supplier_name || 'N/A'} · Unit: {item.unit}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                                                    Last Updated: {new Date(item.last_updated || item.updated_at).toLocaleString()}
+                                                </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                                <TouchableOpacity 
+                                                    onPress={() => {
+                                                        setEditingInventory(item);
+                                                        setInventoryForm({
+                                                            item_name: item.item_name,
+                                                            category: item.category || 'General',
+                                                            unit: item.unit,
+                                                            quantity: item.quantity.toString(),
+                                                            min_level: (item.min_level || 5).toString(),
+                                                            supplier_id: item.supplier_id
+                                                        });
+                                                        setShowInventoryModal(true);
+                                                    }}
+                                                >
+                                                    <Text style={{ fontSize: 18 }}>✏️</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity onPress={() => deleteInventoryItem(item.id)}>
+                                                    <Text style={{ fontSize: 18 }}>🗑️</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.statValue, { fontSize: 18, color: isLow ? '#DC2626' : '#10B981', marginTop: 5 }]}>
+                                            {item.quantity} {item.unit || 'pcs'}
+                                        </Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
                     );
-                })
+                });
+            })()
             ) : (
                 restockRequestList.length === 0 ? (
                     <View style={styles.emptyState}>
@@ -1171,7 +1222,7 @@ const AdminDashboard = () => {
                 body: JSON.stringify({
                     ...inventoryForm,
                     quantity: Number(inventoryForm.quantity),
-                    min_level: 5 // Default
+                    min_level: Number(inventoryForm.min_level || 5)
                 })
             });
 
@@ -2418,7 +2469,7 @@ const AdminDashboard = () => {
                             <TouchableOpacity onPress={() => {
                                 setShowInventoryModal(false);
                                 setEditingInventory(null);
-                                setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '' });
+                                setInventoryForm({ item_name: '', quantity: '', unit: '', supplier_id: '', category: 'General', min_level: '5' });
                             }}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
@@ -2454,6 +2505,28 @@ const AdminDashboard = () => {
                                     />
                                 </View>
                             </View>
+
+                            <Text style={styles.label}>Category *</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 15 }}>
+                                {['Kitchen', 'Bar', 'General'].map(cat => (
+                                    <TouchableOpacity
+                                        key={cat}
+                                        style={[styles.catPill, inventoryForm.category === cat && styles.activeCatPill]}
+                                        onPress={() => setInventoryForm({ ...inventoryForm, category: cat })}
+                                    >
+                                        <Text style={[styles.catPillText, inventoryForm.category === cat && styles.activeCatPillText]}>{cat}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <Text style={styles.label}>Minimum Level (Alert Threshold) *</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="5"
+                                keyboardType="numeric"
+                                value={inventoryForm.min_level.toString()}
+                                onChangeText={(val) => setInventoryForm({ ...inventoryForm, min_level: val })}
+                            />
 
                             <Text style={styles.label}>Supplier (Optional)</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>

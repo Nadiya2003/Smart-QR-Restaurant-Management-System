@@ -73,7 +73,7 @@ const BarDashboard = () => {
             const [orderRes, historyRes, invRes, statusRes, notifRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/bar/orders`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/bar/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=Bar`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/status`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers })
             ]);
@@ -111,6 +111,21 @@ const BarDashboard = () => {
 
     useEffect(() => {
         fetchData();
+        
+        // Auto check-in
+        const autoCheckIn = async () => {
+            try {
+                const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, {
+                    method: 'POST',
+                    headers
+                });
+                if (res.ok) setIsOnDuty(true);
+            } catch (err) {
+                console.log("Auto check-in failed", err);
+            }
+        };
+        autoCheckIn();
+
         const interval = setInterval(() => fetchData(true), 5000);
         return () => clearInterval(interval);
     }, [fetchData]);
@@ -321,7 +336,7 @@ const BarDashboard = () => {
         <ScrollView style={styles.content}>
             <Text style={styles.sectionTitle}>Beverage Inventory</Text>
             <View style={styles.invGrid}>
-                {inventory.filter(i => i.category === 'Bar' || i.item_name.toLowerCase().includes('bottle') || i.item_name.toLowerCase().includes('drink')).map(item => {
+                {inventory.map(item => {
                     const isLow = item.quantity <= item.min_level;
                     return (
                         <View key={item.id} style={[styles.invCard, isLow && styles.invCardLow]}>

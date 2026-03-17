@@ -306,6 +306,12 @@ const InventoryDashboard = () => {
                     </View>
                 </View>
 
+                <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                    <Text style={{ fontSize: 11, color: '#9CA3AF' }}>
+                        Last Updated: {new Date(item.last_updated || item.updated_at).toLocaleString()}
+                    </Text>
+                </View>
+
                 <View style={styles.itemActions}>
                     <TouchableOpacity 
                         style={[styles.itemActionBtn, { backgroundColor: '#F3F4F6' }]}
@@ -330,46 +336,71 @@ const InventoryDashboard = () => {
         );
     };
 
-    const renderInventory = () => (
-        <View style={{ flex: 1 }}>
-            <View style={styles.filterBar}>
-                <View style={styles.searchContainer}>
-                    <Text style={styles.searchIcon}>🔍</Text>
-                    <TextInput 
-                        style={styles.searchInput}
-                        placeholder="Search stock..."
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                    />
+    const renderInventory = () => {
+        const categories = ['Kitchen', 'Bar', 'General'];
+        
+        const groups = {};
+        inventory.forEach(item => {
+            const cat = categories.includes(item.category) ? item.category : 'General';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(item);
+        });
+
+        return (
+            <View style={{ flex: 1 }}>
+                <View style={styles.filterBar}>
+                    <View style={styles.searchContainer}>
+                        <Text style={styles.searchIcon}>🔍</Text>
+                        <TextInput 
+                            style={styles.searchInput}
+                            placeholder="Search stock..."
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                        />
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                        {['All', ...categories].map(cat => (
+                            <TouchableOpacity 
+                                key={cat} 
+                                style={[styles.catPill, selectedCategory === cat && styles.activeCatPill]}
+                                onPress={() => setSelectedCategory(cat)}
+                            >
+                                <Text style={[styles.catPillText, selectedCategory === cat && styles.activeCatPillText]}>{cat}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                    {['All', 'Kitchen', 'Bar', 'General'].map(cat => (
-                        <TouchableOpacity 
-                            key={cat} 
-                            style={[styles.catPill, selectedCategory === cat && styles.activeCatPill]}
-                            onPress={() => setSelectedCategory(cat)}
-                        >
-                            <Text style={[styles.catPillText, selectedCategory === cat && styles.activeCatPillText]}>{cat}</Text>
-                        </TouchableOpacity>
-                    ))}
+
+                <ScrollView 
+                    style={styles.content}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                >
+                    {inventory.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyText}>No items found matching your filters.</Text>
+                        </View>
+                    ) : (
+                        selectedCategory === 'All' ? (
+                            categories.map(cat => (
+                                groups[cat] && groups[cat].length > 0 && (
+                                    <View key={cat} style={{ marginBottom: 20 }}>
+                                        <View style={styles.sectionHeader}>
+                                            <Text style={styles.sectionTitle}>{cat} Stock</Text>
+                                            <View style={styles.sectionLine} />
+                                        </View>
+                                        {groups[cat].map(item => renderInventoryItem(item))}
+                                    </View>
+                                )
+                            ))
+                        ) : (
+                            inventory.map(item => renderInventoryItem(item))
+                        )
+                    )}
+                    <View style={{ height: 100 }} />
                 </ScrollView>
             </View>
-
-            <ScrollView 
-                style={styles.content}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            >
-                {inventory.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <Text style={styles.emptyText}>No items found matching your filters.</Text>
-                    </View>
-                ) : (
-                    inventory.map(item => renderInventoryItem(item))
-                )}
-                <View style={{ height: 100 }} />
-            </ScrollView>
-        </View>
-    );
+        );
+    };
 
     const renderRequests = () => (
         <ScrollView style={styles.content}>
@@ -661,6 +692,15 @@ const styles = StyleSheet.create({
     headerActionBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
     mainContainer: { flex: 1 },
     content: { flex: 1, padding: 16 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 10 },
+    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginRight: 10 },
+    sectionLine: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+    sectionHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10
+    },
 
     // Pills
     smallPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, backgroundColor: '#F3F4F6', marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },

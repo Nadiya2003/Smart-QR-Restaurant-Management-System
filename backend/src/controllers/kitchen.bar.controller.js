@@ -93,9 +93,25 @@ export const getBarOrders = async (req, res) => {
  */
 export const getInventory = async (req, res) => {
     try {
-        const [rows] = await pool.query("SELECT * FROM inventory ORDER BY quantity ASC");
+        const { category } = req.query;
+        let query = `
+            SELECT i.*, s.name as supplier_name 
+            FROM inventory i 
+            LEFT JOIN suppliers s ON i.supplier_id = s.id
+        `;
+        const params = [];
+
+        if (category) {
+            query += " WHERE i.category = ?";
+            params.push(category);
+        }
+
+        query += " ORDER BY i.item_name ASC";
+        
+        const [rows] = await pool.query(query, params);
         res.json({ inventory: rows });
     } catch (error) {
+        console.error('Fetch inventory error:', error);
         res.status(500).json({ message: 'Failed to fetch inventory' });
     }
 };

@@ -73,7 +73,7 @@ const KitchenDashboard = () => {
             const [orderRes, historyRes, invRes, statusRes, notifRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/orders`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=Kitchen`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/status`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers })
             ]);
@@ -111,6 +111,21 @@ const KitchenDashboard = () => {
 
     useEffect(() => {
         fetchData();
+        
+        // Auto check-in
+        const autoCheckIn = async () => {
+            try {
+                const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, {
+                    method: 'POST',
+                    headers
+                });
+                if (res.ok) setIsOnDuty(true);
+            } catch (err) {
+                console.log("Auto check-in failed", err);
+            }
+        };
+        autoCheckIn();
+
         const interval = setInterval(() => fetchData(true), 5000);
         return () => clearInterval(interval);
     }, [fetchData]);

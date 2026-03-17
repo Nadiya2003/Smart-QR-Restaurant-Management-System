@@ -324,6 +324,12 @@ export const createInventoryItem = async (req, res) => {
     try {
         const { item_name, category, unit, quantity, min_level, supplier_id } = req.body;
         
+        // Check if item already exists
+        const [existing] = await pool.query('SELECT id FROM inventory WHERE item_name = ?', [item_name]);
+        if (existing.length > 0) {
+            return res.status(400).json({ message: 'An item with this name already exists' });
+        }
+
         const status = quantity === 0 ? 'Out of Stock' : (quantity <= min_level ? 'Low Stock' : 'Available');
 
         const [result] = await pool.query(`

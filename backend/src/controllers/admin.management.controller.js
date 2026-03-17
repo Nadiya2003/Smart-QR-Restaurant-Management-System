@@ -96,10 +96,15 @@ export const getInventory = async (req, res) => {
 
 export const addInventoryItem = async (req, res) => {
     try {
-        const { item_name, quantity, unit, supplier_id } = req.body;
+        const { item_name, quantity, unit, supplier_id, category = 'General', min_level = 5 } = req.body;
+        
+        let status = 'Available';
+        if (Number(quantity) === 0) status = 'Out of Stock';
+        else if (Number(quantity) <= Number(min_level)) status = 'Low Stock';
+
         await pool.query(
-            'INSERT INTO inventory (item_name, quantity, unit, supplier_id) VALUES (?, ?, ?, ?)',
-            [item_name, quantity, unit, supplier_id]
+            'INSERT INTO inventory (item_name, quantity, unit, supplier_id, category, min_level, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [item_name, quantity, unit, supplier_id || null, category, min_level, status]
         );
         res.status(201).json({ message: 'Inventory item added' });
     } catch (err) {
@@ -110,10 +115,15 @@ export const addInventoryItem = async (req, res) => {
 export const updateInventoryItem = async (req, res) => {
     try {
         const { id } = req.params;
-        const { item_name, quantity, unit, supplier_id } = req.body;
+        const { item_name, quantity, unit, supplier_id, category = 'General', min_level = 5 } = req.body;
+        
+        let status = 'Available';
+        if (Number(quantity) === 0) status = 'Out of Stock';
+        else if (Number(quantity) <= Number(min_level)) status = 'Low Stock';
+
         await pool.query(
-            'UPDATE inventory SET item_name = ?, quantity = ?, unit = ?, supplier_id = ? WHERE id = ?',
-            [item_name, quantity, unit, supplier_id, id]
+            'UPDATE inventory SET item_name = ?, quantity = ?, unit = ?, supplier_id = ?, category = ?, min_level = ?, status = ? WHERE id = ?',
+            [item_name, quantity, unit, supplier_id || null, category, min_level, status, id]
         );
         res.json({ message: 'Inventory item updated' });
     } catch (err) {
