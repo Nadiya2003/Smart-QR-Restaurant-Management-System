@@ -10,24 +10,52 @@ export const authenticateUser = async (req, res, next) => {
         }
 
         const token = authHeader.split(' ')[1];
-
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
 
-        const [users] = await pool.query(
-            'SELECT id, name, email, role FROM users WHERE id = ?',
-            [decoded.userId]
-        );
+        // Handle Hardcoded Admin
+        if (decoded.userId === 0 && (decoded.role === 'ADMIN' || decoded.role === 'admin')) {
+            req.user = {
+                userId: 0,
+                name: 'Admin',
+                email: 'admin@restaurant.com',
+                role: 'ADMIN'
+            };
+            return next();
+        }
 
-        if (users.length === 0) {
-            return res.status(401).json({ message: 'Invalid token' });
+        let user;
+        const role = decoded.role ? decoded.role.toUpperCase() : 'CUSTOMER';
+
+        if (role === 'CUSTOMER') {
+            const [rows] = await pool.query(
+                'SELECT id, name, email FROM online_customers WHERE id = ?',
+                [decoded.userId]
+            );
+            if (rows.length === 0) {
+                return res.status(401).json({ message: 'Invalid token' });
+            }
+            user = { ...rows[0], role: 'CUSTOMER' };
+        } else {
+            // Staff
+            const [rows] = await pool.query(
+                `SELECT su.id, su.full_name as name, su.email, sr.role_name as role 
+                 FROM staff_users su 
+                 JOIN staff_roles sr ON su.role_id = sr.id 
+                 WHERE su.id = ?`,
+                [decoded.userId]
+            );
+            
+            if (rows.length === 0) {
+                return res.status(401).json({ message: 'Invalid token' });
+            }
+            user = { ...rows[0], role: (rows[0].role || role).toUpperCase() };
         }
 
         req.user = {
-            userId: users[0].id,
-            name: users[0].name,
-            email: users[0].email,
-            role: users[0].role,
-            staffRole: decoded.staffRole
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role
         };
 
         next();

@@ -10,7 +10,8 @@ import {
     updateRestockStatus, 
     getSuppliers, 
     getStockHistory, 
-    getInventoryReport 
+    getInventoryReport,
+    getSupplierOrders
 } from '../controllers/inventory.controller.js';
 import { protect, isStaff } from '../middleware/authMiddleware.js';
 
@@ -37,5 +38,6 @@ router.put('/restock-requests/:id/status', updateRestockStatus);
 // History & Reports
 router.get('/history', getStockHistory);
 router.get('/report', getInventoryReport);
+router.get('/supplier-orders', getSupplierOrders);
 
 export default router;

@@ -86,6 +86,16 @@ app.use('/api/kitchen-bar', kitchenBarRoutes);
 import inventoryRoutes from './routes/inventory.routes.js';
 app.use('/api/inventory', inventoryRoutes);
 
+// Delivery Rider Routes
+import deliveryRiderRoutes from './routes/delivery.rider.routes.js';
+import staffNotificationRoutes from './routes/staff.notification.routes.js';
+app.use('/api/delivery-rider', deliveryRiderRoutes);
+app.use('/api/staff-notifications', staffNotificationRoutes);
+
+// Supplier Routes
+import supplierRoutes from './routes/supplier.routes.js';
+app.use('/api/supplier', supplierRoutes);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);

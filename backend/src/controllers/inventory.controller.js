@@ -26,7 +26,7 @@ const checkAndNotifyStock = async (connection, inventoryId) => {
                 'SELECT id FROM staff_roles WHERE role_name IN ("admin", "manager", "inventory_manager")'
             );
 
-            // 3. Create notifications for each role
+            // 3. Create notifications for each restaurant staff role
             for (const role of roles) {
                 // Check if a similar unread notification already exists to avoid spam
                 const [existing] = await connection.query(
@@ -38,6 +38,27 @@ const checkAndNotifyStock = async (connection, inventoryId) => {
                     await connection.query(
                         'INSERT INTO staff_notifications (role_id, title, message, notification_type) VALUES (?, ?, ?, ?)',
                         [role.id, title, message, type]
+                    );
+                }
+            }
+
+            // 4. Notify Suppliers assigned to this item
+            const [itemInfo] = await connection.query('SELECT supplier_id FROM inventory WHERE id = ?', [inventoryId]);
+            if (itemInfo.length > 0 && itemInfo[0].supplier_id) {
+                const supplierId = itemInfo[0].supplier_id;
+                // Find all staff members for this supplier
+                const [supplierStaff] = await connection.query(
+                    'SELECT staff_id FROM supplier_staff WHERE supplier_id = ?',
+                    [supplierId]
+                );
+
+                for (const staff of supplierStaff) {
+                    const supplierTitle = `URGENT: Stock Low for ${item_name}`;
+                    const supplierMessage = `Hello, the stock for "${item_name}" at Melissa's Food Court has reached ${quantity} ${items[0].unit || 'units'}. Please consider restocking.`;
+                    
+                    await connection.query(
+                        'INSERT INTO staff_notifications (staff_id, title, message, notification_type) VALUES (?, ?, ?, ?)',
+                        [staff.staff_id, supplierTitle, supplierMessage, 'LOW_STOCK']
                     );
                 }
             }
@@ -172,13 +193,24 @@ export const createRestockRequest = async (req, res) => {
 export const getRestockRequests = async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT rr.*, i.item_name, i.unit, s.name as supplier_name,
-                   su.full_name as requester_name
+            SELECT rr.id, rr.inventory_id, rr.supplier_id, rr.quantity, rr.status, rr.created_at,
+                   i.item_name, i.unit, s.name as supplier_name,
+                   su.full_name as requester_name, 'RETAILER' as origin
             FROM restock_requests rr
             JOIN inventory i ON rr.inventory_id = i.id
             JOIN suppliers s ON rr.supplier_id = s.id
             LEFT JOIN staff_users su ON rr.requested_by = su.id
-            ORDER BY rr.created_at DESC
+            
+            UNION ALL
+            
+            SELECT sr.id, sr.inventory_id, sr.supplier_id, sr.quantity, sr.status, sr.created_at,
+                   i.item_name, i.unit, s.name as supplier_name,
+                   'Supplier Offer' as requester_name, 'SUPPLIER' as origin
+            FROM supplier_requests sr
+            JOIN inventory i ON sr.inventory_id = i.id
+            JOIN suppliers s ON sr.supplier_id = s.id
+
+            ORDER BY created_at DESC
         `);
         res.json({ requests: rows });
     } catch (error) {
@@ -193,27 +225,51 @@ export const updateRestockStatus = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, origin } = req.body; // 'RETAILER' or 'SUPPLIER'
         const admin_id = req.user.userId;
 
         await connection.beginTransaction();
 
-        // 1. Update status
+        // 1. Update status in correct table
+        const table = (origin === 'SUPPLIER') ? 'supplier_requests' : 'restock_requests';
         await connection.query(
-            'UPDATE restock_requests SET status = ?, approved_by = ? WHERE id = ?',
-            [status, admin_id, id]
+            `UPDATE ${table} SET status = ? ${origin !== 'SUPPLIER' ? ', approved_by = ?' : ''} WHERE id = ?`,
+            origin === 'SUPPLIER' ? [status, id] : [status, admin_id, id]
         );
 
-        // 2. If COMPLETED, auto-update inventory
-        if (status === 'COMPLETED') {
-            const [request] = await connection.query('SELECT inventory_id, quantity FROM restock_requests WHERE id = ?', [id]);
+        // 1.5 If RETAILER request and status is APPROVED, create a supplier_order
+        if (origin === 'RETAILER' && status === 'APPROVED') {
+            const [reqInfo] = await connection.query('SELECT inventory_id, supplier_id, quantity FROM restock_requests WHERE id = ?', [id]);
+            if (reqInfo.length > 0) {
+                const { supplier_id, quantity, inventory_id } = reqInfo[0];
+                const [[item]] = await connection.query('SELECT item_name FROM inventory WHERE id = ?', [inventory_id]);
+                
+                await connection.query(
+                    'INSERT INTO supplier_orders (supplier_id, inventory_id, quantity, total_amount, status, notes, priority) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [supplier_id, inventory_id, quantity, 0, 'PENDING', `Restock Request for ${item.item_name}`, 'Normal']
+                );
+
+                // Notify Supplier Staff
+                const [supplierStaff] = await connection.query('SELECT staff_id FROM supplier_staff WHERE supplier_id = ?', [supplier_id]);
+                for (const staff of supplierStaff) {
+                    await connection.query(
+                        'INSERT INTO staff_notifications (staff_id, title, message, notification_type) VALUES (?, ?, ?, ?)',
+                        [staff.staff_id, 'New Order from Restaurant', `A new restock order has been placed for "${item.item_name}".`, 'INFO']
+                    );
+                }
+            }
+        }
+
+        // 2. If COMPLETED or APPROVED (for supplier offers), auto-update inventory
+        if (status === 'COMPLETED' || (origin === 'SUPPLIER' && status === 'APPROVED')) {
+            const [request] = await connection.query(`SELECT inventory_id, quantity, supplier_id FROM ${table} WHERE id = ?`, [id]);
             if (request.length > 0) {
-                const { inventory_id, quantity } = request[0];
+                const { inventory_id, quantity, supplier_id } = request[0];
                 
                 // Add to inventory
                 await connection.query('UPDATE inventory SET quantity = quantity + ? WHERE id = ?', [quantity, inventory_id]);
                 
-                // Update status logic
+                // Refresh status logic
                 await connection.query(`
                     UPDATE inventory 
                     SET status = CASE 
@@ -228,10 +284,21 @@ export const updateRestockStatus = async (req, res) => {
                 // Log History
                 await connection.query(`
                     INSERT INTO stock_history (inventory_id, action_type, quantity, reason, performed_by)
-                    VALUES (?, 'RESTOCK', ?, 'Automatic update from completed restock request', ?)
-                `, [inventory_id, quantity, admin_id]);
+                    VALUES (?, 'RESTOCK', ?, ?, ?)
+                `, [
+                    inventory_id, 
+                    quantity, 
+                    origin === 'SUPPLIER' ? 'Stock received from supplier offer' : 'Automatic update from completed restock request',
+                    admin_id
+                ]);
 
-                // Trigger Alerts if needed (though restock usually fixes low stock)
+                // Create Supplier History record
+                await connection.query(
+                    "INSERT INTO supplier_history (supplier_id, inventory_id, quantity, order_id) VALUES (?, ?, ?, null)",
+                    [supplier_id, inventory_id, quantity]
+                );
+
+                // Trigger Alerts
                 await checkAndNotifyStock(connection, inventory_id);
             }
         }
@@ -284,7 +351,11 @@ export const getStockHistory = async (req, res) => {
  */
 export const getInventoryReport = async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const today = new Date().toISOString().split('T')[0];
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        
+        const startDate = req.query.startDate || monthStart;
+        const endDate = req.query.endDate || today;
         // Total items per status
         const [statusStats] = await pool.query(`
             SELECT status, COUNT(*) as count FROM inventory GROUP BY status
@@ -380,5 +451,24 @@ export const deleteInventoryItem = async (req, res) => {
     } catch (error) {
         console.error('Delete inventory item error:', error);
         res.status(500).json({ message: 'Failed to delete item' });
+    }
+};
+/**
+ * GET /api/inventory/supplier-orders
+ * Get all active supplier orders
+ */
+export const getSupplierOrders = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT so.*, s.name as supplier_name, i.item_name, i.unit
+            FROM supplier_orders so
+            JOIN suppliers s ON so.supplier_id = s.id
+            LEFT JOIN inventory i ON so.inventory_id = i.id
+            ORDER BY so.created_at DESC
+        `);
+        res.json({ orders: rows });
+    } catch (error) {
+        console.error('Fetch supplier orders error:', error);
+        res.status(500).json({ message: 'Failed to fetch supplier orders' });
     }
 };

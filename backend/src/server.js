@@ -1,14 +1,35 @@
 import 'dotenv/config';
+import http from 'http';
+import { Server } from 'socket.io';
 import app from './app.js';
 
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+export const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    }
+});
+
+io.on('connection', (socket) => {
+    console.log('👤 A user connected:', socket.id);
+    
+    socket.on('join', (room) => {
+        socket.join(room);
+        console.log(`🏠 User ${socket.id} joined room: ${room}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('👤 User disconnected');
+    });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);
-    console.log(`🚀 Backend is running successfully!`);
+    console.log(`🚀 Backend with Socket.io is running!`);
     console.log(`👉 Server running on: http://localhost:${PORT}`);
-    console.log(`👉 LAN access: http://192.168.1.4:${PORT}`);
-    console.log(`👉 API available at: http://localhost:${PORT}/api/menu`);
     console.log(`=================================================\n`);
 });
 

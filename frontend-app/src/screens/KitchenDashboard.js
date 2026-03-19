@@ -152,12 +152,12 @@ const KitchenDashboard = () => {
         }
     };
 
-    const updateStatus = async (orderId, status) => {
+    const updateStatus = async (orderId, status, type) => {
         try {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers,
-                body: JSON.stringify({ status })
+                body: JSON.stringify({ status, type })
             });
             if (res.ok) {
                 fetchData(true);
@@ -311,14 +311,14 @@ const KitchenDashboard = () => {
                                     {order.status === 'PENDING' || order.status === 'CONFIRMED' ? (
                                         <TouchableOpacity 
                                             style={[styles.statusBtn, { backgroundColor: '#3B82F6' }]} 
-                                            onPress={() => updateStatus(order.id, 'PREPARING')}
+                                            onPress={() => updateStatus(order.id, 'PREPARING', order.order_type_name)}
                                         >
                                             <Text style={styles.statusBtnText}>START COOKING</Text>
                                         </TouchableOpacity>
                                     ) : (
                                         <TouchableOpacity 
                                             style={[styles.statusBtn, { backgroundColor: '#10B981' }]} 
-                                            onPress={() => updateStatus(order.id, 'READY')}
+                                            onPress={() => updateStatus(order.id, 'READY', order.order_type_name)}
                                         >
                                             <Text style={styles.statusBtnText}>MARK AS READY</Text>
                                         </TouchableOpacity>

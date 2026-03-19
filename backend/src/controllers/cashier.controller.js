@@ -129,11 +129,19 @@ export const createPosOrder = async (req, res) => {
 export const getAllOrders = async (req, res) => {
     try {
         const [orders] = await pool.query(`
-            SELECT o.*, ot.name as type_name, os.name as status_name 
+            SELECT o.id, o.total_price, o.created_at, ot.name as type_name, os.name as status_name, 
+                   'orders' as source_table
             FROM orders o 
             JOIN order_types ot ON o.order_type_id = ot.id 
             JOIN order_statuses os ON o.status_id = os.id 
-            ORDER BY o.created_at DESC
+            
+            UNION ALL
+
+            SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.status as status_name,
+                   'delivery_orders' as source_table
+            FROM delivery_orders do
+            
+            ORDER BY created_at DESC
         `);
         res.json({ orders });
     } catch (err) {

@@ -7,7 +7,7 @@ import pool from '../config/db.js';
 export const getKitchenOrders = async (req, res) => {
     try {
         const [orders] = await pool.query(`
-            SELECT o.*, rt.table_number, os.name as status,
+            SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
                    c.name as customer_name, ot.name as order_type_name,
                    COALESCE(su.name, su.full_name, su.username) as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -24,10 +24,23 @@ export const getKitchenOrders = async (req, res) => {
             LEFT JOIN staff_users su ON s.staff_id = su.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
             WHERE os.name NOT IN ('COMPLETED', 'CANCELLED')
-            ORDER BY o.created_at ASC
-        `);
+            
+            UNION ALL
 
-        console.log(`[Kitchen] Orders found in DB: ${orders.length}`);
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+                   do.customer_name, 'DELIVERY' as order_type_name,
+                   'Rider' as steward_name,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'price', mi.price, 'category', cat.name)
+                   ) FROM delivery_order_items doi 
+                   JOIN menu_items mi ON doi.menu_item_id = mi.id 
+                   JOIN categories cat ON mi.category_id = cat.id
+                   WHERE doi.order_id = do.id AND cat.name != 'Beverages') as items
+            FROM delivery_orders do
+            WHERE do.status NOT IN ('Delivered', 'Cancelled')
+            
+            ORDER BY created_at ASC
+        `);
 
         // Filter out orders that have no kitchen items (all items were beverages)
         const kitchenOrders = orders.filter(o => {
@@ -36,7 +49,6 @@ export const getKitchenOrders = async (req, res) => {
             return items && items.length > 0;
         });
 
-        console.log(`[Kitchen] After filtering beverages: ${kitchenOrders.length}`);
         res.json({ orders: kitchenOrders });
     } catch (error) {
         console.error('Kitchen orders error:', error);
@@ -51,7 +63,7 @@ export const getKitchenOrders = async (req, res) => {
 export const getBarOrders = async (req, res) => {
     try {
         const [orders] = await pool.query(`
-            SELECT o.*, rt.table_number, os.name as status,
+            SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
                    c.name as customer_name, ot.name as order_type_name,
                    COALESCE(su.name, su.full_name, su.username) as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -68,10 +80,23 @@ export const getBarOrders = async (req, res) => {
             LEFT JOIN staff_users su ON s.staff_id = su.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
             WHERE os.name NOT IN ('COMPLETED', 'CANCELLED')
-            ORDER BY o.created_at ASC
-        `);
 
-        console.log(`[Bar] Orders found in DB: ${orders.length}`);
+            UNION ALL
+
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+                   do.customer_name, 'DELIVERY' as order_type_name,
+                   'Rider' as steward_name,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'price', mi.price, 'category', cat.name)
+                   ) FROM delivery_order_items doi 
+                   JOIN menu_items mi ON doi.menu_item_id = mi.id 
+                   JOIN categories cat ON mi.category_id = cat.id
+                   WHERE doi.order_id = do.id AND cat.name = 'Beverages') as items
+            FROM delivery_orders do
+            WHERE do.status NOT IN ('Delivered', 'Cancelled')
+
+            ORDER BY created_at ASC
+        `);
 
         // Filter out orders that have no bar items (all items were food)
         const barOrders = orders.filter(o => {
@@ -80,7 +105,6 @@ export const getBarOrders = async (req, res) => {
             return items && items.length > 0;
         });
 
-        console.log(`[Bar] After filtering food: ${barOrders.length}`);
         res.json({ orders: barOrders });
     } catch (error) {
         console.error('Bar orders error:', error);
@@ -228,6 +252,7 @@ export const checkOut = async (req, res) => {
         if (connection) connection.release();
     }
 };
+
 /**
  * GET /api/kitchen/history
  */
@@ -249,7 +274,22 @@ export const getKitchenHistory = async (req, res) => {
             LEFT JOIN online_customers c ON o.customer_id = c.id
             WHERE os.name IN ('COMPLETED', 'CANCELLED', 'FINISHED', 'SERVED')
             AND DATE(o.created_at) = CURDATE()
-            ORDER BY o.updated_at DESC
+            
+            UNION ALL
+            
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+                   do.customer_name, 'DELIVERY' as order_type_name,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('name', mi.name, 'quantity', doi.quantity)
+                   ) FROM delivery_order_items doi 
+                   JOIN menu_items mi ON doi.menu_item_id = mi.id 
+                   JOIN categories cat ON mi.category_id = cat.id
+                   WHERE doi.order_id = do.id AND cat.name != 'Beverages') as items
+            FROM delivery_orders do
+            WHERE do.status IN ('Delivered', 'Cancelled')
+            AND DATE(do.created_at) = CURDATE()
+            
+            ORDER BY created_at DESC
         `);
 
         const history = orders.filter(o => {
@@ -260,6 +300,7 @@ export const getKitchenHistory = async (req, res) => {
 
         res.json({ history });
     } catch (error) {
+        console.error('Kitchen history error:', error);
         res.status(500).json({ message: 'Failed to fetch kitchen history' });
     }
 };
@@ -285,7 +326,22 @@ export const getBarHistory = async (req, res) => {
             LEFT JOIN online_customers c ON o.customer_id = c.id
             WHERE os.name IN ('COMPLETED', 'CANCELLED', 'FINISHED', 'SERVED')
             AND DATE(o.created_at) = CURDATE()
-            ORDER BY o.updated_at DESC
+            
+            UNION ALL
+            
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+                   do.customer_name, 'DELIVERY' as order_type_name,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('name', mi.name, 'quantity', doi.quantity)
+                   ) FROM delivery_order_items doi 
+                   JOIN menu_items mi ON doi.menu_item_id = mi.id 
+                   JOIN categories cat ON mi.category_id = cat.id
+                   WHERE doi.order_id = do.id AND cat.name = 'Beverages') as items
+            FROM delivery_orders do
+            WHERE do.status IN ('Delivered', 'Cancelled')
+            AND DATE(do.created_at) = CURDATE()
+            
+            ORDER BY created_at DESC
         `);
 
         const history = orders.filter(o => {
@@ -296,6 +352,7 @@ export const getBarHistory = async (req, res) => {
 
         res.json({ history });
     } catch (error) {
+        console.error('Bar history error:', error);
         res.status(500).json({ message: 'Failed to fetch bar history' });
     }
 };

@@ -1,0 +1,260 @@
+[
+  {
+    "id": 2,
+    "item_name": "Chicken Breast",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 3,
+    "item_name": "Olive Oil",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 4,
+    "item_name": "Flour",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 5,
+    "item_name": "Milk",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 6,
+    "item_name": "Sugar",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 7,
+    "item_name": "Tomato Sauce",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 8,
+    "item_name": "Salt",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 9,
+    "item_name": "Butter",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 10,
+    "item_name": "Black Pepper",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 11,
+    "item_name": "Basmati Rice",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 21,
+    "item_name": "Rice",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 22,
+    "item_name": "Basmathi Rice",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 23,
+    "item_name": "Coca Cola 500ml",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 24,
+    "item_name": "Sprite 500ml",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 25,
+    "item_name": "Fanta Orange",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 26,
+    "item_name": "Mineral Water 1L",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 27,
+    "item_name": "Lion Beer Bottle",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 28,
+    "item_name": "Red Wine (Spanish)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 29,
+    "item_name": "White Wine (French)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 30,
+    "item_name": "Orange Juice Concentrate",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 31,
+    "item_name": "Apple Juice Concentrate",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 32,
+    "item_name": "Tonic Water",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 33,
+    "item_name": "Beef Undercut",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 34,
+    "item_name": "Mutton Chops",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 35,
+    "item_name": "Tiger Prawns Jumbo",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 36,
+    "item_name": "Sea Bass Fillet",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 37,
+    "item_name": "Red Onions",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 38,
+    "item_name": "Garlic (Peeled)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 39,
+    "item_name": "Ginger Whole",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 40,
+    "item_name": "Potatoes (Local)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 41,
+    "item_name": "Mysore Dhal",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 42,
+    "item_name": "Fresh Eggs (Large)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 43,
+    "item_name": "Chili Powder (Extra Hot)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 44,
+    "item_name": "Turmeric Powder",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 45,
+    "item_name": "Coconut Milk (Canned)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 46,
+    "item_name": "Soy Sauce (Light)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 47,
+    "item_name": "Paper Napkins (White)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 48,
+    "item_name": "Dishwashing Liquid",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 49,
+    "item_name": "Surface Sanitizer",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 50,
+    "item_name": "Hand Wash Refill",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 51,
+    "item_name": "Takeaway Boxes (M)",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 52,
+    "item_name": "Biodegradable Straws",
+    "supplier_id": null,
+    "supplier_name": null
+  },
+  {
+    "id": 53,
+    "item_name": "Banana",
+    "supplier_id": null,
+    "supplier_name": null
+  }
+]

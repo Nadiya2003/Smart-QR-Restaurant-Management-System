@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "full_name": "Test Steward",
+    "role_name": "steward"
+  },
+  {
+    "id": 2,
+    "full_name": "Bandara Disanayake",
+    "role_name": "steward"
+  },
+  {
+    "id": 3,
+    "full_name": "Pavan",
+    "role_name": "cashier"
+  },
+  {
+    "id": 4,
+    "full_name": "Lakmal",
+    "role_name": "kitchen_staff"
+  },
+  {
+    "id": 5,
+    "full_name": "Indunil",
+    "role_name": "bar_staff"
+  },
+  {
+    "id": 6,
+    "full_name": "Inoka",
+    "role_name": "inventory_manager"
+  },
+  {
+    "id": 7,
+    "full_name": "Mahesh",
+    "role_name": "delivery_rider"
+  }
+]

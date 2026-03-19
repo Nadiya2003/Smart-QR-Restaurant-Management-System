@@ -249,7 +249,16 @@ export const toggleCustomerStatus = async (req, res) => {
 // --- Order Management ---
 export const getAllOrders = async (req, res) => {
     try {
-        const [deliveryOrders] = await pool.query('SELECT *, "DELIVERY" as order_type FROM delivery_orders ORDER BY created_at DESC');
+        const [deliveryOrders] = await pool.query(`
+            SELECT do.*, "DELIVERY" as order_type, customer_name,
+                   'Guest' as customer_type,
+                   (SELECT GROUP_CONCAT(CONCAT(doi.quantity, 'x ', mi.name) SEPARATOR ', ')
+                    FROM delivery_order_items doi
+                    JOIN menu_items mi ON doi.menu_item_id = mi.id
+                    WHERE doi.order_id = do.id) as items_summary
+            FROM delivery_orders do
+            ORDER BY do.created_at DESC
+        `);
         const [takeawayOrders] = await pool.query('SELECT *, "TAKEAWAY" as order_type FROM takeaway_orders ORDER BY created_at DESC');
         const [dineInOrders] = await pool.query(`
             SELECT o.*, "DINE-IN" as order_type, rt.table_number, os.name as status, c.name as customer_name,
@@ -404,12 +413,13 @@ export const cancelOrder = async (req, res) => {
 export const getCancellationRequests = async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT cr.*, o.table_id, rt.table_number,
+            SELECT cr.*, 
+                   COALESCE(rt.table_number, 'N/A') as table_number,
                    (SELECT full_name FROM staff_users WHERE id = cr.requested_by LIMIT 1) as staff_name,
                    (SELECT name FROM online_customers WHERE id = cr.requested_by LIMIT 1) as customer_name
             FROM cancel_requests cr
-            JOIN orders o ON cr.order_id = o.id
-            JOIN restaurant_tables rt ON o.table_id = rt.id
+            LEFT JOIN orders o ON cr.order_id = o.id AND cr.order_type = 'dine_in'
+            LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             WHERE cr.status = 'pending'
             ORDER BY cr.created_at DESC
         `);
@@ -447,25 +457,39 @@ export const handleCancellationAction = async (req, res) => {
         );
 
         if (action === 'approve') {
-            // 2. Cancel the actual order
-            const [cancelStatus] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
-            const cancelStatusId = cancelStatus[0]?.id;
-            
-            await connection.query(
-                'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
-                [cancelStatusId, request.reason, request.order_id]
-            );
+            if (request.order_type === 'delivery') {
+                await connection.query(
+                    "UPDATE delivery_orders SET status = 'Cancelled', status_notes = ? WHERE id = ?",
+                    [request.reason, request.order_id]
+                );
+            } else if (request.order_type === 'takeaway') {
+                await connection.query(
+                    "UPDATE takeaway_orders SET order_status = 'CANCELLED', status_notes = ? WHERE id = ?",
+                    [request.reason, request.order_id]
+                );
+            } else {
+                // Dine-in order cancellation
+                const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                const cancelStatusId = cancelStatus[0]?.id;
+                
+                await connection.query(
+                    'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
+                    [cancelStatusId || 0, request.reason, request.order_id]
+                );
 
-            // 3. Free up table if it was DINE-IN
-            const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
-            if (orderRows.length > 0 && orderRows[0].table_id) {
-                await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                // Free up table if it was DINE-IN
+                const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
+                if (orderRows.length > 0 && orderRows[0].table_id) {
+                    await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                }
             }
         } else {
-             await connection.query(
-                'UPDATE orders SET cancellation_status = "REJECTED" WHERE id = ?',
-                [request.order_id]
-            );
+             if (request.order_type === 'dine_in') {
+                await connection.query(
+                    'UPDATE orders SET cancellation_status = "REJECTED" WHERE id = ?',
+                    [request.order_id]
+                );
+             }
         }
 
         await connection.commit();
@@ -473,7 +497,7 @@ export const handleCancellationAction = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error('Handle cancel action error:', error);
-        res.status(500).json({ message: 'Action failed' });
+        res.status(500).json({ message: 'Action failed: ' + error.message });
     } finally {
         connection.release();
     }
@@ -539,35 +563,41 @@ export const getStats = async (req, res) => {
                 SELECT id FROM delivery_orders WHERE DATE(created_at) = CURDATE()
                 UNION ALL
                 SELECT id FROM takeaway_orders WHERE DATE(created_at) = CURDATE()
+                UNION ALL
+                SELECT id FROM orders WHERE DATE(created_at) = CURDATE()
             ) as t
         `);
 
-        // Revenue Totals
+        // Revenue Totals - INCLUDES DINE-IN
         const [[{ todayRevenue }]] = await pool.query(`
              SELECT (
                 COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND DATE(created_at) = CURDATE()), 0) + 
-                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND DATE(created_at) = CURDATE()), 0)
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND DATE(created_at) = CURDATE()), 0) +
+                COALESCE((SELECT SUM(total_price) FROM order_analytics WHERE order_source = 'DINE-IN' AND DATE(created_at) = CURDATE()), 0)
             ) as todayRevenue
         `);
 
         const [[{ totalRevenue }]] = await pool.query(`
              SELECT (
                 COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid'), 0) + 
-                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid'), 0)
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid'), 0) +
+                COALESCE((SELECT SUM(total_price) FROM order_analytics WHERE order_source = 'DINE-IN'), 0)
             ) as totalRevenue
         `);
 
         const [[{ weekRev }]] = await pool.query(`
              SELECT (
                 COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0) + 
-                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0)
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0) +
+                COALESCE((SELECT SUM(total_price) FROM order_analytics WHERE order_source = 'DINE-IN' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0)
             ) as weekRev
         `);
 
         const [[{ monthRev }]] = await pool.query(`
              SELECT (
                 COALESCE((SELECT SUM(total_price) FROM delivery_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) + 
-                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0)
+                COALESCE((SELECT SUM(total_price) FROM takeaway_orders WHERE payment_status = 'paid' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) +
+                COALESCE((SELECT SUM(total_price) FROM order_analytics WHERE order_source = 'DINE-IN' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0)
             ) as monthRev
         `);
 
@@ -585,11 +615,13 @@ export const getStats = async (req, res) => {
                 todayRevenue: todayRevenue || 0,
                 weekRevenue: weekRev || 0,
                 monthRevenue: monthRev || 0,
-                totalOrders: deliveryCount + takeawayCount,
+                totalOrders: deliveryCount + takeawayCount + (ordersToday[0].count - (deliveryCount + takeawayCount)), // Combined total
                 orders: deliveryCount + takeawayCount,
                 activeStaff: activeStaffCount,
+                staffCount: staffCount,
                 staff: staffCount,
                 totalCustomers: customerCount,
+                customerCount: customerCount,
                 customers: customerCount,
                 
                 details: {

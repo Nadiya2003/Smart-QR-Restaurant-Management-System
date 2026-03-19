@@ -10,6 +10,9 @@ import CashierDashboard from './CashierDashboard';
 import KitchenDashboard from './KitchenDashboard';
 import BarDashboard from './BarDashboard';
 import InventoryDashboard from './InventoryDashboard';
+import DeliveryRiderDashboard from './rider/DeliveryRiderDashboard';
+import SupplierDashboard from './supplier/SupplierDashboard';
+import ManagerDashboard from './ManagerDashboard';
 
 const Dashboard = ({ onLogout }) => {
     const { user, logout } = useAuth();
@@ -62,6 +65,10 @@ const Dashboard = ({ onLogout }) => {
             return <StewardDashboard />;
         }
 
+        if (role === 'MANAGER') {
+            return <ManagerDashboard />;
+        }
+
         if (role === 'CASHIER') {
             return <CashierDashboard />;
         }
@@ -76,6 +83,14 @@ const Dashboard = ({ onLogout }) => {
 
         if (role === 'INVENTORY_MANAGER') {
             return <InventoryDashboard onLogout={handleLogout} />;
+        }
+
+        if (role === 'DELIVERY_RIDER') {
+            return <DeliveryRiderDashboard onLogout={handleLogout} />;
+        }
+
+        if (role === 'SUPPLIER') {
+            return <SupplierDashboard />;
         }
 
         // All other active staff roles

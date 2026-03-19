@@ -1,0 +1,89 @@
+{
+  "suppliers": [
+    {
+      "id": 1,
+      "name": "Fresh Mart",
+      "contact_person": "John Doe",
+      "phone": "0771234567",
+      "email": "contact@freshmart.lk",
+      "address": "Col 07",
+      "created_at": "2026-03-14T09:40:12.000Z",
+      "status": "Approved",
+      "company_name": "Fresh Mart Pvt Ltd",
+      "product_category": "Vegetables",
+      "contact_number": null,
+      "products_supplied": null
+    },
+    {
+      "id": 2,
+      "name": "Ocean Catch",
+      "contact_person": "Jane Smith",
+      "phone": "0719876543",
+      "email": "orders@oceancatch.lk",
+      "address": "Negombo",
+      "created_at": "2026-03-14T09:40:12.000Z",
+      "status": "Pending",
+      "company_name": "Ocean Catch Seafoods",
+      "product_category": "Seafood",
+      "contact_number": null,
+      "products_supplied": null
+    },
+    {
+      "id": 3,
+      "name": "Dairy Best",
+      "contact_person": "Milk Man",
+      "phone": "0751112233",
+      "email": "sales@dairybest.com",
+      "address": "Kandy",
+      "created_at": "2026-03-14T09:40:12.000Z",
+      "status": "Approved",
+      "company_name": "Dairy Best Farms",
+      "product_category": "Dairy",
+      "contact_number": null,
+      "products_supplied": null
+    },
+    {
+      "id": 4,
+      "name": "Fresh Mart",
+      "contact_person": "John Doe",
+      "phone": "0771234567",
+      "email": "contact@freshmart.lk",
+      "address": "Col 07",
+      "created_at": "2026-03-14T10:29:32.000Z",
+      "status": "Approved",
+      "company_name": "Fresh Mart Pvt Ltd",
+      "product_category": "Vegetables",
+      "contact_number": null,
+      "products_supplied": null
+    },
+    {
+      "id": 5,
+      "name": "Ocean Catch",
+      "contact_person": "Jane Smith",
+      "phone": "0719876543",
+      "email": "orders@oceancatch.lk",
+      "address": "Negombo",
+      "created_at": "2026-03-14T10:29:32.000Z",
+      "status": "Approved",
+      "company_name": "Ocean Catch Seafoods",
+      "product_category": "Seafood",
+      "contact_number": null,
+      "products_supplied": null
+    },
+    {
+      "id": 6,
+      "name": "Dairy Best",
+      "contact_person": "Milk Man",
+      "phone": "0751112233",
+      "email": "sales@dairybest.com",
+      "address": "Kandy",
+      "created_at": "2026-03-14T10:29:32.000Z",
+      "status": "Approved",
+      "company_name": "Dairy Best Farms",
+      "product_category": "Dairy",
+      "contact_number": null,
+      "products_supplied": null
+    }
+  ],
+  "staff": []
+}

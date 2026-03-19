@@ -22,6 +22,7 @@ const InventoryDashboard = () => {
     const [stockHistory, setStockHistory] = useState([]);
     const [notifications, setNotifications] = useState([]);
     const [reportData, setReportData] = useState(null);
+    const [supplierOrders, setSupplierOrders] = useState([]);
 
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -64,13 +65,14 @@ const InventoryDashboard = () => {
                 status: selectedStatus
             }).toString();
 
-            const [invRes, supRes, reqRes, histRes, notifRes, repoRes] = await Promise.all([
+            const [invRes, supRes, reqRes, histRes, notifRes, repoRes, orderRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory?${params}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/suppliers`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/history`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/report`, { headers })
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/report?startDate=${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}&endDate=${new Date().toISOString().split('T')[0]}`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders`, { headers })
             ]);
 
             if (invRes.ok) setInventory((await invRes.json()).inventory || []);
@@ -79,6 +81,7 @@ const InventoryDashboard = () => {
             if (histRes.ok) setStockHistory((await histRes.json()).history || []);
             if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
             if (repoRes.ok) setReportData(await repoRes.json());
+            if (orderRes.ok) setSupplierOrders((await orderRes.json()).orders || []);
 
             // Vibration for Low Stock Alerts (if any new ones)
             const lowStockCount = inventory.filter(i => i.status === 'Low Stock' || i.status === 'Out of Stock').length;
@@ -88,6 +91,7 @@ const InventoryDashboard = () => {
 
         } catch (error) {
             console.error('Inventory Fetch error:', error);
+            if (!isSilent) Alert.alert('Error', 'Failed to fetch inventory data');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -132,6 +136,7 @@ const InventoryDashboard = () => {
     };
 
     const handleCreateRequest = async () => {
+        if (!selectedItem) return Alert.alert('Error', 'Please select an item to restock');
         if (!requestQty || isNaN(requestQty)) return Alert.alert('Error', 'Please enter quantity');
         if (!selectedSupplierId) return Alert.alert('Error', 'Please select a supplier');
 
@@ -233,16 +238,44 @@ const InventoryDashboard = () => {
                 </View>
             </View>
             <View style={styles.headerActions}>
-                <TouchableOpacity 
-                    onPress={() => {
-                        setEditingItem(null);
-                        setInventoryForm({ item_name: '', category: 'Kitchen', unit: 'kg', quantity: '0', min_level: '5', supplier_id: '' });
-                        setShowInventoryModal(true);
-                    }} 
-                    style={[styles.headerActionBtn, { backgroundColor: '#10B981', marginRight: 10 }]}
-                >
-                    <Text style={{ color: 'white', fontWeight: 'bold' }}>+ New Item</Text>
-                </TouchableOpacity>
+                {(activeTab === 'inventory' || activeTab === 'orders') && (
+                    <TouchableOpacity 
+                        onPress={() => {
+                            setSelectedItem(null);
+                            setRequestQty('');
+                            setSelectedSupplierId('');
+                            setShowRequestModal(true);
+                        }} 
+                        style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
+                    >
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Order</Text>
+                    </TouchableOpacity>
+                )}
+                {activeTab === 'inventory' && (
+                    <TouchableOpacity 
+                        onPress={() => {
+                            setEditingItem(null);
+                            setInventoryForm({ item_name: '', category: 'Kitchen', unit: 'kg', quantity: '0', min_level: '5', supplier_id: '' });
+                            setShowInventoryModal(true);
+                        }} 
+                        style={[styles.headerActionBtn, { backgroundColor: '#10B981', marginRight: 10 }]}
+                    >
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Item</Text>
+                    </TouchableOpacity>
+                )}
+                {activeTab === 'requests' && (
+                    <TouchableOpacity 
+                        onPress={() => {
+                            setSelectedItem(null);
+                            setRequestQty('');
+                            setSelectedSupplierId('');
+                            setShowRequestModal(true);
+                        }} 
+                        style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
+                    >
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Request</Text>
+                    </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
                     <Text style={{ fontSize: 18 }}>🚪</Text>
                 </TouchableOpacity>
@@ -402,22 +435,68 @@ const InventoryDashboard = () => {
         );
     };
 
+    const handleUpdateReqStatus = async (id, status, origin) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests/${id}/status`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ status, origin })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Request marked as ${status}`);
+                fetchData();
+            }
+        } catch (e) { Alert.alert('Error', 'Update failed'); }
+    };
+
     const renderRequests = () => (
         <ScrollView style={styles.content}>
-            <Text style={styles.sectionTitle}>Restock Requests</Text>
+            <Text style={styles.sectionTitle}>Stock Requests & Offers</Text>
             {restockRequests.length === 0 ? (
                 <View style={styles.emptyState}><Text style={styles.emptyText}>No active requests.</Text></View>
             ) : (
                 restockRequests.map(req => (
-                    <View key={req.id} style={styles.requestCard}>
+                    <View key={`${req.origin}-${req.id}`} style={[styles.requestCard, req.origin === 'SUPPLIER' && { borderLeftColor: '#3B82F6' }]}>
                         <View style={styles.reqHeader}>
-                            <Text style={styles.reqItem}>{req.item_name}</Text>
+                            <View>
+                                <Text style={styles.reqItem}>{req.item_name}</Text>
+                                <Text style={{ fontSize: 10, color: req.origin === 'SUPPLIER' ? '#3B82F6' : '#6B7280', fontWeight: 'bold' }}>
+                                    {req.origin === 'SUPPLIER' ? 'SUPPLIER OFFER' : 'INTERNAL REQUEST'}
+                                </Text>
+                            </View>
                             <View style={[styles.reqBadge, styles[`badge${req.status}`]]}>
                                 <Text style={styles.reqBadgeText}>{req.status}</Text>
                             </View>
                         </View>
                         <Text style={styles.reqDetails}>Qty: {req.quantity}{req.unit} · Supplier: {req.supplier_name}</Text>
-                        <Text style={styles.reqDate}>Requested by {req.requester_name} on {new Date(req.created_at).toLocaleDateString()}</Text>
+                        <Text style={styles.reqDate}>By {req.requester_name} on {new Date(req.created_at).toLocaleDateString()}</Text>
+                        
+                        {req.status === 'PENDING' && (
+                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                                <TouchableOpacity 
+                                    style={[styles.smallBtn, { backgroundColor: '#10B981', flex: 1, alignItems: 'center', padding: 10, borderRadius: 8 }]}
+                                    onPress={() => handleUpdateReqStatus(req.id, req.origin === 'SUPPLIER' ? 'APPROVED' : 'COMPLETED', req.origin)}
+                                >
+                                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>
+                                        {req.origin === 'SUPPLIER' ? 'Approve Offer' : 'Mark Completed'}
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.smallBtn, { backgroundColor: '#F3F4F6', flex: 0.5, alignItems: 'center', padding: 10, borderRadius: 8 }]}
+                                    onPress={() => handleUpdateReqStatus(req.id, 'REJECTED', req.origin)}
+                                >
+                                    <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 13 }}>Reject</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                        {req.status === 'APPROVED' && req.origin === 'RETAILER' && (
+                             <TouchableOpacity 
+                                style={[styles.smallBtn, { backgroundColor: '#111827', marginTop: 15, alignItems: 'center', padding: 10, borderRadius: 8 }]}
+                                onPress={() => handleUpdateReqStatus(req.id, 'COMPLETED', req.origin)}
+                             >
+                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>Mark as Received</Text>
+                             </TouchableOpacity>
+                        )}
                     </View>
                 ))
             )}
@@ -448,6 +527,95 @@ const InventoryDashboard = () => {
         </ScrollView>
     );
 
+    const renderOrders = () => (
+        <ScrollView style={styles.content}>
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Supplier Orders Tracking</Text>
+                <TouchableOpacity 
+                    onPress={() => {
+                        setSelectedItem(null);
+                        setRequestQty('');
+                        setSelectedSupplierId('');
+                        setShowRequestModal(true);
+                    }} 
+                    style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 0 }]}
+                >
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>+ New Order</Text>
+                </TouchableOpacity>
+            </View>
+            {supplierOrders.length === 0 ? (
+                <View style={styles.emptyState}><Text style={styles.emptyText}>No active supplier orders.</Text></View>
+            ) : (
+                supplierOrders.map(order => (
+                    <View key={order.id} style={styles.requestCard}>
+                        <View style={styles.reqHeader}>
+                            <View>
+                                <Text style={styles.reqItem}>{order.item_name || 'Stock Order'}</Text>
+                                <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: 'bold' }}>Order #{order.id}</Text>
+                            </View>
+                            <View style={[styles.reqBadge, { backgroundColor: order.status === 'DELIVERED' ? '#D1FAE5' : '#DBEAFE' }]}>
+                                <Text style={[styles.reqBadgeText, { color: order.status === 'DELIVERED' ? '#059669' : '#3B82F6' }]}>{order.status}</Text>
+                            </View>
+                        </View>
+                        <Text style={styles.reqDetails}>Qty: {order.quantity}{order.unit} · Total: Rs. {Number(order.total_amount).toLocaleString()}</Text>
+                        <Text style={styles.reqDetails}>Supplier: {order.supplier_name}</Text>
+                        <Text style={styles.reqDate}>Ordered on {new Date(order.created_at).toLocaleDateString()}</Text>
+                    </View>
+                ))
+            )}
+        </ScrollView>
+    );
+
+    const handleGenerateReport = () => {
+        Alert.alert('Generating Report', 'Downloading PDF Report...', [{ text: 'OK' }]);
+    };
+
+    const renderReport = () => {
+        if (!reportData) return (
+            <View style={styles.emptyState}>
+                <ActivityIndicator size="large" color="#111827" />
+                <Text>Loading stats...</Text>
+            </View>
+        );
+        return (
+            <ScrollView style={styles.content}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Inventory Analytics</Text>
+                    <TouchableOpacity onPress={handleGenerateReport} style={[styles.headerActionBtn, { backgroundColor: '#4F46E5' }]}>
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>Download PDF</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Status Stats */}
+                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>Current Stock Status</Text>
+                <View style={[styles.statsRow, { flexDirection: 'row', gap: 10 }]}>
+                    {reportData.statusStats?.map(s => (
+                        <View key={s.status} style={[styles.statBox, { flex: 1, padding: 15, borderRadius: 12, alignItems: 'center', backgroundColor: s.status === 'Available' ? '#D1FAE5' : s.status === 'Low Stock' ? '#FEF3C7' : '#FEE2E2' }]}>
+                            <Text style={[{ fontSize: 24, fontWeight: 'bold' }, { color: s.status === 'Available' ? '#065F46' : s.status === 'Low Stock' ? '#D97706' : '#DC2626' }]}>{s.count}</Text>
+                            <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 4 }}>{s.status}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Most Used Items */}
+                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, marginTop: 20 }}>Most Used Items</Text>
+                {reportData.usageStats?.length > 0 ? (
+                    reportData.usageStats.map(u => (
+                        <View key={u.item_name} style={[styles.itemCard, { padding: 12, marginBottom: 8 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={styles.itemName}>{u.item_name}</Text>
+                                <Text style={styles.statusTextOk}>{u.used_quantity} units used</Text>
+                            </View>
+                        </View>
+                    ))
+                ) : (
+                    <Text style={styles.subText}>No usage data available for this period.</Text>
+                )}
+                <View style={{ height: 100 }} />
+            </ScrollView>
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             {renderHeader()}
@@ -455,7 +623,9 @@ const InventoryDashboard = () => {
             <View style={styles.mainContainer}>
                 {activeTab === 'inventory' && renderInventory()}
                 {activeTab === 'requests' && renderRequests()}
+                {activeTab === 'orders' && renderOrders()}
                 {activeTab === 'history' && renderHistory()}
+                {activeTab === 'report' && renderReport()}
             </View>
 
             {/* Bottom Nav */}
@@ -467,6 +637,10 @@ const InventoryDashboard = () => {
                 <TouchableOpacity onPress={() => setActiveTab('requests')} style={[styles.navItem, activeTab === 'requests' && styles.activeNav]}>
                     <Text style={styles.navIcon}>🚚</Text>
                     <Text style={[styles.navLabel, activeTab === 'requests' && styles.activeNavLabel]}>Requests</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
+                    <Text style={styles.navIcon}>📤</Text>
+                    <Text style={[styles.navLabel, activeTab === 'orders' && styles.activeNavLabel]}>Orders</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
                     <Text style={styles.navIcon}>📜</Text>
@@ -624,10 +798,30 @@ const InventoryDashboard = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>New Restock Request</Text>
+                            <Text style={styles.modalTitle}>New Supply Order</Text>
                             <TouchableOpacity onPress={() => setShowRequestModal(false)}><Text style={{ fontSize: 24 }}>✕</Text></TouchableOpacity>
                         </View>
-                        <Text style={styles.modalSub}>{selectedItem?.item_name} (Min Level: {selectedItem?.min_level})</Text>
+                        {selectedItem ? (
+                            <Text style={styles.modalSub}>{selectedItem.item_name} (Min Level: {selectedItem.min_level})</Text>
+                        ) : (
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Select Item to Order</Text>
+                                <ScrollView horizontal style={{ marginTop: 8 }} showsHorizontalScrollIndicator={false}>
+                                    {inventory.map(i => (
+                                        <TouchableOpacity 
+                                            key={i.id} 
+                                            style={[styles.supPill, selectedItem?.id === i.id && styles.activeSupPill, { borderWidth: 1, borderColor: '#E5E7EB' }]}
+                                            onPress={() => setSelectedItem(i)}
+                                        >
+                                            <Text style={[styles.supPillText, selectedItem?.id === i.id && styles.activeSupPillText]}>{i.item_name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                                {inventory.length === 0 && (
+                                    <Text style={styles.subText}>No inventory items found.</Text>
+                                )}
+                            </View>
+                        )}
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Required Quantity</Text>

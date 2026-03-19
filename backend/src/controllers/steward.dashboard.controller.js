@@ -192,9 +192,11 @@ export const checkIn = async (req, res) => {
         const today = new Date().toISOString().split('T')[0];
 
         await connection.beginTransaction();
-
-        // 1. Update steward availability
-        await connection.query('UPDATE stewards SET is_available = 1 WHERE staff_id = ?', [userId]);
+ 
+        // 1. Update steward availability if role is STEWARD
+        if (role.toUpperCase() === 'STEWARD') {
+            await connection.query('UPDATE stewards SET is_available = 1 WHERE staff_id = ?', [userId]);
+        }
 
         // 2. Create/Update attendance
         const [existing] = await connection.query(
@@ -235,9 +237,17 @@ export const checkOut = async (req, res) => {
         const today = new Date().toISOString().split('T')[0];
 
         await connection.beginTransaction();
+ 
+        // 1. Update steward availability if role is STEWARD
+        const [staff] = await connection.query(
+            "SELECT sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
+            [userId]
+        );
+        const role = staff[0]?.role_name || '';
 
-        // 1. Update steward availability
-        await connection.query('UPDATE stewards SET is_available = 0 WHERE staff_id = ?', [userId]);
+        if (role.toUpperCase() === 'STEWARD') {
+            await connection.query('UPDATE stewards SET is_available = 0 WHERE staff_id = ?', [userId]);
+        }
 
         // 2. Update attendance logout
         await connection.query(
@@ -261,8 +271,12 @@ export const checkOut = async (req, res) => {
 export const getDutyStatus = async (req, res) => {
     try {
         const userId = req.user.userId;
-        const [rows] = await pool.query('SELECT is_available FROM stewards WHERE staff_id = ?', [userId]);
-        const onDuty = rows.length > 0 ? rows[0].is_available === 1 : false;
+        // Check for an active attendance record (modern way)
+        const [att] = await pool.query(
+            'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL',
+            [userId]
+        );
+        const onDuty = att.length > 0;
         res.json({ onDuty });
     } catch (error) {
         res.status(500).json({ message: 'Failed to fetch duty status' });

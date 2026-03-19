@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -8,10 +8,11 @@ import apiConfig from '../config/api';
 
 const screenWidth = Dimensions.get('window').width;
 
-const AdminDashboard = () => {
+const ManagerDashboard = () => {
     const { token, user, logout, loading: authLoading } = useAuth();
 
     const [activeTab, setActiveTab] = useState('overview');
+    const [isOnDuty, setIsOnDuty] = useState(false);
     const [showReports, setShowReports] = useState(false);
 
 
@@ -221,6 +222,13 @@ const AdminDashboard = () => {
                 if (resData) setReservationList(resData.reservations || []);
             }
 
+            // Fetch duty status
+            const dutyRes = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/duty/status`, { headers: reqHeaders });
+            if (dutyRes.ok) {
+                const dData = await dutyRes.json();
+                setIsOnDuty(dData.onDuty);
+            }
+
         } catch (error) {
             console.error('FetchData overall error:', error);
         } finally {
@@ -290,6 +298,23 @@ const AdminDashboard = () => {
         ]);
     };
 
+
+    const handleDutyToggle = async () => {
+        const endpoint = isOnDuty ? 'check-out' : 'check-in';
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/duty/${endpoint}`, {
+                method: 'POST',
+                headers
+            });
+            if (res.ok) {
+                setIsOnDuty(!isOnDuty);
+                Alert.alert('Status Updated', `You are now ${!isOnDuty ? 'ON DUTY' : 'OFF DUTY'}`);
+                fetchData(true);
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update duty status');
+        }
+    };
 
     const updateSupplier = async (id, status) => {
         try {
@@ -455,7 +480,6 @@ const AdminDashboard = () => {
         { key: 'orders', label: 'Orders', icon: '🛍️' },
         { key: 'reservations', label: 'Reservations', icon: '📅' },
         { key: 'activity', label: 'Activity', icon: '⚡' },
-        { key: 'suppliers', label: 'Suppliers', icon: '🚚' },
         { key: 'inventory', label: 'Inventory', icon: '📦' },
         { key: 'reports', label: 'Reports', icon: '📈' },
     ];
@@ -474,8 +498,22 @@ const AdminDashboard = () => {
         return (
             <>
                 <View style={styles.pageHeader}>
-                    <Text style={styles.pageTitle}>Admin Dashboard</Text>
+                    <Text style={styles.pageTitle}>Manager Dashboard</Text>
                     <Text style={styles.pageSubtitle}>Melissa's Food Court - System Active</Text>
+                </View>
+
+                {/* Duty Toggle Card */}
+                <View style={[styles.dutyCard, isOnDuty ? styles.onDutyBg : styles.offDutyBg]}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.dutyTitle}>{isOnDuty ? 'You are ON DUTY' : 'You are OFF DUTY'}</Text>
+                        <Text style={styles.dutySub}>Toggle to update your attendance and visibility</Text>
+                    </View>
+                    <Switch 
+                        value={isOnDuty} 
+                        onValueChange={handleDutyToggle} 
+                        trackColor={{ false: '#9CA3AF', true: '#10B981' }}
+                        thumbColor={isOnDuty ? '#fff' : '#f4f3f4'}
+                    />
                 </View>
  
                 <View style={[styles.statsGrid, { flexWrap: 'wrap', flexDirection: 'row' }]}>
@@ -1878,7 +1916,6 @@ const AdminDashboard = () => {
             case 'attendance': return renderAttendance();
             case 'menu': return renderMenuManagement();
             case 'orders': return renderOrders();
-            case 'suppliers': return renderSuppliers();
             case 'activity': return renderActivity();
             case 'inventory': return renderInventory();
             case 'reports': return renderReports();
@@ -1911,7 +1948,7 @@ const AdminDashboard = () => {
                     {/* Restaurant name in bold black */}
                     <View style={{ justifyContent: 'center' }}>
                         <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Melissa's Food Court</Text>
-                        <Text style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1 }}>Admin Panel</Text>
+                        <Text style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1 }}>Manager Panel</Text>
                     </View>
                 </View>
             </View>
@@ -3532,7 +3569,40 @@ const styles = StyleSheet.create({
     },
     analyticsSection: {
         marginTop: 10,
+    },
+    dutyCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 14,
+        marginBottom: 20,
+        marginHorizontal: 4,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    onDutyBg: {
+        backgroundColor: '#D1FAE5', // Light green
+        borderLeftWidth: 4,
+        borderLeftColor: '#10B981',
+    },
+    offDutyBg: {
+        backgroundColor: '#F3F4F6', // Light gray
+        borderLeftWidth: 4,
+        borderLeftColor: '#9CA3AF',
+    },
+    dutyTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    dutySub: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginTop: 2,
     }
 });
 
-export default AdminDashboard;
+export default ManagerDashboard;
