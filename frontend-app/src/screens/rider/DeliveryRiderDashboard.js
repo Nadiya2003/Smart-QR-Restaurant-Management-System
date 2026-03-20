@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
+import AccountSection from '../AccountSection';
 
 const { width } = Dimensions.get('window');
 
@@ -114,7 +115,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             } catch (e) {
                 console.warn('Vibration failed', e);
             }
-            Alert.alert('New Order!', `New delivery order #${data.orderId} from ${data.customer_name}`);
+            Alert.alert('New Order!', `New delivery order #${data?.orderId} from ${data?.customer_name || 'Guest'}`);
             fetchData(true);
         });
 
@@ -334,9 +335,19 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.profileBox}>
-                    <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                </View>
+                <TouchableOpacity 
+                    onPress={() => setActiveTab('account')}
+                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
+                >
+                    {user?.profile_image || user?.image ? (
+                        <Image 
+                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    ) : (
+                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    )}
+                </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
                     <Text style={styles.roleTitle}>Delivery Rider Dashboard</Text>
@@ -495,7 +506,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             </View>
 
             <View style={styles.customerInfo}>
-                <Text style={styles.customerName}>{order.customer_name}</Text>
+                <Text style={styles.customerName}>{order?.customer_name || 'Guest'}</Text>
                 <Text style={styles.customerPhone}>📞 {order.phone}</Text>
                 <Text style={styles.customerAddress} numberOfLines={2}>📍 {order.address}</Text>
             </View>
@@ -671,7 +682,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 history.map(order => (
                     <View key={order.id} style={styles.historyCard}>
                         <View>
-                            <Text style={styles.historyId}>#{order.id} - {order.customer_name}</Text>
+                            <Text style={styles.historyId}>#{order?.id} - {order?.customer_name || 'Guest'}</Text>
                             <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()}</Text>
                         </View>
                         <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
@@ -783,6 +794,11 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 {activeTab === 'orders' && renderOrdersTab()}
                 {activeTab === 'create' && renderCreateTab()}
                 {activeTab === 'history' && renderHistoryTab()}
+                {activeTab === 'account' && (
+                    <View style={{ flex: 1, padding: 15 }}>
+                        <AccountSection />
+                    </View>
+                )}
                 {activeTab === 'notifications' && (
                     <ScrollView style={styles.content}>
                          <Text style={styles.sectionTitle}>Recent Notifications</Text>
@@ -835,6 +851,10 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
                     <Text style={activeTab === 'history' ? styles.activeNavText : styles.navText}>📜</Text>
                     <Text style={activeTab === 'history' ? styles.activeNavLabel : styles.navLabel}>History</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                    <Text style={activeTab === 'account' ? styles.activeNavText : styles.navText}>👤</Text>
+                    <Text style={activeTab === 'account' ? styles.activeNavLabel : styles.navLabel}>Profile</Text>
                 </TouchableOpacity>
             </View>
         </View>

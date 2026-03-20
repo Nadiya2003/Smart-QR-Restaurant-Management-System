@@ -34,9 +34,9 @@ function Reservation() {
 
     // Form state
     const [formData, setFormData] = useState({
-        name: user?.user?.name || '',
-        phone: user?.user?.phone || '',
-        email: user?.user?.email || '',
+        name: '',
+        phone: '',
+        email: '',
         date: '',
         time: '',
         guests: '2',
@@ -44,6 +44,37 @@ function Reservation() {
         tableId: '',
         specialRequest: '',
     });
+
+    // Update form with user profile when authenticated
+    useEffect(() => {
+        if (isAuthenticated && user?.user) {
+            setFormData(prev => ({
+                ...prev,
+                name: prev.name || user.user.name || '',
+                phone: prev.phone || user.user.phone || '',
+                email: prev.email || user.user.email || '',
+            }));
+        }
+    }, [isAuthenticated, user]);
+
+    // Check for pending reservation after login
+    useEffect(() => {
+        const pending = localStorage.getItem('pendingReservation');
+        if (pending && isAuthenticated) {
+            try {
+                const parsed = JSON.parse(pending);
+                setFormData(prev => ({ ...prev, ...parsed }));
+                localStorage.removeItem('pendingReservation');
+                setShowSuccess(false);
+                setError('Welcome back! Your reservation details have been restored. You can now confirm your booking.');
+                // Clear the info message after some time
+                setTimeout(() => setError(''), 8000);
+            } catch (err) {
+                console.error('Failed to parse pending reservation:', err);
+                localStorage.removeItem('pendingReservation');
+            }
+        }
+    }, [isAuthenticated]);
 
     const [areas, setAreas] = useState([]);
 
@@ -53,9 +84,17 @@ function Reservation() {
 
     // Handle input changes
     const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value,
+        const { name, value } = e.target;
+        
+        setFormData(prev => {
+            const updated = { ...prev, [name]: value };
+            
+            // If date is picked but time is empty, set a default time to show tables
+            if (name === 'date' && value && !prev.time) {
+                updated.time = '18:00';
+            }
+            
+            return updated;
         });
         setError('');
     };
@@ -65,7 +104,12 @@ function Reservation() {
         e.preventDefault();
 
         if (!isAuthenticated) {
-            setError('Please login to make a reservation');
+            // Save current form state to localStorage
+            localStorage.setItem('pendingReservation', JSON.stringify(formData));
+            // Set redirect target for after login
+            localStorage.setItem('postLoginTarget', '/reservation');
+            
+            setError('Please login to complete your reservation. Redirecting...');
             setTimeout(() => navigate('/auth'), 1500);
             return;
         }
@@ -141,10 +185,18 @@ function Reservation() {
 
                 {/* Status Messages */}
                 {showSuccess && (
-                    <div className="mb-6 bg-green-500/20 border border-green-500 rounded-xl p-4 text-center animate-slide-up">
-                        <p className="text-white font-medium">
-                            ✅ Reservation Successful! A confirmation email has been sent to your inbox.
-                        </p>
+                    <div className="mb-6 bg-green-500/20 border border-green-500 rounded-2xl p-6 text-center animate-slide-up shadow-lg">
+                        <div className="text-3xl mb-3">✅</div>
+                        <h3 className="text-white font-bold text-xl mb-2">Reservation Successful!</h3>
+                        <p className="text-gray-300 mb-6">A confirmation email has been sent to your inbox.</p>
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <Button onClick={() => navigate('/account')} className="bg-[#D4AF37] text-black">
+                                View in My Account
+                            </Button>
+                            <Button variant="outline" onClick={() => setShowSuccess(false)} className="border-white/20 text-white">
+                                Book Another Table
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -156,50 +208,40 @@ function Reservation() {
 
                 {/* Reservation Form */}
                 <GlassCard className="animate-slide-up border-[#D4AF37]/20 shadow-xl shadow-[#D4AF37]/5">
-                    {!isAuthenticated ? (
-                        <div className="text-center py-10">
-                            <div className="text-5xl mb-6">🔒</div>
-                            <h3 className="text-xl font-bold text-white mb-4">Login Required</h3>
-                            <p className="text-gray-400 mb-8">You must be logged in to reserve a table.</p>
-                            <Button onClick={() => navigate('/auth')} className="bg-[#D4AF37] text-black px-10">
-                                Login / Register
-                            </Button>
-                        </div>
-                    ) : (
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            {/* Name and Phone Row */}
-                            <div className="grid md:grid-cols-2 gap-6">
-                                <div>
-                                    <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
-                                        Full Name <span className="text-red-400">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="name"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleChange}
-                                        placeholder="Your Name"
-                                        className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-2">
-                                        Mobile Number <span className="text-red-400">*</span>
-                                    </label>
-                                    <input
-                                        type="tel"
-                                        id="phone"
-                                        name="phone"
-                                        value={formData.phone}
-                                        onChange={handleChange}
-                                        placeholder="e.g. 0771234567"
-                                        className="input-glass w-full focus:ring-[#D4AF37]/50"
-                                        required
-                                    />
-                                </div>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        {/* Name and Phone Row */}
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
+                                    Full Name <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="name"
+                                    name="name"
+                                    value={formData.name}
+                                    onChange={handleChange}
+                                    placeholder="Your Name"
+                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                    required
+                                />
                             </div>
+                            <div>
+                                <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-2">
+                                    Mobile Number <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="tel"
+                                    id="phone"
+                                    name="phone"
+                                    value={formData.phone}
+                                    onChange={handleChange}
+                                    placeholder="e.g. 0771234567"
+                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                    required
+                                />
+                            </div>
+                        </div>
 
                         {/* Date and Time Row */}
                         <div className="grid md:grid-cols-2 gap-6">
@@ -262,7 +304,7 @@ function Reservation() {
                         </div>
 
                         {/* Area Selection */}
-                        <div className="space-y-4">
+                        <div className="space-y-4 pt-4 border-t border-white/5">
                             <label className="block text-sm font-medium text-gray-300">
                                 Select Dining Area <span className="text-red-400">*</span>
                             </label>
@@ -302,7 +344,7 @@ function Reservation() {
 
                         {/* Table Layout Viewer */}
                         {formData.areaId && formData.date && formData.time && (
-                            <div className="space-y-4">
+                            <div className="space-y-4 pt-4 border-t border-white/5 animate-fade-in">
                                 <label className="block text-sm font-medium text-gray-300">
                                     Select Your Preferred Table <span className="text-red-400">*</span>
                                 </label>
@@ -338,10 +380,9 @@ function Reservation() {
 
                         {/* Submit Button */}
                         <Button type="submit" className="w-full bg-[#D4AF37] hover:bg-[#E6C86E] text-black" size="lg" disabled={loading}>
-                            {loading ? 'Processing...' : 'Confirm Reservation'}
+                            {loading ? 'Processing...' : isAuthenticated ? 'Confirm Reservation' : 'Login to Confirm Registration'}
                         </Button>
                     </form>
-                    )}
                 </GlassCard>
 
                 {/* Info Section */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import AccountSection from './AccountSection';
 
 const StaffDashboard = () => {
     const { user, token } = useAuth();
@@ -9,6 +10,7 @@ const StaffDashboard = () => {
     const [colleagues, setColleagues] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [showAccount, setShowAccount] = useState(false);
 
     const headers = {
         'Content-Type': 'application/json',
@@ -153,6 +155,19 @@ const StaffDashboard = () => {
             contentContainerStyle={styles.contentContainer}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
+            {showAccount ? (
+                <View style={{ flex: 1 }}>
+                    <TouchableOpacity 
+                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}
+                        onPress={() => setShowAccount(false)}
+                    >
+                        <Text style={{ fontSize: 20, marginRight: 10 }}>←</Text>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Back to Dashboard</Text>
+                    </TouchableOpacity>
+                    <AccountSection />
+                </View>
+            ) : (
+                <>
             {/* Header Section */}
             <View style={styles.headerCard}>
                 <View style={styles.headerTop}>
@@ -167,6 +182,12 @@ const StaffDashboard = () => {
                         style={styles.logoutIcon}
                     >
                         <Text style={{ fontSize: 20 }}>🚪</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => setShowAccount(true)}
+                        style={[styles.logoutIcon, { marginLeft: 10, backgroundColor: 'rgba(255,255,255,0.1)' }]}
+                    >
+                        <Text style={{ fontSize: 20 }}>👤</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -245,6 +266,8 @@ const StaffDashboard = () => {
                     )}
                 </View>
             </View>
+            </>
+            )}
         </ScrollView>
     );
 };

@@ -199,9 +199,8 @@ function Header() {
                                     }}
                                     className="text-left text-base font-medium text-red-500 hover:text-red-400 transition-colors flex items-center gap-2"
                                 >
-                                    <span>Logout</span>
-                                    <span>🚪</span>
-                                </button>
+                                        <span className="tracking-widest uppercase text-xs font-bold">Logout</span>
+                                    </button>
                             )}
                         </div>
                     </div>

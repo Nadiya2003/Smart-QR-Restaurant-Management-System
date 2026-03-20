@@ -16,7 +16,7 @@ export const createReservation = async (req, res) => {
              WHERE table_id = ? 
              AND reservation_date = ? 
              AND reservation_time = ? 
-             AND reservation_status NOT IN ('CANCELLED')`,
+             AND status NOT IN ('CANCELLED')`,
             [table_id, date, time]
         );
 
@@ -112,30 +112,53 @@ export const getTablesWithAvailability = async (req, res) => {
     try {
         const { area_id, date, time } = req.query;
 
-        if (!area_id || !date || !time) {
-            return res.status(400).json({ message: 'area_id, date, and time are required' });
+        if (!date || !time) {
+            return res.status(400).json({ message: 'date and time are required' });
         }
 
-        // 1. Get all tables in this area
-        const [tables] = await pool.query(
-            'SELECT * FROM restaurant_tables WHERE area_id = ?',
-            [area_id]
-        );
+        // 1. Get tables (optionally filtered by area_id)
+        let tablesQuery = 'SELECT * FROM restaurant_tables';
+        const queryParams = [];
+        if (area_id) {
+            tablesQuery += ' WHERE area_id = ?';
+            queryParams.push(area_id);
+        }
+        const [tables] = await pool.query(tablesQuery, queryParams);
 
-        // 2. Get reservations for this date and time
+        // 2. Get reservations for this date
         const [reservations] = await pool.query(
-            `SELECT table_id FROM reservations 
-             WHERE reservation_date = ? AND reservation_time = ? 
-             AND reservation_status NOT IN ('CANCELLED')`,
-            [date, time]
+            `SELECT table_id, reservation_time FROM reservations 
+             WHERE reservation_date = ? 
+             AND status NOT IN ('CANCELLED')`,
+            [date]
         );
 
-        const reservedTableIds = reservations.map(r => r.table_id);
+        const [h, m] = time.split(':').map(Number);
+        const reqTimeMins = h * 60 + m;
+        const windowMins = 120; // 2 hours duration for each reservation
+
+        const reservedTableIds = reservations
+            .filter(r => {
+                const [rh, rm] = r.reservation_time.split(':').map(Number);
+                const resTimeMins = rh * 60 + rm;
+                return Math.abs(reqTimeMins - resTimeMins) < windowMins;
+            })
+            .map(r => r.table_id);
+
+        const selectedDateStr = new Date(date).toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isToday = selectedDateStr === todayStr;
 
         // 3. Map status
         const tableStatusData = tables.map(table => {
-            let status = table.status; // 'available' or 'occupied' (from DB)
+            let status = 'available'; // Default to available for any booking slot
 
+            // If it's today, we take into account the current real-time status from DB
+            if (isToday) {
+                status = table.status; // 'available' or 'occupied'
+            }
+
+            // Overwrite if it's reserved for this time slot
             if (reservedTableIds.includes(table.id)) {
                 status = 'reserved';
             }
@@ -155,12 +178,22 @@ export const getTablesWithAvailability = async (req, res) => {
 
 export const getReservations = async (req, res) => {
     try {
-        const [reservations] = await pool.query(`
+        const { date } = req.query;
+        let query = `
             SELECT r.*, c.name, c.email, c.phone 
             FROM reservations r
             JOIN online_customers c ON r.customer_id = c.id
-            ORDER BY r.created_at DESC
-        `);
+        `;
+        const params = [];
+
+        if (date) {
+            query += " WHERE r.reservation_date = ? ";
+            params.push(date);
+        }
+
+        query += " ORDER BY r.reservation_date DESC, r.reservation_time ASC";
+
+        const [reservations] = await pool.query(query, params);
         res.json({ reservations });
     } catch (error) {
         console.error('Get reservations error:', error);
@@ -197,7 +230,7 @@ export const cancelReservation = async (req, res) => {
         // 2. Update original status
         const statusNotes = reason ? `Cancelled: ${reason}` : 'Cancelled by user';
         await connection.query(
-            'UPDATE reservations SET reservation_status = "CANCELLED", status_notes = ? WHERE id = ?',
+            'UPDATE reservations SET status = "CANCELLED", status_notes = ? WHERE id = ?',
             [statusNotes, id]
         );
 

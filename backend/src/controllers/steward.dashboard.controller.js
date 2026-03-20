@@ -6,13 +6,14 @@ import pool from '../config/db.js';
  */
 export const getTableStatus = async (req, res) => {
     try {
-        const [tables] = await pool.query(`
+        const { date, time } = req.query;
+        const checkDate = date || new Date().toISOString().split('T')[0];
+
+        // 1. Core query to get tables with their current active orders
+        let tablesQuery = `
             SELECT rt.*, da.area_name as area_name,
                    o.id as current_order_id, o.status_id, os.name as order_status,
-                   su.full_name as steward_name,
-                   (SELECT COUNT(*) FROM reservations r 
-                    WHERE r.table_id = rt.id AND r.reservation_status IN ('CONFIRMED', 'PENDING') 
-                    AND r.reservation_date = CURDATE()) as today_reservations
+                   su.full_name as steward_name
             FROM restaurant_tables rt
             LEFT JOIN dining_areas da ON rt.area_id = da.id
             LEFT JOIN orders o ON rt.id = o.table_id AND o.status_id NOT IN (
@@ -22,8 +23,47 @@ export const getTableStatus = async (req, res) => {
             LEFT JOIN stewards s ON o.steward_id = s.id
             LEFT JOIN staff_users su ON s.staff_id = su.id
             ORDER BY rt.table_number ASC
-        `);
-        res.json({ tables });
+        `;
+        
+        const [tables] = await pool.query(tablesQuery);
+
+        // 2. Fetch reservations for the specified date (and time if slot-specific)
+        let resQuery = `SELECT * FROM reservations WHERE reservation_date = ? AND reservation_status NOT IN ('CANCELLED')`;
+        let resParams = [checkDate];
+        if (time) {
+            resQuery += " AND reservation_time = ?";
+            resParams.push(time);
+        }
+
+        const [reservations] = await pool.query(resQuery, resParams);
+        const resMap = {};
+        reservations.forEach(r => {
+            resMap[r.table_id] = r;
+        });
+
+        // 3. Enriched tables with reservation data
+        const enrichedTables = tables.map(t => {
+            const res = resMap[t.id];
+            if (res) {
+                return {
+                    ...t,
+                    current_status: 'reserved',
+                    reservation_details: {
+                        customer_name: res.customer_name || res.guest_name || 'Guest',
+                        time: res.reservation_time,
+                        guests: res.guest_count
+                    },
+                    today_reservations: 1
+                };
+            }
+            return {
+                ...t,
+                current_status: t.status,
+                today_reservations: 0
+            };
+        });
+
+        res.json({ tables: enrichedTables });
     } catch (error) {
         console.error('Get table status error:', error);
         res.status(500).json({ message: 'Failed to fetch table status' });
@@ -288,15 +328,24 @@ export const getDutyStatus = async (req, res) => {
  */
 export const getUpcomingReservations = async (req, res) => {
     try {
-        const [reservations] = await pool.query(`
+        const { date } = req.query;
+        let query = `
             SELECT r.*, 
                    rt.table_number,
                    r.guest_count as guests_count
             FROM reservations r
             LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
-            WHERE r.reservation_date >= CURDATE()
-            ORDER BY r.reservation_date ASC, r.reservation_time ASC
-        `);
+        `;
+        const params = [];
+        if (date) {
+            query += " WHERE r.reservation_date = ?";
+            params.push(date);
+        } else {
+            query += " WHERE r.reservation_date >= CURDATE()";
+        }
+        query += " ORDER BY r.reservation_date ASC, r.reservation_time ASC";
+
+        const [reservations] = await pool.query(query, params);
         res.json({ reservations });
     } catch (error) {
         console.error('Get reservations error:', error);

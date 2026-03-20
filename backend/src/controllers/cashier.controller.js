@@ -172,14 +172,25 @@ export const createReservation = async (req, res) => {
 
 export const getReservations = async (req, res) => {
     try {
-        const [rows] = await pool.query(`
+        const { date } = req.query;
+        let query = `
             SELECT r.*, rt.table_number 
             FROM reservations r
             LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
-            ORDER BY r.reservation_date, r.reservation_time
-        `);
+        `;
+        const params = [];
+
+        if (date) {
+            query += " WHERE r.reservation_date = ? ";
+            params.push(date);
+        }
+
+        query += " ORDER BY r.reservation_date, r.reservation_time";
+
+        const [rows] = await pool.query(query, params);
         res.json({ reservations: rows });
     } catch (err) {
+        console.error('Get reservations error:', err);
         res.status(500).json({ message: "Failed to fetch reservations" });
     }
 };

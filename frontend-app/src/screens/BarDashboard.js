@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import AccountSection from './AccountSection';
 
 const { width } = Dimensions.get('window');
 
@@ -184,9 +185,19 @@ const BarDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={[styles.profileBox, { backgroundColor: '#8B5CF6' }]}>
-                    <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                </View>
+                <TouchableOpacity 
+                    onPress={() => setActiveTab('account')}
+                    style={[styles.profileBox, { backgroundColor: '#8B5CF6' }, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
+                >
+                    {user?.profile_image || user?.image ? (
+                        <Image 
+                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                            style={styles.profileImg}
+                        />
+                    ) : (
+                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    )}
+                </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
                     <Text style={styles.roleTitle}>Bar Dashboard</Text>
@@ -410,6 +421,11 @@ const BarDashboard = () => {
                 {activeTab === 'history' && renderHistory()}
                 {activeTab === 'inventory' && renderInventory()}
                 {activeTab === 'notifications' && renderNotifications()}
+                {activeTab === 'account' && (
+                    <View style={{ flex: 1, padding: 15 }}>
+                        <AccountSection />
+                    </View>
+                )}
             </View>
 
             {/* Bottom Navigation */}
@@ -429,6 +445,10 @@ const BarDashboard = () => {
                 <TouchableOpacity onPress={() => setActiveTab('notifications')} style={[styles.navItem, activeTab === 'notifications' && styles.activeNav]}>
                     <Text style={[styles.navIcon, activeTab === 'notifications' && styles.activeNavIcon]}>🔔</Text>
                     <Text style={[styles.navLabel, activeTab === 'notifications' && styles.activeNavLabel]}>Alerts</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                    <Text style={[styles.navIcon, activeTab === 'account' && styles.activeNavIcon]}>👤</Text>
+                    <Text style={[styles.navLabel, activeTab === 'account' && styles.activeNavLabel]}>Profile</Text>
                 </TouchableOpacity>
             </View>
 

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
+import AccountSection from '../AccountSection';
 
 const { width } = Dimensions.get('window');
 
@@ -126,9 +127,19 @@ const SupplierDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.profileBox}>
-                    <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                </View>
+                <TouchableOpacity 
+                    onPress={() => setActiveTab('account')}
+                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#fff' }]}
+                >
+                    {user?.profile_image || user?.image ? (
+                        <Image 
+                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                            style={{ width: '100%', height: '100%', borderRadius: 25 }}
+                        />
+                    ) : (
+                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    )}
+                </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
                     <Text style={styles.roleTitle}>Supplier Dashboard</Text>
@@ -305,6 +316,11 @@ const SupplierDashboard = () => {
                         ))}
                     </ScrollView>
                 )}
+                {activeTab === 'account' && (
+                    <View style={{ flex: 1, padding: 15 }}>
+                        <AccountSection />
+                    </View>
+                )}
                 {activeTab === 'notifications' && (
                     <ScrollView style={styles.content}>
                         <Text style={styles.sectionTitle}>Notifications</Text>
@@ -336,6 +352,10 @@ const SupplierDashboard = () => {
                 <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
                     <Text style={activeTab === 'history' ? styles.activeNavText : styles.navText}>📜</Text>
                     <Text style={activeTab === 'history' ? styles.activeNavLabel : styles.navLabel}>History</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                    <Text style={activeTab === 'account' ? styles.activeNavText : styles.navText}>👤</Text>
+                    <Text style={activeTab === 'account' ? styles.activeNavLabel : styles.navLabel}>Profile</Text>
                 </TouchableOpacity>
             </View>
 

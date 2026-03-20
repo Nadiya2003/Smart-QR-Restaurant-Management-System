@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import AccountSection from './AccountSection';
 
 const { width } = Dimensions.get('window');
 
@@ -229,9 +230,19 @@ const InventoryDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.profileBox}>
-                    <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                </View>
+                <TouchableOpacity 
+                    onPress={() => setActiveTab('account')}
+                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
+                >
+                    {user?.profile_image || user?.image ? (
+                        <Image 
+                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    ) : (
+                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    )}
+                </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Inventory Portal</Text>
                     <Text style={styles.roleTitle}>{user?.name} · Manager</Text>
@@ -626,6 +637,11 @@ const InventoryDashboard = () => {
                 {activeTab === 'orders' && renderOrders()}
                 {activeTab === 'history' && renderHistory()}
                 {activeTab === 'report' && renderReport()}
+                {activeTab === 'account' && (
+                    <View style={{ flex: 1, padding: 15 }}>
+                        <AccountSection />
+                    </View>
+                )}
             </View>
 
             {/* Bottom Nav */}
@@ -649,6 +665,10 @@ const InventoryDashboard = () => {
                 <TouchableOpacity onPress={() => setActiveTab('report')} style={[styles.navItem, activeTab === 'report' && styles.activeNav]}>
                     <Text style={styles.navIcon}>📊</Text>
                     <Text style={[styles.navLabel, activeTab === 'report' && styles.activeNavLabel]}>Stats</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                    <Text style={styles.navIcon}>👤</Text>
+                    <Text style={[styles.navLabel, activeTab === 'account' && styles.activeNavLabel]}>Profile</Text>
                 </TouchableOpacity>
             </View>
 

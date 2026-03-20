@@ -11,8 +11,10 @@ import {
     ActivityIndicator,
     ScrollView,
     Modal,
-    FlatList
+    FlatList,
+    Image
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import apiConfig from '../config/api';
 
 const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
@@ -29,6 +31,7 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingRoles, setLoadingRoles] = useState(true);
     const [agreedToTerms, setAgreedToTerms] = useState(false);
+    const [profileImage, setProfileImage] = useState(null);
 
 
     // Fetch available roles from backend
@@ -88,6 +91,26 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
         return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     };
 
+    const pickImage = async () => {
+        // Request permissions
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Denied', 'We need camera roll permissions to upload a profile picture.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+
+        if (!result.canceled) {
+            setProfileImage(result.assets[0]);
+        }
+    };
+
     const handleRegister = async () => {
         // Validation
         if (!fullName.trim()) {
@@ -128,16 +151,38 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
         setIsLoading(true);
 
         try {
+            const formData = new FormData();
+            formData.append('full_name', fullName.trim());
+            formData.append('email', email.trim());
+            formData.append('phone', phone.trim() || '');
+            formData.append('password', password);
+            formData.append('role', selectedRole.role_name);
+
+            if (profileImage) {
+                const uri = profileImage.uri;
+                const uriParts = uri.split('.');
+                const fileType = uriParts[uriParts.length - 1] || 'jpeg';
+
+                if (Platform.OS === 'web') {
+                    const response = await fetch(uri);
+                    const blob = await response.blob();
+                    formData.append('profile_image', blob, `profile.${fileType}`);
+                } else {
+                    formData.append('profile_image', {
+                        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+                        name: `profile.${fileType}`,
+                        type: `image/${fileType}`,
+                    });
+                }
+            }
+
             const res = await fetch(apiConfig.STAFF.REGISTER, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    full_name: fullName.trim(),
-                    email: email.trim(),
-                    phone: phone.trim() || null,
-                    password,
-                    role: selectedRole.role_name
-                }),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'multipart/form-data',
+                },
+                body: formData,
             });
 
             const data = await res.json();
@@ -197,8 +242,26 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                                 <Text style={styles.errorText}>⚠️ {error}</Text>
                             </View>
                         ) : (
-                            <View style={{ height: 0, marginBottom: error ? 15 : 0 }} />
+                            <View style={{ height: 0 }} />
                         )}
+
+                        {/* Profile Image Upload */}
+                        <View style={styles.profileImageSection}>
+                            <TouchableOpacity onPress={pickImage} style={styles.imagePickerWrapper}>
+                                {profileImage ? (
+                                    <Image source={{ uri: profileImage.uri }} style={styles.previewImage} />
+                                ) : (
+                                    <View style={styles.placeholderImage}>
+                                        <Text style={{ fontSize: 40 }}>👤</Text>
+                                        <Text style={styles.addPhotoText}>Add Photo</Text>
+                                    </View>
+                                )}
+                                <View style={styles.editIconBadge}>
+                                    <Text style={{ color: 'white', fontSize: 12 }}>📷</Text>
+                                </View>
+                            </TouchableOpacity>
+                            <Text style={styles.imageNote}>Upload a professional profile picture</Text>
+                        </View>
 
                         {/* Full Name */}
                         <View style={styles.inputGroup}>
@@ -660,6 +723,54 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6B7280',
         marginTop: 2,
+    },
+    // Image Picker Styles
+    profileImageSection: {
+        alignItems: 'center',
+        marginBottom: 25,
+    },
+    imagePickerWrapper: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#E5E7EB',
+        position: 'relative',
+    },
+    previewImage: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+    },
+    placeholderImage: {
+        alignItems: 'center',
+    },
+    addPhotoText: {
+        fontSize: 12,
+        color: '#6B7280',
+        fontWeight: 'bold',
+        marginTop: 4,
+    },
+    editIconBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        backgroundColor: '#000',
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'white',
+    },
+    imageNote: {
+        fontSize: 12,
+        color: '#9CA3AF',
+        marginTop: 10,
     },
 });
 

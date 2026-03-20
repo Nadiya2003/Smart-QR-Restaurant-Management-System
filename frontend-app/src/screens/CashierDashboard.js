@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import AccountSection from './AccountSection';
 
 const { width } = Dimensions.get('window');
 
@@ -35,9 +36,15 @@ const CashierDashboard = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [paymentMethods, setPaymentMethods] = useState([]);
-    const [selectedOrder, setSelectedOrder] = useState(null);
-    const [showSettlementModal, setShowSettlementModal] = useState(false);
     const [settlementData, setSettlementData] = useState({ payment_method_id: null, email: '' });
+
+    // Reservation Filters
+    const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterTableDate, setFilterTableDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterTableTime, setFilterTableTime] = useState('19:00');
+
+    // Cross-platform Filter Modal
+    const [filterModal, setFilterModal] = useState({ show: false, title: '', placeholder: '', value: '', type: '', onSubmit: null });
 
     const headers = {
         'Content-Type': 'application/json',
@@ -51,12 +58,12 @@ const CashierDashboard = () => {
             const todayStr = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
             
             const [tableRes, menuRes, catRes, attendRes, orderRes, resRes, bookRes, areaRes, payRes, stewardRes] = await Promise.all([
-                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/tables`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/tables?date=${filterTableDate}&time=${filterTableTime}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/menu`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/menu/categories/all`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/attendance`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/orders`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/cashier/reservations`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/cashier/reservations?date=${filterResDate}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/bookings`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/payment-methods`, { headers }),
@@ -94,7 +101,7 @@ const CashierDashboard = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [token, user.id]);
+    }, [token, user.id, filterResDate, filterTableDate, filterTableTime]);
 
     useEffect(() => {
         fetchData();
@@ -230,9 +237,12 @@ const CashierDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.profileBox}>
+                <TouchableOpacity 
+                    onPress={() => setActiveTab('account')} 
+                    style={[styles.profileBox, activeTab === 'account' && { borderColor: '#111827', borderWidth: 2 }]}
+                >
                     <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                </View>
+                </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
                     <Text style={styles.roleTitle}>Cashier Dashboard</Text>
@@ -309,34 +319,91 @@ const CashierDashboard = () => {
         </ScrollView>
     );
 
-    const renderTableItem = (table) => (
-        <TouchableOpacity 
-            key={table.id} 
-            style={[
-                styles.tableBox, 
-                table.status === 'available' ? styles.tableBoxAvailable : styles.tableBoxOccupied
-            ]}
-            onPress={() => {
-                if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
-                setSelectedPosTable(table);
-                setPosType('DINE_IN');
-                setActiveTab('pos');
-            }}
-        >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.tableNum}>T-{table.table_number}</Text>
-                <Text style={{ fontSize: 12 }}>{table.status === 'available' ? '🟢' : '🔴'}</Text>
-            </View>
-            <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
-            <Text style={[styles.tableStatus, { color: table.status === 'available' ? '#10B911' : '#EF4444' }]}>
-                {table.status === 'occupied' ? 'SEATED' : table.status.toUpperCase()}
-            </Text>
-        </TouchableOpacity>
-    );
+    const renderTableItem = (table) => {
+        const isReserved = table.current_status === 'reserved';
+        const isOccupied = table.status === 'occupied' || table.status === 'not available';
+        
+        return (
+            <TouchableOpacity 
+                key={table.id} 
+                style={[
+                    styles.tableBox, 
+                    (isReserved || isOccupied) ? styles.tableBoxOccupied : styles.tableBoxAvailable
+                ]}
+                onPress={() => {
+                    if (isReserved) {
+                        const res = table.reservation_details;
+                        Alert.alert(
+                            `Table ${table.table_number} - RESERVED`,
+                            `Customer: ${res?.customer_name || 'Guest'}\nTime: ${res?.time || '--:--'}\nGuests: ${res?.guests || 0}`,
+                            [{ text: 'Close' }]
+                        );
+                        return;
+                    }
+                    if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
+                    setSelectedPosTable(table);
+                    setPosType('DINE_IN');
+                    setActiveTab('pos');
+                }}
+            >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.tableNum}>T-{table.table_number}</Text>
+                    <Text style={{ fontSize: 12 }}>{(isReserved || isOccupied) ? '🔴' : '🟢'}</Text>
+                </View>
+                <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
+                {isReserved ? (
+                    <View style={{ marginTop: 5, backgroundColor: '#FEE2E2', padding: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 8, color: '#DC2626', fontWeight: 'bold', textAlign: 'center' }}>📅 {table.reservation_details?.customer_name || 'Guest'}</Text>
+                    </View>
+                ) : (
+                    <Text style={[styles.tableStatus, { color: isOccupied ? '#EF4444' : '#11B911' }]}>
+                        {isOccupied ? 'SEATED' : 'AVAILABLE'}
+                    </Text>
+                )}
+            </TouchableOpacity>
+        );
+    };
 
     const renderTables = () => (
         <ScrollView style={styles.content}>
             <Text style={styles.sectionTitle}>Restaurant Layout</Text>
+            
+            {/* Filter Row */}
+            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 15 }}>
+                <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: 'white', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' }}
+                    onPress={() => setFilterModal({
+                        show: true,
+                        title: 'Check Date',
+                        placeholder: 'Format: YYYY-MM-DD',
+                        type: 'DATE',
+                        value: filterTableDate,
+                        onSubmit: (val) => {
+                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterTableDate(val);
+                            else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                        }
+                    })}
+                >
+                    <Text style={{ fontSize: 12, textAlign: 'center' }}>📅 {filterTableDate}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: 'white', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' }}
+                    onPress={() => setFilterModal({
+                        show: true,
+                        title: 'Check Time',
+                        placeholder: 'Format: HH:MM',
+                        type: 'TIME',
+                        value: filterTableTime,
+                        onSubmit: (val) => {
+                            if(val.match(/^([01]\d|2[0-3]):([0-5]\d)$/)) setFilterTableTime(val);
+                            else Alert.alert('Invalid Format', 'Please use HH:MM (24h)');
+                        }
+                    })}
+                >
+                    <Text style={{ fontSize: 12, textAlign: 'center' }}>🕒 {filterTableTime}</Text>
+                </TouchableOpacity>
+            </View>
+
             {diningAreas.map(area => {
                 const areaTables = tables.filter(t => t.area_id === area.id);
                 return (
@@ -539,8 +606,32 @@ const CashierDashboard = () => {
 
     const renderReservations = () => (
         <ScrollView style={styles.content}>
-            <Text style={styles.sectionTitle}>Confirmed Reservations</Text>
-            {reservations.map(res => (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <Text style={styles.sectionTitle}>Confirmed Reservations</Text>
+                <TouchableOpacity 
+                    style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
+                    onPress={() => {
+                        setFilterModal({
+                            show: true,
+                            title: 'Filter Date',
+                            placeholder: 'Format: YYYY-MM-DD',
+                            value: filterResDate,
+                            onSubmit: (val) => {
+                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
+                                else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                            }
+                        });
+                    }}
+                >
+                    <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: 'bold' }}>📅 {filterResDate}</Text>
+                </TouchableOpacity>
+            </View>
+            {reservations.length === 0 ? (
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <Text style={{ fontSize: 40 }}>📅</Text>
+                    <Text style={{ color: '#9CA3AF', marginTop: 10 }}>No reservations for this date</Text>
+                </View>
+            ) : reservations.map(res => (
                 <View key={res.id} style={styles.resvCard}>
                     <View style={styles.resvTimeBox}>
                         <Text style={styles.resvTime}>{res.reservation_time}</Text>
@@ -692,9 +783,15 @@ const CashierDashboard = () => {
                 {activeTab === 'reservations' && renderReservations()}
                 {activeTab === 'bookings' && renderBookings()}
                 {activeTab === 'stats' && renderStatsTab()}
+                {activeTab === 'account' && (
+                    <View style={{ flex: 1, padding: 20 }}>
+                        <AccountSection />
+                    </View>
+                )}
             </View>
             {renderCartModal()}
             {renderSettlementModal()}
+            {renderFilterModal()}
 
             {/* Duty Lock Overlay */}
             {!isOnDuty && activeTab === 'home' && (
@@ -736,6 +833,48 @@ const CashierDashboard = () => {
 
         </SafeAreaView>
     );
+
+    function renderFilterModal() {
+        return (
+            <Modal
+                visible={filterModal.show}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setFilterModal({ ...filterModal, show: false })}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                    <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 20, width: '90%', maxWidth: 400 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>{filterModal.title}</Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 15 }}>{filterModal.placeholder}</Text>
+                        <TextInput
+                            style={{ borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 }}
+                            value={filterModal.value}
+                            onChangeText={(text) => setFilterModal({ ...filterModal, value: text })}
+                            placeholder={filterModal.placeholder}
+                            autoFocus={true}
+                        />
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                            <TouchableOpacity 
+                                style={{ padding: 12, marginRight: 10 }}
+                                onPress={() => setFilterModal({ ...filterModal, show: false })}
+                            >
+                                <Text style={{ color: '#6B7280', fontWeight: 'bold' }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={{ backgroundColor: '#111827', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8 }}
+                                onPress={() => {
+                                    filterModal.onSubmit(filterModal.value);
+                                    setFilterModal({ ...filterModal, show: false });
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontWeight: 'bold' }}>OK</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
 };
 
 const styles = StyleSheet.create({

@@ -56,38 +56,38 @@ function Contact() {
                     <div className="space-y-8">
                         <GlassCard className="p-8 border-[#D4AF37]/20">
                             <h2 className="text-2xl font-bold text-white mb-8">Contact Information</h2>
-                            
+
                             <div className="space-y-6">
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">📍</div>
+                                <div className="flex items-start gap-4 group/item cursor-default">
+                                    <div className="w-16 h-12 bg-[#D4AF37]/5 rounded-sm flex flex-col items-center justify-center text-[10px] font-bold text-[#D4AF37] tracking-widest border border-[#D4AF37]/20 group-hover/item:bg-[#D4AF37] group-hover/item:text-black transition-all duration-500">LOC</div>
                                     <div>
-                                        <h3 className="font-bold text-white">Location</h3>
-                                        <p className="text-gray-400">No 151, Kandy Road, Yakkala, Gampaha, Sri Lanka</p>
+                                        <h3 className="font-bold text-white mb-1 group-hover/item:text-[#D4AF37] transition-colors">Our Location</h3>
+                                        <p className="text-gray-400 text-sm">No 151, Kandy Road, Yakkala, Gampaha</p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">📞</div>
+                                <div className="flex items-start gap-4 group/item cursor-default">
+                                    <div className="w-16 h-12 bg-[#D4AF37]/5 rounded-sm flex flex-col items-center justify-center text-[10px] font-bold text-[#D4AF37] tracking-widest border border-[#D4AF37]/20 group-hover/item:bg-[#D4AF37] group-hover/item:text-black transition-all duration-500">TEL</div>
                                     <div>
-                                        <h3 className="font-bold text-white">Phone</h3>
-                                        <p className="text-gray-400">+94 70 426 0260</p>
+                                        <h3 className="font-bold text-white mb-1 group-hover/item:text-[#D4AF37] transition-colors">Direct Line</h3>
+                                        <p className="text-gray-400 text-sm">+94 70 426 0260</p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">✉️</div>
+                                <div className="flex items-start gap-4 group/item cursor-default">
+                                    <div className="w-16 h-12 bg-[#D4AF37]/5 rounded-sm flex flex-col items-center justify-center text-[10px] font-bold text-[#D4AF37] tracking-widest border border-[#D4AF37]/20 group-hover/item:bg-[#D4AF37] group-hover/item:text-black transition-all duration-500">MSG</div>
                                     <div>
-                                        <h3 className="font-bold text-white">Email</h3>
-                                        <p className="text-gray-400">info@melissasfoodcourt.com</p>
-                                        <p className="text-gray-400">reservations@melissasfoodcourt.com</p>
+                                        <h3 className="font-bold text-white mb-1 group-hover/item:text-[#D4AF37] transition-colors">Official Email</h3>
+                                        <p className="text-gray-400 text-sm">info@melissasfoodcourt.com</p>
+                                        <p className="text-gray-400 text-sm opacity-50">reservations@melissasfoodcourt.com</p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex items-center justify-center text-2xl">🕚</div>
+                                <div className="flex items-start gap-4 group/item cursor-default">
+                                    <div className="w-16 h-12 bg-[#D4AF37]/5 rounded-sm flex flex-col items-center justify-center text-[10px] font-bold text-[#D4AF37] tracking-widest border border-[#D4AF37]/20 group-hover/item:bg-[#D4AF37] group-hover/item:text-black transition-all duration-500">HRS</div>
                                     <div>
-                                        <h3 className="font-bold text-white">Opening Hours</h3>
-                                        <p className="text-gray-400">Mon - Sun: 11:00 AM - 11:00 PM</p>
+                                        <h3 className="font-bold text-white mb-1 group-hover/item:text-[#D4AF37] transition-colors">Service Hours</h3>
+                                        <p className="text-gray-400 text-sm">Mon - Sun: 11:00 AM - 11:00 PM</p>
                                     </div>
                                 </div>
                             </div>
@@ -98,9 +98,9 @@ function Contact() {
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[#D4AF37] font-bold text-xl italic p-8 text-center">
                                 Google Maps Interaction Area
                             </div>
-                            <SafeImage 
+                            <SafeImage
                                 src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5ce?auto=format&fit=crop&q=80&w=800"
-                                alt="Map Location" 
+                                alt="Map Location"
                                 className="w-full h-full object-cover grayscale opacity-50"
                             />
                         </GlassCard>
@@ -118,22 +118,22 @@ function Contact() {
                             <div className="grid md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">Your Name</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         required
-                                        className="input-glass w-full" 
-                                        placeholder="John Doe"
+                                        className="input-glass w-full"
+                                        placeholder="Sunimal Perera"
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                                    <input 
-                                        type="email" 
+                                    <input
+                                        type="email"
                                         required
-                                        className="input-glass w-full" 
-                                        placeholder="john@example.com"
+                                        className="input-glass w-full"
+                                        placeholder="sunimal@gmail.com"
                                         value={formData.email}
                                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     />
@@ -142,9 +142,9 @@ function Contact() {
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Subject</label>
-                                <input 
-                                    type="text" 
-                                    className="input-glass w-full" 
+                                <input
+                                    type="text"
+                                    className="input-glass w-full"
                                     placeholder="General Inquiry"
                                     value={formData.subject}
                                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
@@ -153,16 +153,16 @@ function Contact() {
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Message</label>
-                                <textarea 
+                                <textarea
                                     required
-                                    className="input-glass w-full h-32 resize-none" 
+                                    className="input-glass w-full h-32 resize-none"
                                     placeholder="Your message here..."
                                     value={formData.message}
                                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                                 ></textarea>
                             </div>
 
-                            <Button 
+                            <Button
                                 type="submit"
                                 disabled={loading}
                                 className="w-full bg-[#D4AF37] hover:bg-[#E6C86E] text-black"

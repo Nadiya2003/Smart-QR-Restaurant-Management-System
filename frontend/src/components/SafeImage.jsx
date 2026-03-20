@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * SafeImage Component - Handles broken image URLs with a default fallback
@@ -9,10 +9,17 @@ import { useState } from 'react';
  */
 const SafeImage = ({ src, alt, className, fallbackSrc = 'https://via.placeholder.com/800x600?text=Melissas+Food+Court', ...props }) => {
     const [imgSrc, setImgSrc] = useState(src || fallbackSrc);
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        setImgSrc(src || fallbackSrc);
+        setHasError(false);
+    }, [src, fallbackSrc]);
 
     const handleError = () => {
-        if (imgSrc !== fallbackSrc) {
+        if (!hasError) {
             setImgSrc(fallbackSrc);
+            setHasError(true);
         }
     };
 

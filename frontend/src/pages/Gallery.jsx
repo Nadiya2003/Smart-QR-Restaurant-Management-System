@@ -92,32 +92,30 @@ function Gallery() {
                     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-12 animate-fade-in" onClick={closeLightbox}>
                         {/* Close button */}
                         <button 
-                            className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110]"
+                            className="absolute top-10 right-10 text-[10px] tracking-[0.4em] font-bold text-white/40 hover:text-[#D4AF37] transition-all z-[110] p-4 uppercase"
                             onClick={closeLightbox}
                         >
-                            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                            CLOSE
                         </button>
 
-                        {/* Navigation Arrows */}
-                        <button 
-                            className="absolute left-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-[#D4AF37] text-white p-4 rounded-full transition-all z-[110]"
-                            onClick={(e) => { e.stopPropagation(); navigateImage('prev'); }}
-                        >
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </button>
+                        {/* Navigation Controls */}
+                        <div className="absolute inset-0 flex items-center justify-between px-10 pointer-events-none">
+                            <button 
+                                className="pointer-events-auto flex flex-col items-center group/nav"
+                                onClick={(e) => { e.stopPropagation(); navigateImage('prev'); }}
+                            >
+                                <span className="text-[10px] tracking-[0.4em] font-bold text-[#D4AF37] opacity-40 group-hover/nav:opacity-100 transition-opacity uppercase mb-2">PREV</span>
+                                <div className="w-16 h-[1px] bg-white/20 group-hover/nav:bg-[#D4AF37] transition-all duration-500"></div>
+                            </button>
 
-                        <button 
-                            className="absolute right-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-[#D4AF37] text-white p-4 rounded-full transition-all z-[110]"
-                            onClick={(e) => { e.stopPropagation(); navigateImage('next'); }}
-                        >
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                        </button>
+                            <button 
+                                className="pointer-events-auto flex flex-col items-center group/nav"
+                                onClick={(e) => { e.stopPropagation(); navigateImage('next'); }}
+                            >
+                                <span className="text-[10px] tracking-[0.4em] font-bold text-[#D4AF37] opacity-40 group-hover/nav:opacity-100 transition-opacity uppercase mb-2">NEXT</span>
+                                <div className="w-16 h-[1px] bg-white/20 group-hover/nav:bg-[#D4AF37] transition-all duration-500"></div>
+                            </button>
+                        </div>
 
                         {/* Fullscreen Image Container */}
                         <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>

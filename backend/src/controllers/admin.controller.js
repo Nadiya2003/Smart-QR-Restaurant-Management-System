@@ -678,13 +678,23 @@ export const getRevenueAnalytics = async (req, res) => {
 // --- Reservation Management ---
 export const getAllReservations = async (req, res) => {
     try {
-        const [reservations] = await pool.query(`
+        const { date } = req.query;
+        let query = `
             SELECT r.*, rt.table_number, da.area_name
             FROM reservations r
             LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
             LEFT JOIN dining_areas da ON r.area_id = da.id
-            ORDER BY r.created_at DESC
-        `);
+        `;
+        const params = [];
+
+        if (date) {
+            query += " WHERE r.reservation_date = ? ";
+            params.push(date);
+        }
+
+        query += " ORDER BY r.reservation_date DESC, r.reservation_time ASC, r.created_at DESC";
+
+        const [reservations] = await pool.query(query, params);
         res.json({ reservations });
     } catch (err) {
         console.error('Get all reservations error:', err);
@@ -746,12 +756,53 @@ export const updateArea = async (req, res) => {
 
 export const getAllTables = async (req, res) => {
     try {
+        const { date, time } = req.query;
+        
+        // 1. Get all tables with area names
         const [tables] = await pool.query(`
             SELECT t.*, a.area_name 
             FROM restaurant_tables t
             JOIN dining_areas a ON t.area_id = a.id
             ORDER BY a.area_name, t.table_number
         `);
+
+        // 2. If date and time are provided, fetch reservations for that slot
+        if (date && time) {
+            const [reservations] = await pool.query(`
+                SELECT r.*, c.name as customer_name, c.phone as customer_phone
+                FROM reservations r
+                LEFT JOIN online_customers c ON r.customer_id = c.id
+                WHERE r.reservation_date = ? AND r.reservation_time = ?
+                AND r.reservation_status NOT IN ('CANCELLED')
+            `, [date, time]);
+
+            const tableReservationMap = {};
+            reservations.forEach(r => {
+                tableReservationMap[r.table_id] = r;
+            });
+
+            const enrichedTables = tables.map(t => {
+                const res = tableReservationMap[t.id];
+                if (res) {
+                    return {
+                        ...t,
+                        current_status: 'reserved',
+                        reservation_details: {
+                            id: res.id,
+                            customer_name: res.customer_name || res.guest_name || 'Guest',
+                            time: res.reservation_time,
+                            guests: res.guest_count
+                        }
+                    };
+                }
+                return {
+                    ...t,
+                    current_status: t.status // original status (available/occupied)
+                };
+            });
+            return res.json({ tables: enrichedTables });
+        }
+
         res.json({ tables });
     } catch (err) {
         console.error('Get all tables error:', err);

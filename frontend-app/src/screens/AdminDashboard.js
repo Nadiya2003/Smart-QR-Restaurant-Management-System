@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import AccountSection from './AccountSection';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -99,6 +100,14 @@ const AdminDashboard = () => {
     const [generatedReport, setGeneratedReport] = useState(null);
     const [inventoryHistory, setInventoryHistory] = useState([]);
     const [reportLoading, setReportLoading] = useState(false);
+    
+    // Cross-platform Filter Modal
+    const [filterModal, setFilterModal] = useState({ show: false, title: '', placeholder: '', value: '', type: '', onSubmit: null });
+
+    // Reservation Filters
+    const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterTableDate, setFilterTableDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterTableTime, setFilterTableTime] = useState('19:00'); // Default check time
 
     // Form States
     const [menuForm, setMenuForm] = useState({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
@@ -151,7 +160,7 @@ const AdminDashboard = () => {
             }
 
             if (activeTab === 'tables' || activeTab === 'reservations') {
-                const tableData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/tables`, { headers: reqHeaders });
+                const tableData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/tables?date=${filterTableDate}&time=${filterTableTime}`, { headers: reqHeaders });
                 const areaData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers: reqHeaders });
                 if (tableData) setTables(tableData.tables || []);
                 if (areaData) setDiningAreas(areaData.areas || []);
@@ -217,7 +226,7 @@ const AdminDashboard = () => {
             }
 
             if (activeTab === 'reservations') {
-                const resData = await safeFetch(apiConfig.ADMIN.RESERVATIONS, { headers: reqHeaders });
+                const resData = await safeFetch(`${apiConfig.ADMIN.RESERVATIONS}?date=${filterResDate}`, { headers: reqHeaders });
                 if (resData) setReservationList(resData.reservations || []);
             }
 
@@ -227,7 +236,7 @@ const AdminDashboard = () => {
             if (!isSilent) setLoading(false);
             setRefreshing(false);
         }
-    }, [activeTab, token, attendanceDate]); // Removed stats to prevent infinite render loops
+    }, [activeTab, token, attendanceDate, filterResDate, filterTableDate, filterTableTime]); // Added dependencies
     useEffect(() => {
         fetchData();
     }, [activeTab, fetchData]);
@@ -272,10 +281,18 @@ const AdminDashboard = () => {
                         setRestockRequestList(r.requests || []);
                     }
                 }
+                // If on reservations tab, poll for latest reservations
+                if (activeTab === 'reservations') {
+                    const resRes = await fetch(`${apiConfig.ADMIN.RESERVATIONS}?date=${filterResDate}`, { headers: reqHeaders });
+                    if (resRes.ok) {
+                        const r = await resRes.json();
+                        setReservationList(r.reservations || []);
+                    }
+                }
             } catch (e) { /* silent */ }
         }, 10000); // Poll every 10s for better synchronization
         return () => clearInterval(interval);
-    }, [token, activeTab]);
+    }, [token, activeTab, filterResDate]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -386,10 +403,17 @@ const AdminDashboard = () => {
         formData.append('is_active', menuForm.is_active ? 1 : 0);
         
         if (menuForm.image && !menuForm.image.startsWith('http') && !menuForm.image.startsWith('/upload')) {
-            const filename = menuForm.image.split('/').pop();
-            const match = /\\.(\\w+)$/.exec(filename);
-            const type = match ? `image/${match[1]}` : `image`;
-            formData.append('image', { uri: menuForm.image, name: filename, type });
+            const filename = menuForm.image.split('/').pop() || 'image.jpg';
+            const match = /\.([a-zA-Z0-9]+)$/.exec(filename);
+            const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+            if (Platform.OS === 'web') {
+                const response = await fetch(menuForm.image);
+                const blob = await response.blob();
+                formData.append('image', blob, filename);
+            } else {
+                formData.append('image', { uri: menuForm.image, name: filename, type });
+            }
         }
 
         const url = editingItem ? `${apiConfig.MENU.ALL}/${editingItem.id}` : apiConfig.MENU.ALL;
@@ -458,6 +482,7 @@ const AdminDashboard = () => {
         { key: 'suppliers', label: 'Suppliers', icon: '🚚' },
         { key: 'inventory', label: 'Inventory', icon: '📦' },
         { key: 'reports', label: 'Reports', icon: '📈' },
+        { key: 'account', label: 'My Account', icon: '👤' },
     ];
 
 
@@ -771,20 +796,20 @@ const AdminDashboard = () => {
                 <TouchableOpacity 
                     style={styles.filterBtn} 
                     onPress={() => {
-                        Alert.prompt('Select Date', 'Format: YYYY-MM-DD', [
-                            { text: 'Cancel' },
-                            { 
-                                text: 'OK', 
-                                onPress: (val) => {
-                                    if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                        setAttendanceDate(val);
-                                        fetchData();
-                                    } else {
-                                        Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                    }
+                        setFilterModal({
+                            show: true,
+                            title: 'Select Date',
+                            placeholder: 'Format: YYYY-MM-DD',
+                            value: attendanceDate,
+                            onSubmit: (val) => {
+                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    setAttendanceDate(val);
+                                    fetchData();
+                                } else {
+                                    Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
                                 }
                             }
-                        ], 'plain-text', attendanceDate);
+                        });
                     }}
                 >
                     <Text style={styles.filterBtnText}>Change Date</Text>
@@ -1409,19 +1434,19 @@ const AdminDashboard = () => {
                             <TouchableOpacity 
                                 style={styles.filterRow} 
                                 onPress={() => {
-                                    Alert.prompt('Start Date', 'Format: YYYY-MM-DD', [
-                                        { text: 'Cancel' },
-                                        { 
-                                            text: 'OK', 
-                                            onPress: (val) => {
-                                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                                    setReportFilters(f => ({ ...f, startDate: val }));
-                                                } else {
-                                                    Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                                }
+                                    setFilterModal({
+                                        show: true,
+                                        title: 'Start Date',
+                                        placeholder: 'Format: YYYY-MM-DD',
+                                        value: reportFilters.startDate,
+                                        onSubmit: (val) => {
+                                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                                setReportFilters(f => ({ ...f, startDate: val }));
+                                            } else {
+                                                Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
                                             }
                                         }
-                                    ], 'plain-text', reportFilters.startDate);
+                                    });
                                 }}
                             >
                                 <Text style={styles.timeText}>📅 {reportFilters.startDate}</Text>
@@ -1432,19 +1457,19 @@ const AdminDashboard = () => {
                             <TouchableOpacity 
                                 style={styles.filterRow} 
                                 onPress={() => {
-                                    Alert.prompt('End Date', 'Format: YYYY-MM-DD', [
-                                        { text: 'Cancel' },
-                                        { 
-                                            text: 'OK', 
-                                            onPress: (val) => {
-                                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                                    setReportFilters(f => ({ ...f, endDate: val }));
-                                                } else {
-                                                    Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                                }
+                                    setFilterModal({
+                                        show: true,
+                                        title: 'End Date',
+                                        placeholder: 'Format: YYYY-MM-DD',
+                                        value: reportFilters.endDate,
+                                        onSubmit: (val) => {
+                                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                                setReportFilters(f => ({ ...f, endDate: val }));
+                                            } else {
+                                                Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
                                             }
                                         }
-                                    ], 'plain-text', reportFilters.endDate);
+                                    });
                                 }}
                             >
                                 <Text style={styles.timeText}>📅 {reportFilters.endDate}</Text>
@@ -1661,6 +1686,27 @@ const AdminDashboard = () => {
                 <Text style={styles.headerTitle}>Reservations</Text>
                 <Text style={styles.headerSubtitle}>{reservationList.length} scheduled bookings</Text>
             </View>
+
+            {/* Date Filter Row */}
+            <View style={[styles.filterRow, { marginBottom: 15 }]}>
+                <Text style={styles.filterLabel}>Select Date:</Text>
+                <TouchableOpacity 
+                    style={styles.filterBtn} 
+                    onPress={() => setFilterModal({
+                        show: true,
+                        title: 'Filter by Date',
+                        placeholder: 'Format: YYYY-MM-DD',
+                        type: 'DATE',
+                        value: filterResDate,
+                        onSubmit: (val) => {
+                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
+                            else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                        }
+                    })}
+                >
+                    <Text style={styles.filterBtnText}>📅 {filterResDate}</Text>
+                </TouchableOpacity>
+            </View>
             {reservationList.length === 0 ? (
                 <View style={styles.emptyState}>
                     <Text style={styles.emptyIcon}>📅</Text>
@@ -1754,6 +1800,41 @@ const AdminDashboard = () => {
                     <Text style={styles.headerSubtitle}>Monitor and manage table statuses in real-time</Text>
                 </View>
 
+                <View style={[styles.filterRow, { marginBottom: 15 }]}>
+                    <TouchableOpacity 
+                        style={[styles.filterBtn, { flex: 1, marginRight: 5 }]} 
+                        onPress={() => setFilterModal({
+                            show: true,
+                            title: 'Check Date',
+                            placeholder: 'Format: YYYY-MM-DD',
+                            type: 'DATE',
+                            value: filterTableDate,
+                            onSubmit: (val) => {
+                                if(val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterTableDate(val);
+                                else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                            }
+                        })}
+                    >
+                        <Text style={styles.filterBtnText}>📅 {filterTableDate}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.filterBtn, { flex: 1, marginLeft: 5 }]} 
+                        onPress={() => setFilterModal({
+                            show: true,
+                            title: 'Check Time',
+                            placeholder: 'Format: HH:MM',
+                            type: 'TIME',
+                            value: filterTableTime,
+                            onSubmit: (val) => {
+                                if(val.match(/^([01]\d|2[0-3]):([0-5]\d)$/)) setFilterTableTime(val);
+                                else Alert.alert('Invalid Format', 'Please use HH:MM (24h)');
+                            }
+                        })}
+                    >
+                        <Text style={styles.filterBtnText}>🕒 {filterTableTime}</Text>
+                    </TouchableOpacity>
+                </View>
+
                 {areas.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyIcon}>🪑</Text>
@@ -1767,42 +1848,55 @@ const AdminDashboard = () => {
                                 <Text style={styles.areaSub}>{area.description || 'General Seating Area'}</Text>
                             </View>
                             <View style={styles.tableGrid}>
-                                {tables.filter(t => t.area_id === area.id).map(table => (
-                                    <TouchableOpacity 
-                                        key={table.id} 
-                                        style={[
-                                            styles.tableBox,
-                                            (table.status === 'not available' || table.status === 'occupied') ? styles.tableBoxOccupied : styles.tableBoxAvailable
-                                        ]}
-                                        onPress={() => {
-                                            Alert.alert(
-                                                `Table ${table.table_number}`,
-                                                `Capacity: ${table.capacity} | Status: ${table.status.toUpperCase()}`,
-                                                [
-                                                    { text: 'Close' },
-                                                    { 
-                                                        text: (table.status === 'available') ? 'Mark Not Available' : 'Mark Available',
-                                                        onPress: () => updateTableStatus(table.id, table.status === 'available' ? 'not available' : 'available')
-                                                    }
-                                                ]
-                                            );
-                                        }}
-                                    >
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Text style={styles.tableNum}>T-{table.table_number}</Text>
-                                            <Text style={{ fontSize: 12 }}>{(table.status === 'not available' || table.status === 'occupied') ? '🔴' : '🟢'}</Text>
-                                        </View>
-                                        <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
-                                        {table.steward_name && (
-                                            <Text style={{ fontSize: 10, color: '#059669', marginTop: 4, fontWeight: '700' }}>👤 {table.steward_name}</Text>
-                                        )}
-                                        {table.today_reservations > 0 && (
-                                            <View style={{ marginTop: 5, backgroundColor: '#FDE68A', padding: 2, borderRadius: 4 }}>
-                                                <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center' }}>📅 Reserved Today</Text>
+                                {tables.filter(t => t.area_id === area.id).map(table => {
+                                    const isReserved = table.current_status === 'reserved';
+                                    const isOccupied = table.status === 'not available' || table.status === 'occupied';
+
+                                    return (
+                                        <TouchableOpacity 
+                                            key={table.id} 
+                                            style={[
+                                                styles.tableBox,
+                                                (isReserved || isOccupied) ? styles.tableBoxOccupied : styles.tableBoxAvailable
+                                            ]}
+                                            onPress={() => {
+                                                if (isReserved) {
+                                                    const res = table.reservation_details;
+                                                    Alert.alert(
+                                                        `Table ${table.table_number} - RESERVED`,
+                                                        `Customer: ${res?.customer_name || 'Guest'}\nTime: ${res?.time || '--:--'}\nGuests: ${res?.guests || 0}`,
+                                                        [{ text: 'Close' }]
+                                                    );
+                                                } else {
+                                                    Alert.alert(
+                                                        `Table ${table.table_number}`,
+                                                        `Capacity: ${table.capacity} | Status: ${table.status.toUpperCase()}`,
+                                                        [
+                                                            { text: 'Close' },
+                                                            { 
+                                                                text: (table.status === 'available') ? 'Mark Not Available' : 'Mark Available',
+                                                                onPress: () => updateTableStatus(table.id, table.status === 'available' ? 'not available' : 'available')
+                                                            }
+                                                        ]
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <Text style={styles.tableNum}>T-{table.table_number}</Text>
+                                                <Text style={{ fontSize: 12 }}>{(isReserved || isOccupied) ? '🔴' : '🟢'}</Text>
                                             </View>
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
+                                            <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
+                                            {isReserved ? (
+                                                <View style={{ marginTop: 5, backgroundColor: '#FEE2E2', padding: 2, borderRadius: 4 }}>
+                                                    <Text style={{ fontSize: 8, color: '#DC2626', fontWeight: 'bold', textAlign: 'center' }}>📅 {table.reservation_details?.customer_name || 'Guest'}</Text>
+                                                </View>
+                                            ) : table.steward_name ? (
+                                                <Text style={{ fontSize: 10, color: '#059669', marginTop: 4, fontWeight: '700' }}>👤 {table.steward_name}</Text>
+                                            ) : null}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
                         </View>
                     ))
@@ -1884,6 +1978,7 @@ const AdminDashboard = () => {
             case 'reports': return renderReports();
             case 'reservations': return renderReservations();
             case 'notifications': return renderNotifications();
+            case 'account': return <AccountSection />;
             default: return renderOverview();
         }
     };
@@ -1980,9 +2075,52 @@ const AdminDashboard = () => {
             {renderOrderModal()}
             {renderRoleModal()}
             {renderInventoryModal()}
+            {renderFilterModal()}
         </View>
     );
 
+
+    function renderFilterModal() {
+        return (
+            <Modal
+                visible={filterModal.show}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setFilterModal({ ...filterModal, show: false })}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                    <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 20, width: '90%', maxWidth: 400 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>{filterModal.title}</Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 15 }}>{filterModal.placeholder}</Text>
+                        <TextInput
+                            style={{ borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 }}
+                            value={filterModal.value}
+                            onChangeText={(text) => setFilterModal({ ...filterModal, value: text })}
+                            placeholder={filterModal.placeholder}
+                            autoFocus={true}
+                        />
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                            <TouchableOpacity 
+                                style={{ padding: 12, marginRight: 10 }}
+                                onPress={() => setFilterModal({ ...filterModal, show: false })}
+                            >
+                                <Text style={{ color: '#6B7280', fontWeight: 'bold' }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={{ backgroundColor: '#111827', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8 }}
+                                onPress={() => {
+                                    filterModal.onSubmit(filterModal.value);
+                                    setFilterModal({ ...filterModal, show: false });
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontWeight: 'bold' }}>OK</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
 
     function renderAnalyticsModal() {
         return (

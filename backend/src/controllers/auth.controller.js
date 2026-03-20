@@ -31,8 +31,8 @@ export const register = async (req, res) => {
     }
 
     try {
-        // Check if user exists
-        const [existing] = await db.query('SELECT * FROM customers WHERE email = ?', [email]);
+        // Check if user exists in online_customers
+        const [existing] = await db.query('SELECT * FROM online_customers WHERE email = ?', [email]);
         if (existing.length > 0) {
             return res.status(400).json({ message: 'Email already exists' });
         }
@@ -41,17 +41,14 @@ export const register = async (req, res) => {
         const password_hash = await bcrypt.hash(password, salt);
 
         const [result] = await db.query(
-            'INSERT INTO customers (name, email, phone, password_hash) VALUES (?, ?, ?, ?)',
+            'INSERT INTO online_customers (name, email, phone, password) VALUES (?, ?, ?, ?)',
             [name, email, phone, password_hash]
         );
 
         const userId = result.insertId;
 
         // Auto login after registration
-        const token = jwt.sign({ userId: userId, email: email }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
-        // Store session
-        await db.query('INSERT INTO customer_sessions (customer_id, token) VALUES (?, ?)', [userId, token]);
+        const token = jwt.sign({ userId: userId, email: email, name: name, phone: phone }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
 
         res.status(201).json({ 
             message: 'User registered successfully', 
@@ -77,21 +74,23 @@ export const login = async (req, res) => {
     }
 
     try {
-        const [users] = await db.query('SELECT * FROM customers WHERE email = ?', [email]);
+        const [users] = await db.query('SELECT * FROM online_customers WHERE email = ?', [email]);
         if (users.length === 0) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         const user = users[0];
-        const isMatch = await bcrypt.compare(password, user.password_hash);
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
-        // Store session
-        await db.query('INSERT INTO customer_sessions (customer_id, token) VALUES (?, ?)', [user.id, token]);
+        const token = jwt.sign({ 
+            userId: user.id, 
+            email: user.email,
+            name: user.name,
+            phone: user.phone || ''
+        }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
 
         res.json({
             token,
@@ -115,10 +114,8 @@ export const forgotPassword = async (req, res) => {
             return res.status(400).json({ message: 'Email is required' });
         }
 
-        const [users] = await db.query('SELECT id FROM customers WHERE email = ?', [email]);
+        const [users] = await db.query('SELECT id FROM online_customers WHERE email = ?', [email]);
         if (users.length === 0) {
-            // Security: Don't reveal if user exists, but for UX we might say "If registered..."
-            // For this specific system, let's be descriptive
             return res.status(404).json({ message: 'No account found with this email address' });
         }
 
@@ -127,7 +124,7 @@ export const forgotPassword = async (req, res) => {
         const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
         await db.query(
-            'UPDATE customers SET reset_otp = ?, reset_otp_expiry = ? WHERE email = ?',
+            'UPDATE online_customers SET reset_otp = ?, reset_otp_expiry = ? WHERE email = ?',
             [otp, expires, email]
         );
 
@@ -153,7 +150,7 @@ export const verifyOTP = async (req, res) => {
         if (!email || !otp) return res.status(400).json({ message: 'Email and OTP required' });
 
         const [users] = await db.query(
-            'SELECT id FROM customers WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
+            'SELECT id FROM online_customers WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
             [email, otp]
         );
 
@@ -177,7 +174,7 @@ export const resetPassword = async (req, res) => {
 
         // Validate OTP Again
         const [users] = await db.query(
-            'SELECT id FROM customers WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
+            'SELECT id FROM online_customers WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
             [email, otp]
         );
 
@@ -191,7 +188,7 @@ export const resetPassword = async (req, res) => {
 
         // Update password and clear OTP
         await db.query(
-            'UPDATE customers SET password_hash = ?, reset_otp = NULL, reset_otp_expiry = NULL WHERE id = ?',
+            'UPDATE online_customers SET password = ?, reset_otp = NULL, reset_otp_expiry = NULL WHERE id = ?',
             [hashedPassword, users[0].id]
         );
 

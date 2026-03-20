@@ -15,9 +15,9 @@ function About() {
             {/* Hero Section */}
             <section className="relative h-[60vh] flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
-                    <SafeImage 
-                        src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=1200" 
-                        alt="Restaurant Background" 
+                    <SafeImage
+                        src="https://ceylonpages.lk/wp-content/uploads/2025/03/Melissas-Food-Courtjpg_gallery_518026-1024x577.jpeg"
+                        alt="Restaurant Background"
                         className="w-full h-full object-cover blur-sm brightness-50"
                     />
                 </div>
@@ -40,23 +40,23 @@ function About() {
                         </h2>
                         <div className="space-y-6 text-gray-400 text-lg leading-relaxed">
                             <p>
-                                Melissas Food Court started as a small family kitchen in the heart of Colombo. 
-                                Our founder, Melissa, had a vision to create a unique dining space where the 
-                                vibrant, spicy flavors of her Sri Lankan roots could dance with the sophisticated, 
+                                Melissas Food Court started as a small family kitchen in the heart of Colombo.
+                                Our founder, Melissa, had a vision to create a unique dining space where the
+                                vibrant, spicy flavors of her Sri Lankan roots could dance with the sophisticated,
                                 comforting dishes of the Italian countryside.
                             </p>
                             <p>
-                                Over the decades, we have evolved into a premier culinary destination, 
-                                known for our commitment to authentic ingredients, innovative fusion techniques, 
+                                Over the decades, we have evolved into a premier culinary destination,
+                                known for our commitment to authentic ingredients, innovative fusion techniques,
                                 and unparalleled hospitality.
                             </p>
                         </div>
                     </div>
                     <div className="relative animate-fade-in">
                         <div className="absolute inset-0 bg-[#D4AF37]/20 blur-3xl rounded-full -z-10"></div>
-                        <SafeImage 
-                            src="https://images.unsplash.com/photo-1577214286171-e716613693f9?auto=format&fit=crop&q=80&w=1200" 
-                            alt="Our Founder" 
+                        <SafeImage
+                            src="/images/about-image.jpg"
+                            alt="Our Founder"
                             className="rounded-3xl shadow-2xl border border-white/10"
                         />
                     </div>
@@ -64,26 +64,26 @@ function About() {
 
                 {/* Values Grid */}
                 <div className="grid md:grid-cols-3 gap-8">
-                    <GlassCard className="p-8 text-center hover:bg-[#D4AF37]/5 transition-colors">
-                        <div className="text-5xl mb-6">🌱</div>
-                        <h3 className="text-xl font-bold text-[#D4AF37] mb-4">Quality Ingredients</h3>
-                        <p className="text-gray-400">
+                    <GlassCard className="p-10 text-center hover:bg-[#D4AF37]/5 transition-all duration-500 border-white/5 group">
+                        <div className="text-xs font-bold text-[#D4AF37] mb-8 tracking-[0.4em] opacity-40 group-hover:opacity-100 uppercase">Values I</div>
+                        <h3 className="text-xl font-bold text-white mb-4 group-hover:text-[#D4AF37] transition-colors">Quality Ingredients</h3>
+                        <p className="text-gray-400 font-light leading-relaxed">
                             We source only the freshest organic produce and premium imported Italian staples.
                         </p>
                     </GlassCard>
 
-                    <GlassCard className="p-8 text-center hover:bg-[#D4AF37]/5 transition-colors">
-                        <div className="text-5xl mb-6">👨‍🍳</div>
-                        <h3 className="text-xl font-bold text-[#D4AF37] mb-4">Culinary Artistry</h3>
-                        <p className="text-gray-400">
+                    <GlassCard className="p-10 text-center hover:bg-[#D4AF37]/5 transition-all duration-500 border-white/5 group">
+                        <div className="text-xs font-bold text-[#D4AF37] mb-8 tracking-[0.4em] opacity-40 group-hover:opacity-100 uppercase">Values II</div>
+                        <h3 className="text-xl font-bold text-white mb-4 group-hover:text-[#D4AF37] transition-colors">Culinary Artistry</h3>
+                        <p className="text-gray-400 font-light leading-relaxed">
                             Our chefs are masters of their craft, blending traditions to create modern masterpieces.
                         </p>
                     </GlassCard>
 
-                    <GlassCard className="p-8 text-center hover:bg-[#D4AF37]/5 transition-colors">
-                        <div className="text-5xl mb-6">❤️</div>
-                        <h3 className="text-xl font-bold text-[#D4AF37] mb-4">Pure Hospitality</h3>
-                        <p className="text-gray-400">
+                    <GlassCard className="p-10 text-center hover:bg-[#D4AF37]/5 transition-all duration-500 border-white/5 group">
+                        <div className="text-xs font-bold text-[#D4AF37] mb-8 tracking-[0.4em] opacity-40 group-hover:opacity-100 uppercase">Values III</div>
+                        <h3 className="text-xl font-bold text-white mb-4 group-hover:text-[#D4AF37] transition-colors">Pure Hospitality</h3>
+                        <p className="text-gray-400 font-light leading-relaxed">
                             At Melissas, every guest is treated like family. We pride ourselves on personalized service.
                         </p>
                     </GlassCard>

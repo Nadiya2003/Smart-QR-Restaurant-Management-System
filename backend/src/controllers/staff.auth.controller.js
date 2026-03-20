@@ -24,7 +24,7 @@ const ROLE_TABLE_MAP = {
 export const registerStaff = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { full_name, email, phone, password, role } = req.body;
+        const { full_name, email, phone, password, role, profile_image } = req.body;
 
         if (!full_name || !email || !password || !role) {
             return res.status(400).json({ message: 'Full name, email, password, and role are required' });
@@ -61,10 +61,18 @@ export const registerStaff = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const defaultPermissions = JSON.stringify([]);
 
+        // Handle profile image
+        let finalProfileImage = '/assets/default-staff-avatar.png';
+        if (req.file) {
+            finalProfileImage = `/uploads/profile-images/${req.file.filename}`;
+        } else if (profile_image) {
+            finalProfileImage = profile_image;
+        }
+
         const [staffResult] = await connection.query(
-            `INSERT INTO staff_users (full_name, email, phone, password, role_id, status, permissions)
-             VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-            [full_name, email, phone || null, hashedPassword, roleId, defaultPermissions]
+            `INSERT INTO staff_users (full_name, email, phone, profile_image, password, role_id, status, permissions)
+             VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+            [full_name, email, phone || null, finalProfileImage, hashedPassword, roleId, defaultPermissions]
         );
 
         const staffId = staffResult.insertId;
@@ -205,6 +213,7 @@ export const loginStaff = async (req, res) => {
                 role: user.role_name.toUpperCase(),
                 status: user.status,
                 is_active: user.is_active,
+                profile_image: user.profile_image,
                 permissions
             }
         });
@@ -227,7 +236,7 @@ export const getStaffProfile = async (req, res) => {
         }
 
         const [staff] = await pool.query(
-            `SELECT su.id, su.full_name, su.email, su.phone, su.is_active, su.created_at,
+            `SELECT su.id, su.full_name, su.email, su.phone, su.profile_image, su.is_active, su.created_at,
                     sr.role_name as role
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
@@ -307,5 +316,74 @@ export const logoutStaff = async (req, res) => {
     } catch (error) {
         console.error('Logout error:', error);
         res.status(500).json({ message: 'Logout processing failed' });
+    }
+};
+
+/**
+ * Update staff profile details (name, email, phone, image)
+ */
+export const updateStaffProfile = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { full_name, email, phone } = req.body;
+
+        if (userId === 0) {
+            return res.status(403).json({ message: 'Hardcoded admin account cannot be updated in database. Please register a proper admin account.' });
+        }
+
+        let updateFields = [];
+        let queryParams = [];
+
+        if (full_name) {
+            updateFields.push('full_name = ?');
+            queryParams.push(full_name);
+        }
+        if (email) {
+            // Check email uniqueness if changing
+            const [existing] = await pool.query('SELECT id FROM staff_users WHERE email = ? AND id != ?', [email, userId]);
+            if (existing.length > 0) {
+                return res.status(400).json({ message: 'Email already in use by another account' });
+            }
+            updateFields.push('email = ?');
+            queryParams.push(email);
+        }
+        if (phone !== undefined) {
+            updateFields.push('phone = ?');
+            queryParams.push(phone || null);
+        }
+        if (req.file) {
+            const profileImage = `/uploads/profile-images/${req.file.filename}`;
+            updateFields.push('profile_image = ?');
+            queryParams.push(profileImage);
+        }
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({ message: 'No fields provided for update' });
+        }
+
+        queryParams.push(userId);
+        
+        await pool.query(
+            `UPDATE staff_users SET ${updateFields.join(', ')} WHERE id = ?`,
+            queryParams
+        );
+
+        // Fetch updated profile
+        const [updated] = await pool.query(
+            `SELECT su.id, su.full_name, su.email, su.phone, su.profile_image, sr.role_name as role
+             FROM staff_users su
+             JOIN staff_roles sr ON su.role_id = sr.id
+             WHERE su.id = ?`,
+            [userId]
+        );
+
+        res.json({
+            message: 'Profile updated successfully',
+            user: updated[0]
+        });
+
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ message: 'Failed to update profile: ' + error.message });
     }
 };

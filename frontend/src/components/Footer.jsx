@@ -28,11 +28,11 @@ function Footer() {
                             From spicy authentic curries to creamy classic pastas, we bring you the
                             best of both worlds.
                         </p>
-                        <div className="flex gap-4 text-xl">
-                            <a href="#" className="hover:text-[#D4AF37] transition-colors" title="Facebook">📘</a>
-                            <a href="#" className="hover:text-[#D4AF37] transition-colors" title="Instagram">📸</a>
-                            <a href="#" className="hover:text-[#D4AF37] transition-colors" title="Twitter">🐦</a>
-                            <a href="#" className="hover:text-[#D4AF37] transition-colors" title="YouTube">📺</a>
+                        <div className="flex gap-8 text-[10px] tracking-[0.2em] font-bold uppercase mt-2">
+                            <a href="#" className="hover:text-[#D4AF37] transition-all hover:translate-y-[-2px]" title="Facebook">FB</a>
+                            <a href="#" className="hover:text-[#D4AF37] transition-all hover:translate-y-[-2px]" title="Instagram">IG</a>
+                            <a href="#" className="hover:text-[#D4AF37] transition-all hover:translate-y-[-2px]" title="Twitter">TW</a>
+                            <a href="#" className="hover:text-[#D4AF37] transition-all hover:translate-y-[-2px]" title="YouTube">YT</a>
                         </div>
                     </div>
 
@@ -51,18 +51,18 @@ function Footer() {
                     {/* Contact Info */}
                     <div>
                         <h4 className="text-white font-bold mb-6 text-lg">Contact Us</h4>
-                        <ul className="flex flex-col gap-4 text-sm">
-                            <li className="flex gap-3">
-                                <span>📍</span>
-                                <span>No 151, Kandy Road, Yakkala,<br />Gampaha, Sri Lanka</span>
+                        <ul className="flex flex-col gap-6 text-sm">
+                            <li className="flex flex-col gap-1 group/loc">
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] font-bold opacity-60 group-hover/loc:opacity-100 transition-opacity">Location</span>
+                                <span className="text-gray-300">No 151, Kandy Road, Yakkala, Gampaha</span>
                             </li>
-                            <li className="flex gap-3">
-                                <span>📞</span>
-                                <a href="tel:+94704260260" className="hover:text-[#D4AF37] transition-colors">+94 (70) 426 0260</a>
+                            <li className="flex flex-col gap-1 group/con">
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] font-bold opacity-60 group-hover/con:opacity-100 transition-opacity">Connect</span>
+                                <a href="tel:+94704260260" className="text-gray-300 hover:text-[#D4AF37] transition-colors">+94 (70) 426 0260</a>
                             </li>
-                            <li className="flex gap-3">
-                                <span>📧</span>
-                                <a href="mailto:info@melissasfoodcourt.com" className="hover:text-[#D4AF37] transition-colors">info@melissasfoodcourt.com</a>
+                            <li className="flex flex-col gap-1 group/inq">
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] font-bold opacity-60 group-hover/inq:opacity-100 transition-opacity">Inquiries</span>
+                                <a href="mailto:info@melissasfoodcourt.com" className="text-gray-300 hover:text-[#D4AF37] transition-colors">info@melissasfoodcourt.com</a>
                             </li>
                         </ul>
                     </div>
