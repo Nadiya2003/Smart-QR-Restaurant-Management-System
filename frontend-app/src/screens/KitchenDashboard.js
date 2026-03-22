@@ -265,77 +265,93 @@ const KitchenDashboard = () => {
 
             {orders.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={{ fontSize: 50, marginBottom: 10 }}>👨‍🍳</Text>
-                    <Text style={styles.emptyText}>No active food orders to prepare.</Text>
+                    <View style={styles.emptyIconContainer}>
+                         <Text style={{ fontSize: 60 }}>👨‍🍳</Text>
+                    </View>
+                    <Text style={styles.emptyTitle}>All caught up!</Text>
+                    <Text style={styles.emptyText}>No active food orders to prepare right now.</Text>
+                    <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchData()}>
+                        <Text style={styles.refreshBtnText}>Check for New Orders</Text>
+                    </TouchableOpacity>
                 </View>
             ) : (
                 orders.map(order => {
-                    const typeColor = order.order_type_name === 'DINE_IN' ? '#3B82F6' : (order.order_type_name === 'TAKEAWAY' ? '#F59E0B' : '#10B981');
+                    const typeColor = order.order_type_name?.includes('DINE') ? '#3B82F6' : (order.order_type_name?.includes('TAKEAWAY') ? '#F59E0B' : '#10B981');
+                    const isVeryRecent = (Date.now() - new Date(order.created_at).getTime()) < 120000; // 2 minutes
+                    const isPreparing = order.status === 'PREPARING';
+
                     return (
-                        <View key={order.id} style={[styles.orderCard, { borderLeftColor: typeColor }]}>
+                        <View key={`${order.order_type_name}-${order.id}`} style={[styles.orderCard, { borderLeftColor: typeColor }, isVeryRecent && styles.newOrderBorder]}>
+                            {isVeryRecent && (
+                                <View style={styles.newBadgeContainer}>
+                                    <View style={styles.pulsingDot} />
+                                    <Text style={styles.newBadgeText}>NEW ORDER</Text>
+                                </View>
+                            )}
+                            
                             <View style={styles.orderHeader}>
                                 <View>
-                                    <Text style={styles.orderId}>ORDER #{order.id}</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                        <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
-                                            <Text style={[styles.typeText, { color: typeColor }]}>{order.order_type_name || 'DINE-IN'}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={styles.orderId}>#{order.id}</Text>
+                                        <View style={[styles.typePill, { backgroundColor: typeColor }]}>
+                                            <Text style={styles.typePillText}>{order.order_type_name?.replace('_', ' ') || 'DINE-IN'}</Text>
                                         </View>
-                                        {(Date.now() - new Date(order.created_at).getTime()) < 60000 ? (
-                                            <View style={{ backgroundColor: '#EF4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                <Text style={{ color: 'white', fontSize: 9, fontWeight: 'bold' }}>NEW</Text>
-                                            </View>
-                                        ) : (order.updated_at && (Date.now() - new Date(order.updated_at).getTime()) < 60000) ? (
-                                            <View style={{ backgroundColor: '#3B82F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                <Text style={{ color: 'white', fontSize: 9, fontWeight: 'bold' }}>UPDATED</Text>
-                                            </View>
-                                        ) : null}
+                                    </View>
+                                    <View style={styles.statusRow}>
+                                        <View style={[styles.dot, { backgroundColor: isPreparing ? '#F59E0B' : '#6B7280' }]} />
+                                        <Text style={[styles.statusText, { color: isPreparing ? '#F59E0B' : '#6B7280' }]}>
+                                            {isPreparing ? 'Currently Preparing' : 'Pending Preparation'}
+                                        </Text>
                                     </View>
                                 </View>
                                 <OrderTimer createdAt={order.created_at} />
                             </View>
 
-                            <View style={styles.orderInfoRow}>
-                                <Text style={styles.orderInfoText}>📍 {order.table_number ? `Table ${order.table_number}` : 'Counter'}</Text>
-                                <Text style={styles.orderInfoText}>👤 {order.steward_name || 'Direct'}</Text>
-                                <Text style={styles.orderInfoText}>🕒 {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                            <View style={styles.detailsGrid}>
+                                <View style={styles.detailItem}>
+                                    <Text style={styles.detailLabel}>LOCATION</Text>
+                                    <Text style={styles.detailValue}>📍 {order.table_number ? `Table ${order.table_number}` : 'Counter'}</Text>
+                                </View>
+                                <View style={styles.detailItem}>
+                                    <Text style={styles.detailLabel}>STEWARD</Text>
+                                    <Text style={styles.detailValue}>👤 {order.steward_name || 'Direct Order'}</Text>
+                                </View>
+                                <View style={styles.detailItem}>
+                                    <Text style={styles.detailLabel}>TIME</Text>
+                                    <Text style={styles.detailValue}>🕒 {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                                </View>
                             </View>
 
-                            <View style={styles.itemsSection}>
+                            <View style={styles.itemsContainer}>
+                                <Text style={styles.itemsSectionTitle}>ORDER ITEMS</Text>
                                 {order.items?.map((item, idx) => (
                                     <View key={idx} style={styles.itemRow}>
-                                        <Text style={styles.itemQty}>{item.quantity}x</Text>
+                                        <View style={[styles.qtyBox, { backgroundColor: typeColor + '15' }]}>
+                                            <Text style={[styles.qtyText, { color: typeColor }]}>{item.quantity}x</Text>
+                                        </View>
                                         <Text style={styles.itemName}>{item.name}</Text>
+                                        {item.notes && <Text style={styles.itemNotes}>({item.notes})</Text>}
                                     </View>
                                 ))}
                             </View>
 
-                            <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={{ color: '#6B7280', fontSize: 12 }}>Items Total</Text>
-                                <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {order.total_price}</Text>
-                            </View>
-
-                            <View style={styles.orderActions}>
-                                <TouchableOpacity style={styles.kotBtn} onPress={() => handlePrintKOT(order)}>
-                                    <Text style={styles.kotBtnText}>🖨️ KOT</Text>
+                            <View style={styles.orderFooter}>
+                                <TouchableOpacity style={styles.printBtn} onPress={() => handlePrintKOT(order)}>
+                                    <Text style={styles.printBtnIcon}>🖨️</Text>
+                                    <Text style={styles.printBtnText}>Print KOT</Text>
                                 </TouchableOpacity>
                                 
-                                <View style={{ flexDirection: 'row', gap: 8, flex: 2 }}>
-                                    {order.status === 'PENDING' || order.status === 'CONFIRMED' ? (
-                                        <TouchableOpacity 
-                                            style={[styles.statusBtn, { backgroundColor: '#3B82F6' }]} 
-                                            onPress={() => updateStatus(order.id, 'PREPARING', order.order_type_name)}
-                                        >
-                                            <Text style={styles.statusBtnText}>START COOKING</Text>
-                                        </TouchableOpacity>
-                                    ) : (
-                                        <TouchableOpacity 
-                                            style={[styles.statusBtn, { backgroundColor: '#10B981' }]} 
-                                            onPress={() => updateStatus(order.id, 'READY', order.order_type_name)}
-                                        >
-                                            <Text style={styles.statusBtnText}>MARK AS READY</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
+                                <TouchableOpacity 
+                                    style={[
+                                        styles.mainActionBtn, 
+                                        { backgroundColor: isPreparing ? '#10B981' : '#3B82F6' }
+                                    ]} 
+                                    onPress={() => updateStatus(order.id, isPreparing ? 'READY' : 'PREPARING', order.order_type_name)}
+                                >
+                                    <Text style={styles.mainActionText}>
+                                        {isPreparing ? 'COMPLETE ORDER' : 'START PREPARING'}
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
                     );
@@ -521,15 +537,51 @@ const styles = StyleSheet.create({
     activeNav: { borderTopWidth: 3, borderTopColor: '#3B82F6' },
     activeNavIcon: { fontSize: 26, opacity: 1 },
     activeNavLabel: { fontWeight: 'bold', color: '#3B82F6' },
-    emptyState: { alignItems: 'center', justifyContent: 'center', padding: 50 },
-    emptyText: { color: '#9CA3AF', fontSize: 16, textAlign: 'center' },
-    lockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginTop: 200 },
-    lockContent: { backgroundColor: 'white', padding: 30, borderRadius: 24, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, width: width * 0.8 },
-    lockIcon: { fontSize: 40, marginBottom: 15 },
-    lockTitle: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
-    lockSub: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 8, marginBottom: 20 },
-    lockBtn: { backgroundColor: '#10B981', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-    lockBtnText: { color: 'white', fontWeight: 'bold' }
+    emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 100, paddingHorizontal: 40 },
+    emptyIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    emptyTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827', marginBottom: 8 },
+    emptyText: { color: '#6B7280', fontSize: 16, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
+    refreshBtn: { backgroundColor: '#3B82F6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, elevation: 2 },
+    refreshBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+    
+    orderCard: { backgroundColor: 'white', borderRadius: 28, padding: 24, marginBottom: 24, borderLeftWidth: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 },
+    newOrderBorder: { borderColor: '#EF4444', borderWidth: 2 },
+    newBadgeContainer: { position: 'absolute', top: -12, right: 24, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 10, elevation: 4 },
+    pulsingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'white' },
+    newBadgeText: { color: 'white', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+    
+    orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+    orderId: { fontSize: 28, fontWeight: '900', color: '#111827', letterSpacing: -1 },
+    typePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 10 },
+    typePillText: { color: 'white', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
+    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+    dot: { width: 10, height: 10, borderRadius: 5 },
+    statusText: { fontSize: 13, fontWeight: '600' },
+    
+    detailsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, backgroundColor: '#F9FAFB', padding: 15, borderRadius: 20 },
+    detailItem: { alignItems: 'center', flex: 1 },
+    detailLabel: { fontSize: 9, color: '#9CA3AF', fontWeight: '900', letterSpacing: 1, marginBottom: 4 },
+    detailValue: { fontSize: 13, fontWeight: 'bold', color: '#374151' },
+    
+    itemsContainer: { marginBottom: 24 },
+    itemsSectionTitle: { fontSize: 11, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1, marginBottom: 15 },
+    itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    qtyBox: { width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    qtyText: { fontSize: 18, fontWeight: '900' },
+    itemName: { fontSize: 18, fontWeight: 'bold', color: '#111827', flex: 1 },
+    itemNotes: { fontSize: 14, color: '#6B7280', fontStyle: 'italic', marginLeft: 10 },
+    
+    orderFooter: { flexDirection: 'row', gap: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 20 },
+    printBtn: { flex: 1, height: 56, borderRadius: 18, backgroundColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+    printBtnIcon: { fontSize: 18 },
+    printBtnText: { fontWeight: 'bold', color: '#111827', fontSize: 14 },
+    mainActionBtn: { flex: 2, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 3 },
+    mainActionText: { color: 'white', fontWeight: '900', fontSize: 15, letterSpacing: 0.5 },
+    
+    timerBox: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 15, backgroundColor: '#F3F4F6', alignItems: 'center' },
+    timerUrgent: { backgroundColor: '#FEE2E2' },
+    timerText: { fontSize: 20, fontWeight: '800', color: '#4B5563' },
+    timerTextUrgent: { color: '#EF4444' },
 });
 
 export default KitchenDashboard;

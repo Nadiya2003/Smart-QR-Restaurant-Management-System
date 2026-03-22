@@ -81,14 +81,12 @@ export function StewardSelectionPage({
         </p>
 
         <div className="space-y-3 mb-8">
-          {stewards.filter(s => s.status !== 'offline').length === 0 ? (
+          {stewards.length === 0 ? (
             <div className="bg-white p-8 rounded-2xl text-center border border-dashed border-gray-200">
               <p className="text-gray-500">No stewards are currently on duty. You can still order and our team will assist you!</p>
             </div>
           ) : (
-            stewards
-              .filter(s => s.status !== 'offline')
-              .map((steward) => (
+            stewards.map((steward) => (
                 <StewardCard
                   key={steward.id}
                   steward={steward}

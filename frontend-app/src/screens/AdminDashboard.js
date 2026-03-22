@@ -129,6 +129,8 @@ const AdminDashboard = () => {
 
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [selectedRole, setSelectedRole] = useState('');
+    const [selectedReviewOrder, setSelectedReviewOrder] = useState(null);
+    const [showReviewModal, setShowReviewModal] = useState(false);
     const STAFF_ROLES = ['steward', 'manager', 'cashier', 'kitchen_staff', 'bar_staff', 'delivery_rider', 'inventory_manager', 'supplier'];
 
     const fetchData = useCallback(async (isSilent = false) => {
@@ -736,7 +738,14 @@ const AdminDashboard = () => {
                 orderList.filter(o => o.order_type === orderSubTab).map((order) => {
                     const isOngoing = ['PENDING', 'ORDER PLACED', 'PREPARING', 'READY', 'OUT FOR DELIVERY'].includes((order.status || '').toUpperCase());
                     return (
-                        <View key={`${order.order_type}-${order.id}`} style={[styles.listCard, isOngoing && styles.ongoingCard]}>
+                        <TouchableOpacity 
+                            key={`${order.order_type}-${order.id}`} 
+                            style={[styles.listCard, isOngoing && styles.ongoingCard]}
+                            onPress={() => {
+                                setSelectedReviewOrder(order);
+                                setShowReviewModal(true);
+                            }}
+                        >
                             <View style={styles.listCardHeader}>
                                 <View style={[styles.avatarCircle, { backgroundColor: isOngoing ? '#FEF3C7' : '#E5E7EB' }]}>
                                     <Text style={styles.avatarText}>#{order.id}</Text>
@@ -774,7 +783,7 @@ const AdminDashboard = () => {
                                     )}
                                 </View>
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     );
                 })
             )}
@@ -2082,6 +2091,7 @@ const AdminDashboard = () => {
             {renderOrderModal()}
             {renderRoleModal()}
             {renderInventoryModal()}
+            {renderReviewModal()}
             {renderFilterModal()}
         </View>
     );
@@ -2089,12 +2099,7 @@ const AdminDashboard = () => {
 
     function renderFilterModal() {
         return (
-            <Modal
-                visible={filterModal.show}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setFilterModal({ ...filterModal, show: false })}
-            >
+            <Modal visible={filterModal.show} transparent={true} animationType="fade">
                 <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
                     <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 20, width: '90%', maxWidth: 400 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>{filterModal.title}</Text>
@@ -2123,6 +2128,63 @@ const AdminDashboard = () => {
                                 <Text style={{ color: 'white', fontWeight: 'bold' }}>OK</Text>
                             </TouchableOpacity>
                         </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderReviewModal() {
+        if (!selectedReviewOrder) return null;
+        
+        return (
+            <Modal visible={showReviewModal} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <Text style={styles.modalTitle}>Order Full Review</Text>
+                                <Text style={styles.modalSub}>ID: #{selectedReviewOrder.id} ({selectedReviewOrder.order_type})</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setShowReviewModal(false)}>
+                                <Text style={{ fontSize: 24, padding: 5 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ marginBottom: 20 }}>
+                            <View style={{ backgroundColor: '#F3F4F6', padding: 15, borderRadius: 10, marginBottom: 15 }}>
+                                <Text style={{ fontSize: 13, color: '#4B5563', marginBottom: 4 }}>Customer: <Text style={{ fontWeight: 'bold' }}>{selectedReviewOrder.customer_name || 'Guest'}</Text></Text>
+                                <Text style={{ fontSize: 13, color: '#4B5563', marginBottom: 4 }}>Date: {new Date(selectedReviewOrder.created_at).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 13, color: '#4B5563', marginBottom: 4 }}>Status: {selectedReviewOrder.status}</Text>
+                                {selectedReviewOrder.table_number && <Text style={{ fontSize: 13, color: '#4B5563', marginBottom: 4 }}>Table: {selectedReviewOrder.table_number}</Text>}
+                                {selectedReviewOrder.steward_name && <Text style={{ fontSize: 13, color: '#4B5563', marginBottom: 4 }}>Steward: {selectedReviewOrder.steward_name}</Text>}
+                            </View>
+
+                            <Text style={{ fontWeight: 'bold', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingBottom: 5 }}>Bill Details</Text>
+                            {(typeof selectedReviewOrder.items === 'string' ? JSON.parse(selectedReviewOrder.items) : selectedReviewOrder.items || []).map((item, idx) => (
+                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontWeight: '500' }}>{item.name}</Text>
+                                        <Text style={{ fontSize: 12, color: '#6B7280' }}>Rs. {item.price} x {item.quantity}</Text>
+                                    </View>
+                                    <Text style={{ fontWeight: '600' }}>Rs. {item.price * item.quantity}</Text>
+                                </View>
+                            ))}
+
+                            <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', marginTop: 15, paddingTop: 10 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                    <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Amount</Text>
+                                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>Rs. {Number(selectedReviewOrder.total_price || 0).toLocaleString()}</Text>
+                                </View>
+                            </View>
+                        </ScrollView>
+
+                        <TouchableOpacity 
+                            style={[styles.saveBtn, { width: '100%' }]} 
+                            onPress={() => setShowReviewModal(false)}
+                        >
+                            <Text style={styles.saveBtnText}>Close Review</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </Modal>

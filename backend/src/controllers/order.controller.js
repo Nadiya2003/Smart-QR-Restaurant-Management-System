@@ -299,11 +299,15 @@ export const createDineInOrder = async (req, res) => {
         const inclusiveNewTotal = baseTotal * 1.15; // 10% SC + 5% Tax
 
         if (targetOrderId) {
-            // If explicit ID provided, update its total
+            // If explicit ID provided, update its total and associate with the current steward if not already associated
             console.log(`[DineIn] Updating existing order ${targetOrderId} with additional total: ${inclusiveNewTotal}`);
             await connection.query(
-                'UPDATE orders SET total_price = total_price + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                [inclusiveNewTotal, targetOrderId]
+                `UPDATE orders SET 
+                 total_price = total_price + ?, 
+                 updated_at = CURRENT_TIMESTAMP,
+                 steward_id = COALESCE(steward_id, ?) 
+                 WHERE id = ?`,
+                [inclusiveNewTotal, resolvedStewardId || null, targetOrderId]
             );
         } else if (tableId && customer_id) {
             // Auto-merge logic for registered customers

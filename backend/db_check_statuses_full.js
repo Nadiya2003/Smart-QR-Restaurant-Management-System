@@ -1,0 +1,16 @@
+import pool from './src/config/db.js';
+
+async function check() {
+    try {
+        const [rows] = await pool.query('SELECT * FROM order_statuses');
+        console.log('--- Order Statuses ---');
+        rows.forEach(r => console.log(`${r.id}: ${r.name}`));
+        
+        process.exit(0);
+    } catch (err) {
+        console.error(err);
+        process.exit(1);
+    }
+}
+
+check();

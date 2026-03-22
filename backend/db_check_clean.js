@@ -3,13 +3,13 @@ import pool from './src/config/db.js';
 async function check() {
     try {
         const [rows] = await pool.query('SELECT name FROM categories');
-        console.log('Categories in DB:', rows);
+        console.log('--- Categories ---');
+        rows.forEach(r => console.log(`- ${r.name}`));
         
         const [orders] = await pool.query('SELECT id, status_id FROM orders LIMIT 5');
-        console.log('Sample orders:', orders);
-        
-        const [statuses] = await pool.query('SELECT id, name FROM order_statuses');
-        console.log('Order statuses:', statuses);
+        console.log('--- Active Statuses ---');
+        const [active] = await pool.query('SELECT os.name, count(*) as cnt FROM orders o JOIN order_statuses os ON o.status_id = os.id GROUP BY os.name');
+        active.forEach(a => console.log(`${a.name}: ${a.cnt}`));
         
         process.exit(0);
     } catch (err) {

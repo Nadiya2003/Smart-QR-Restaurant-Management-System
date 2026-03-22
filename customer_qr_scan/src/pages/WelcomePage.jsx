@@ -8,7 +8,7 @@ export function WelcomePage({ onNavigate }) {
   const [showModal, setShowModal] = useState(false);
 
   // Use the local image from the public folder
-  const restaurantImage = '/welcome-bg.png';
+  const restaurantImage = '/2.jpg';
 
   useEffect(() => {
     // Show modal after a small delay for animation effect
@@ -32,70 +32,71 @@ export function WelcomePage({ onNavigate }) {
         <div className="w-24 h-24 bg-amber-500 rounded-[32px] flex items-center justify-center mb-8 rotate-12 shadow-2xl">
           <UtensilsIcon className="w-12 h-12 text-white -rotate-12" />
         </div>
-        
+
         <h1 className="text-5xl font-black text-white mb-4 tracking-tight leading-none uppercase">
           Melissa&apos;s <br />
           <span className="text-amber-400">Food Court</span>
         </h1>
-        
+
         <p className="text-white/70 text-lg font-medium max-w-[280px] mb-12">
-            The finest Sri Lankan hospitality and cuisine at your fingertips.
+          The finest Sri Lankan hospitality and cuisine at your fingertips.
         </p>
 
         <div className="flex flex-col gap-4 w-full max-w-xs opacity-0 animate-fade-up">
-           <Button onClick={() => setShowModal(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-5 rounded-3xl h-auto">
-              Get Started
-           </Button>
+          <Button onClick={() => setShowModal(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-5 rounded-3xl h-auto">
+            Get Started
+          </Button>
         </div>
       </div>
 
       {/* Modern Welcome Popup Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div 
-             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500" 
-             onClick={() => setShowModal(false)}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500"
+            onClick={() => setShowModal(false)}
           ></div>
-          
+
           <div className="bg-white rounded-[40px] w-full max-w-sm overflow-hidden relative z-[60] shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-modal-in">
-             <div className="h-48 relative overflow-hidden">
-                <img 
-                   src={restaurantImage} 
-                   alt="Welcome" 
-                   className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent"></div>
-                <div className="absolute bottom-4 left-8 right-8">
-                   <span className="bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[2px] mb-2 inline-block">
-                     Welcome Experience
-                   </span>
-                   <h2 className="text-2xl font-black text-gray-900 leading-tight">
-                      Experience <br /> Smart Dining
-                   </h2>
-                </div>
-             </div>
+            <div className="h-48 relative overflow-hidden">
+              <img
+                src={restaurantImage}
+                alt="Welcome"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent"></div>
+              <div className="absolute bottom-4 left-8 right-8">
+                <span className="bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[2px] mb-2 inline-block">
+                  Welcome Experience
+                </span>
+                <h2 className="text-md font-black text-gray-900 leading-tight">
+                  {/* MELISSAS' FOOD COURT */}
+                </h2>
+              </div>
+            </div>
 
-             <div className="p-8 pt-2">
-                <p className="text-gray-500 mb-8 text-md leading-relaxed">
-                   Welcome back to Sri Lanka&apos;s finest. Please select your table to explore our menu and place your order.
-                </p>
+            <div className="p-8 pt-2">
+              <p className="text-gray-500 mb-8 text-md leading-relaxed">
+                Welcome back to Sri Lanka&apos;s finest. Please select your table to explore our menu and place your order.
+              </p>
 
-                <button
-                  onClick={() => onNavigate('table-selection')}
-                  className="w-full bg-gray-900 text-white py-5 px-6 rounded-3xl font-bold flex items-center justify-between group hover:bg-gray-800 transition-all active:scale-[0.98] shadow-xl shadow-gray-900/10"
-                >
-                  <span className="flex items-center gap-3">
-                    <SparklesIcon className="w-5 h-5 text-amber-400 fill-amber-400" />
-                    Select Table
-                  </span>
-                  <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-             </div>
+              <button
+                onClick={() => onNavigate('table-selection')}
+                className="w-full bg-gray-900 text-white py-5 px-6 rounded-3xl font-bold flex items-center justify-between group hover:bg-gray-800 transition-all active:scale-[0.98] shadow-xl shadow-gray-900/10"
+              >
+                <span className="flex items-center gap-3">
+                  <SparklesIcon className="w-5 h-5 text-amber-400 fill-amber-400" />
+                  Select Table
+                </span>
+                <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes fade-up {
           from { opacity: 0; transform: translateY(20px); }
           to { opacity: 1; transform: translateY(0); }

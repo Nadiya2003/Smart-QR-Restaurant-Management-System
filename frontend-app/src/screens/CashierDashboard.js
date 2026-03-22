@@ -727,10 +727,20 @@ const CashierDashboard = () => {
                     </View>
 
                     {selectedOrder && (
-                        <ScrollView>
+                        <ScrollView style={{ maxHeight: 500 }}>
                             <View style={styles.billSummary}>
                                 <Text style={styles.billTotalLabel}>Amount to Pay</Text>
                                 <Text style={styles.billTotalVal}>Rs. {selectedOrder.total_price}</Text>
+                            </View>
+
+                            <View style={{ padding: 15, backgroundColor: '#F9FAFB', borderRadius: 10, marginBottom: 20 }}>
+                                <Text style={{ fontWeight: 'bold', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingBottom: 5, marginBottom: 10 }}>Order Review</Text>
+                                {selectedOrder.items && (typeof selectedOrder.items === 'string' ? JSON.parse(selectedOrder.items) : selectedOrder.items).map((item, idx) => (
+                                    <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <Text style={{ flex: 1 }}>{item.name} x {item.quantity}</Text>
+                                        <Text>Rs. {item.price * item.quantity}</Text>
+                                    </View>
+                                ))}
                             </View>
 
                             <Text style={styles.inputLabel}>Select Payment Method</Text>
@@ -756,6 +766,24 @@ const CashierDashboard = () => {
                                     keyboardType="email-address"
                                     autoCapitalize="none"
                                 />
+                            </View>
+
+                            <View style={[styles.inputSection, { marginTop: 10, padding: 10, backgroundColor: '#EFF6FF', borderRadius: 12 }]}>
+                                <Text style={[styles.inputLabel, { color: '#1E40AF' }]}>🔧 Update Order Progression</Text>
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                                    {['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'].map(s => (
+                                        <TouchableOpacity 
+                                            key={s} 
+                                            style={[
+                                                styles.tinyStatusBtn, 
+                                                selectedOrder?.status_name === s && { backgroundColor: '#1E40AF' }
+                                            ]}
+                                            onPress={() => updateStatus(selectedOrder.id, s, selectedOrder.type === 'DINE-IN' ? 'DINE_IN' : selectedOrder.type)}
+                                        >
+                                            <Text style={[styles.tinyStatusText, selectedOrder?.status_name === s && { color: 'white' }]}>{s.replace('_', ' ')}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
                             </View>
 
                             <View style={styles.actionRow}>
@@ -1029,7 +1057,9 @@ const styles = StyleSheet.create({
     activePayMethodText: { color: 'white' },
     actionRow: { marginTop: 15 },
     printBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 12, borderRadius: 10, borderWeight: 1, borderColor: '#3B82F6', borderWidth: 1 },
-    printBtnText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 14 }
+    printBtnText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 14 },
+    tinyStatusBtn: { backgroundColor: 'white', borderColor: '#BFDBFE', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+    tinyStatusText: { fontSize: 10, fontWeight: 'bold', color: '#1E40AF' }
 });
 
 export default CashierDashboard;

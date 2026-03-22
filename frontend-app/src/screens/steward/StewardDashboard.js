@@ -38,6 +38,8 @@ const StewardDashboard = () => {
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [selectedStatusOrder, setSelectedStatusOrder] = useState(null);
     const [selectedMenuCategory, setSelectedMenuCategory] = useState('');
+    const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
     
     // New Order System States
     const [activeOrderContext, setActiveOrderContext] = useState(null); // { table, orderId, type: 'new' | 'update' }
@@ -88,9 +90,11 @@ const StewardDashboard = () => {
             const areaRes = await fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers });
             if (areaRes.ok) setDiningAreas((await areaRes.json()).areas || []);
 
-            if (activeTab === 'history') {
-                const histRes = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/history/${user.id}`, { headers });
-                if (histRes.ok) setHistory((await histRes.json()).orders || []);
+            // Fetch history with 'all' filter to show total completed orders correctly
+            const histRes = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/history/${user.id}?filter=all`, { headers });
+            if (histRes.ok) {
+                const histData = await histRes.json();
+                setHistory(histData.orders || []);
             }
         } catch (error) {
             console.error('Fetch error:', error);
@@ -346,7 +350,13 @@ const StewardDashboard = () => {
             </View>
             <View style={[styles.statBox, { backgroundColor: '#D1FAE5' }]}>
                 <Text style={styles.statVal}>{orders.length}</Text>
-                <Text style={styles.statLabel}>My Orders</Text>
+                <Text style={styles.statLabel}>Active</Text>
+            </View>
+            <View style={[styles.statBox, { backgroundColor: '#EDE9FE' }]}>
+                <Text style={styles.statVal}>
+                    {history.filter(o => o.status && ['COMPLETED', 'PAID', 'FINISHED'].includes(o.status.toUpperCase())).length}
+                </Text>
+                <Text style={styles.statLabel}>Completed</Text>
             </View>
         </View>
     );
@@ -736,20 +746,34 @@ const StewardDashboard = () => {
         >
             <Text style={styles.sectionTitle}>My Handled Orders</Text>
             {history.map(order => (
-                <View key={order.id} style={styles.historyCard}>
-                    <Text style={styles.historyId}>#{order.id} - Table {order.table_number}</Text>
+                <TouchableOpacity 
+                    key={order.id} 
+                    style={styles.historyCard}
+                    onPress={() => {
+                        setSelectedHistoryOrder(order);
+                        setShowHistoryModal(true);
+                    }}
+                >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.historyId}>#{order.id} - Table {order.table_number}</Text>
+                        <Text style={{ fontSize: 18 }}>👁️</Text>
+                    </View>
                     <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()} {new Date(order.created_at).toLocaleTimeString()}</Text>
                     <Text style={styles.historyStatus}>{order.status}</Text>
                     <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
-                </View>
+                </TouchableOpacity>
             ))}
         </ScrollView>
     );
 
     return (
-        <>
-            <SafeAreaView style={styles.container}>
-            {renderHeader()}
+        <View style={styles.container}>
+            {/* Header with its own background to cover status bar */}
+            <View style={{ backgroundColor: 'white' }}>
+                <SafeAreaView edges={['top', 'left', 'right']}>
+                    {renderHeader()}
+                </SafeAreaView>
+            </View>
             
             <View style={styles.mainContainer}>
                 {activeTab === 'home' && renderHome()}
@@ -790,33 +814,36 @@ const StewardDashboard = () => {
                 </View>
             )}
 
-            {/* Bottom Nav */}
-            <View style={styles.bottomNav}>
-                <TouchableOpacity onPress={() => setActiveTab('home')} style={[styles.navItem, activeTab === 'home' && styles.activeNav]}>
-                    <Text style={activeTab === 'home' ? styles.activeNavText : styles.navText}>🏠</Text>
-                    <Text style={activeTab === 'home' ? styles.activeNavLabel : styles.navLabel}>Home</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
-                    <Text style={activeTab === 'orders' ? styles.activeNavText : styles.navText}>🛍️</Text>
-                    <Text style={activeTab === 'orders' ? styles.activeNavLabel : styles.navLabel}>Orders</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('reservations')} style={[styles.navItem, activeTab === 'reservations' && styles.activeNav]}>
-                    <Text style={activeTab === 'reservations' ? styles.activeNavText : styles.navText}>📅</Text>
-                    <Text style={activeTab === 'reservations' ? styles.activeNavLabel : styles.navLabel}>Bookings</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('menu')} style={[styles.navItem, activeTab === 'menu' && styles.activeNav]}>
-                    <Text style={activeTab === 'menu' ? styles.activeNavText : styles.navText}>🍽️</Text>
-                    <Text style={activeTab === 'menu' ? styles.activeNavLabel : styles.navLabel}>Menu</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
-                    <Text style={activeTab === 'history' ? styles.activeNavText : styles.navText}>📜</Text>
-                    <Text style={activeTab === 'history' ? styles.activeNavLabel : styles.navLabel}>Stats</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
-                    <Text style={activeTab === 'account' ? styles.activeNavText : styles.navText}>👤</Text>
-                    <Text style={activeTab === 'account' ? styles.activeNavLabel : styles.navLabel}>Profile</Text>
-                </TouchableOpacity>
-            </View>
+            {/* Use SafeAreaView only for the bottom nav */}
+            <SafeAreaView edges={['bottom']} style={{ backgroundColor: 'white' }}>
+                {/* Bottom Nav */}
+                <View style={styles.bottomNav}>
+                    <TouchableOpacity onPress={() => setActiveTab('home')} style={[styles.navItem, activeTab === 'home' && styles.activeNav]}>
+                        <Text style={activeTab === 'home' ? styles.activeNavText : styles.navText}>🏠</Text>
+                        <Text style={activeTab === 'home' ? styles.activeNavLabel : styles.navLabel}>Home</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
+                        <Text style={activeTab === 'orders' ? styles.activeNavText : styles.navText}>🛍️</Text>
+                        <Text style={activeTab === 'orders' ? styles.activeNavLabel : styles.navLabel}>Orders</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('reservations')} style={[styles.navItem, activeTab === 'reservations' && styles.activeNav]}>
+                        <Text style={activeTab === 'reservations' ? styles.activeNavText : styles.navText}>📅</Text>
+                        <Text style={activeTab === 'reservations' ? styles.activeNavLabel : styles.navLabel}>Bookings</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('menu')} style={[styles.navItem, activeTab === 'menu' && styles.activeNav]}>
+                        <Text style={activeTab === 'menu' ? styles.activeNavText : styles.navText}>🍽️</Text>
+                        <Text style={activeTab === 'menu' ? styles.activeNavLabel : styles.navLabel}>Menu</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
+                        <Text style={activeTab === 'history' ? styles.activeNavText : styles.navText}>📜</Text>
+                        <Text style={activeTab === 'history' ? styles.activeNavLabel : styles.navLabel}>Stats</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                        <Text style={activeTab === 'account' ? styles.activeNavText : styles.navText}>👤</Text>
+                        <Text style={activeTab === 'account' ? styles.activeNavLabel : styles.navLabel}>Profile</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
 
             {/* Cancel Modal */}
             <Modal visible={showCancelModal} transparent animationType="slide">
@@ -935,51 +962,111 @@ const StewardDashboard = () => {
                 </View>
             </Modal>
 
-        </SafeAreaView>
-        <Modal
-            visible={filterModal.show}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setFilterModal({ ...filterModal, show: false })}
-        >
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 20, width: '90%', maxWidth: 400 }}>
-                    <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>{filterModal.title}</Text>
-                    <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 15 }}>{filterModal.placeholder}</Text>
-                    <TextInput
-                        style={{ borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 }}
-                        value={filterModal.value}
-                        onChangeText={(text) => setFilterModal({ ...filterModal, value: text })}
-                        placeholder={filterModal.placeholder}
-                        autoFocus={true}
-                    />
-                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            {/* Filter Modal */}
+            <Modal
+                visible={filterModal.show}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setFilterModal({ ...filterModal, show: false })}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                    <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 20, width: '90%', maxWidth: 400 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>{filterModal.title}</Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 15 }}>{filterModal.placeholder}</Text>
+                        <TextInput
+                            style={{ borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 }}
+                            value={filterModal.value}
+                            onChangeText={(text) => setFilterModal({ ...filterModal, value: text })}
+                            placeholder={filterModal.placeholder}
+                            autoFocus={true}
+                        />
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                            <TouchableOpacity 
+                                style={{ padding: 12, marginRight: 10 }}
+                                onPress={() => setFilterModal({ ...filterModal, show: false })}
+                            >
+                                <Text style={{ color: '#6B7280', fontWeight: 'bold' }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={{ backgroundColor: '#111827', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8 }}
+                                onPress={() => {
+                                    filterModal.onSubmit(filterModal.value);
+                                    setFilterModal({ ...filterModal, show: false });
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontWeight: 'bold' }}>OK</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* History Detail Modal */}
+            <Modal visible={showHistoryModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <Text style={styles.modalTitle}>Order Details</Text>
+                                <Text style={styles.modalSub}>Viewing #{selectedHistoryOrder?.id}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
+                                <Text style={{fontSize: 24, padding: 5}}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ maxHeight: 400, marginBottom: 20 }}>
+                            <View style={{ marginBottom: 15 }}>
+                                <Text style={{ fontSize: 14, color: '#6B7280' }}>Date: {selectedHistoryOrder && new Date(selectedHistoryOrder.created_at).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 14, color: '#6B7280' }}>Table: {selectedHistoryOrder?.table_number}</Text>
+                                <Text style={{ fontSize: 14, color: '#6B7280' }}>Status: {selectedHistoryOrder?.status}</Text>
+                            </View>
+
+                            <Text style={{ fontWeight: 'bold', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 5 }}>Items Ordered</Text>
+                            {selectedHistoryOrder?.items && (typeof selectedHistoryOrder.items === 'string' ? JSON.parse(selectedHistoryOrder.items) : selectedHistoryOrder.items).map((item, idx) => (
+                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontWeight: '500' }}>{item.name}</Text>
+                                        <Text style={{ fontSize: 12, color: '#6B7280' }}>Rs. {item.price} x {item.quantity}</Text>
+                                    </View>
+                                    <Text style={{ fontWeight: '600' }}>Rs. {item.price * item.quantity}</Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 15 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                <Text style={{ color: '#6B7280' }}>Items Total</Text>
+                                <Text style={{ fontWeight: 'bold' }}>Rs. {selectedHistoryOrder?.total_price}</Text>
+                            </View>
+                        </View>
+
                         <TouchableOpacity 
-                            style={{ padding: 12, marginRight: 10 }}
-                            onPress={() => setFilterModal({ ...filterModal, show: false })}
+                            style={[styles.confirmBtn, { backgroundColor: '#111827', marginTop: 20, flex: 0 }]} 
+                            onPress={() => setShowHistoryModal(false)}
                         >
-                            <Text style={{ color: '#6B7280', fontWeight: 'bold' }}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={{ backgroundColor: '#111827', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8 }}
-                            onPress={() => {
-                                filterModal.onSubmit(filterModal.value);
-                                setFilterModal({ ...filterModal, show: false });
-                            }}
-                        >
-                            <Text style={{ color: 'white', fontWeight: 'bold' }}>OK</Text>
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>Close Review</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
-        </Modal>
-        </>
+            </Modal>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFB' },
-    header: { padding: 15, backgroundColor: 'white', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+    header: { 
+        paddingHorizontal: 15,
+        paddingBottom: 15,
+        paddingTop: 0,
+        backgroundColor: 'white', 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#E5E7EB' 
+    },
     profileBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
     profileImg: { width: '100%', height: '100%' },
     profileInitial: { fontSize: 18, fontWeight: 'bold', color: '#1D4ED8' },
@@ -990,11 +1077,21 @@ const styles = StyleSheet.create({
     badge: { position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
     logoutBtn: { padding: 5 },
     mainContainer: { flex: 1 },
-    content: { flex: 1, padding: 20 },
-    statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-    statBox: { flex: 1, padding: 15, borderRadius: 12, alignItems: 'center' },
-    statVal: { fontSize: 24, fontWeight: 'bold' },
-    statLabel: { fontSize: 12, color: '#4B5563', marginTop: 4 },
+    content: { flex: 1, padding: 15, paddingTop: 5 },
+    statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20, paddingHorizontal: 5 },
+    statBox: { 
+        width: (width - 60) / 2, // 2 per row
+        padding: 15, 
+        borderRadius: 12, 
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    statVal: { fontSize: 22, fontWeight: 'bold' },
+    statLabel: { fontSize: 11, color: '#4B5563', marginTop: 4 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
     linkText: { color: '#3B82F6', fontSize: 13, fontWeight: '600' },

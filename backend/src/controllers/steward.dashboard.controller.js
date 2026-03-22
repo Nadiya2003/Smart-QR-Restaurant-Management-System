@@ -179,12 +179,18 @@ export const getStewardHistory = async (req, res) => {
         const { stewardId } = req.params;
         const { filter = 'today' } = req.query;
 
-        let timeFilter = 'AND DATE(o.created_at) = CURDATE()';
-        if (filter === 'week') timeFilter = 'AND o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
-        if (filter === 'month') timeFilter = 'AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+        let timeFilter = '';
+        if (filter === 'today') timeFilter = 'AND DATE(o.created_at) = CURDATE()';
+        else if (filter === 'week') timeFilter = 'AND o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        else if (filter === 'month') timeFilter = 'AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+        else if (filter === 'all') timeFilter = '';
+        else timeFilter = 'AND DATE(o.created_at) = CURDATE()'; // default to today
 
         const [orders] = await pool.query(`
-            SELECT o.*, rt.table_number, os.name as status
+            SELECT o.*, rt.table_number, os.name as status,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
+                   ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
@@ -193,7 +199,12 @@ export const getStewardHistory = async (req, res) => {
             ORDER BY o.created_at DESC
         `, [stewardId]);
 
-        res.json({ orders });
+        const parsedOrders = orders.map(o => ({
+            ...o,
+            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
+        }));
+        
+        res.json({ orders: parsedOrders });
     } catch (error) {
         console.error('Get history error:', error);
         res.status(500).json({ message: 'Failed to fetch history' });

@@ -252,10 +252,7 @@ export const getAllOrders = async (req, res) => {
         const [deliveryOrders] = await pool.query(`
             SELECT do.*, "DELIVERY" as order_type, customer_name,
                    'Guest' as customer_type,
-                   (SELECT GROUP_CONCAT(CONCAT(doi.quantity, 'x ', mi.name) SEPARATOR ', ')
-                    FROM delivery_order_items doi
-                    JOIN menu_items mi ON doi.menu_item_id = mi.id
-                    WHERE doi.order_id = do.id) as items_summary
+                   do.items as items
             FROM delivery_orders do
             ORDER BY do.created_at DESC
         `);
@@ -264,10 +261,9 @@ export const getAllOrders = async (req, res) => {
             SELECT o.*, "DINE-IN" as order_type, rt.table_number, os.name as status, c.name as customer_name,
                    su.full_name as steward_name,
                    CASE WHEN o.customer_id IS NOT NULL THEN 'Registered' ELSE 'Guest' END as customer_type,
-                   (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', mi.name) SEPARATOR ', ')
-                    FROM order_items oi
-                    JOIN menu_items mi ON oi.menu_item_id = mi.id
-                    WHERE oi.order_id = o.id) as items_summary
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
+                   ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
@@ -276,28 +272,50 @@ export const getAllOrders = async (req, res) => {
             LEFT JOIN staff_users su ON s.staff_id = su.id
             ORDER BY o.created_at DESC
         `);
-        
+        const allOrders = [
+            ...deliveryOrders,
+            ...takeawayOrders,
+            ...dineInOrders
+        ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
         // Map Dine-in statuses to user preferred names if they don't match
         const statusMap = {
             'PENDING': 'Pending',
             'PREPARING': 'Cooking',
             'READY': 'Ready to Serve',
             'SERVED': 'Served',
-            'COMPLETED': 'Finished',
+            'COMPLETED': 'Completed',
             'CANCELLED': 'Cancelled',
             'READY_TO_SERVE': 'Ready to Serve',
-            'FINISHED': 'Finished',
+            'FINISHED': 'Completed',
             'COOKING': 'Cooking'
         };
 
-        const allOrders = [...deliveryOrders, ...takeawayOrders, ...dineInOrders].map(o => ({
-            ...o,
-            status: o.order_status ? (statusMap[(o.order_status || '').toUpperCase()] || o.order_status) : (o.status || 'Pending')
-        })).sort((a, b) => 
-            new Date(b.created_at) - new Date(a.created_at)
-        );
+        const parsedOrders = allOrders.map(o => {
+            // Normalize status
+            const rawStatus = (o.order_status || o.status || 'Pending').toUpperCase();
+            const normalizedStatus = statusMap[rawStatus] || rawStatus;
 
-        res.json({ orders: allOrders });
+            // Normalize items
+            let items = [];
+            if (typeof o.items === 'string') {
+                try {
+                    items = JSON.parse(o.items);
+                } catch (e) {
+                    items = [];
+                }
+            } else {
+                items = o.items || [];
+            }
+
+            return {
+                ...o,
+                status: normalizedStatus,
+                items
+            };
+        });
+
+        res.json({ orders: parsedOrders });
     } catch (err) {
         console.error('Get all orders error:', err);
         res.status(500).json({ message: 'Server Error' });
@@ -523,7 +541,7 @@ export const updateOrderStatus = async (req, res) => {
         if (type === 'DELIVERY') {
             await pool.query('UPDATE delivery_orders SET order_status = ? WHERE id = ?', [status, id]);
         } else if (type === 'TAKEAWAY') {
-            await pool.query('UPDATE takeaway_orders SET status = ? WHERE id = ?', [status, id]);
+            await pool.query('UPDATE takeaway_orders SET order_status = ? WHERE id = ?', [status, id]);
         } else {
             const [statusRows] = await pool.query('SELECT id, name FROM order_statuses WHERE name = ?', [dbStatus]);
             if (statusRows.length > 0) {
