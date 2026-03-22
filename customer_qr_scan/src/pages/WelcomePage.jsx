@@ -1,71 +1,116 @@
-import React from 'react';
-import { UtensilsIcon, ChevronRightIcon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { UtensilsIcon, ChevronRightIcon, SparklesIcon } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useOrder } from '../hooks/useOrder';
 
 export function WelcomePage({ onNavigate }) {
   const { tableNumber } = useOrder();
+  const [showModal, setShowModal] = useState(false);
 
   // Use the local image from the public folder
   const restaurantImage = '/welcome-bg.png';
 
+  useEffect(() => {
+    // Show modal after a small delay for animation effect
+    const timer = setTimeout(() => setShowModal(true), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-      {/* Hero Section with Image */}
-      <div className="relative h-[45vh] w-full overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-white overflow-hidden">
+      {/* Background/Hero Section */}
+      <div className="absolute inset-0 z-0">
         <img
           src={restaurantImage}
-          alt="Melissa's Food Court"
-          className="w-full h-full object-cover"
+          alt="Melissa&apos;s Food Court"
+          className="w-full h-full object-cover brightness-[0.4]"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Melissa's <span className="text-amber-400">Food Court</span>
-          </h1>
-          <div className="flex items-center gap-2">
-            <span className="bg-amber-400 text-black px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider">
-              Smart QR Dining
-            </span>
-            <span className="text-white/80 text-sm font-medium">
-              Table {tableNumber}
-            </span>
-          </div>
-        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-black/80"></div>
       </div>
 
-      <div className="flex-1 p-8 flex flex-col -mt-6 bg-white rounded-t-[32px] relative z-10 shadow-[0_-12px_30px_rgba(0,0,0,0.05)]">
-        <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8"></div>
-
-        <p className="text-gray-600 mb-10 text-lg">
-          Experience the finest Sri Lankan hospitality and cuisine with our seamless smart ordering system.
+      <div className="relative z-10 flex-1 flex flex-col p-8 justify-center items-center text-center">
+        <div className="w-24 h-24 bg-amber-500 rounded-[32px] flex items-center justify-center mb-8 rotate-12 shadow-2xl">
+          <UtensilsIcon className="w-12 h-12 text-white -rotate-12" />
+        </div>
+        
+        <h1 className="text-5xl font-black text-white mb-4 tracking-tight leading-none uppercase">
+          Melissa&apos;s <br />
+          <span className="text-amber-400">Food Court</span>
+        </h1>
+        
+        <p className="text-white/70 text-lg font-medium max-w-[280px] mb-12">
+            The finest Sri Lankan hospitality and cuisine at your fingertips.
         </p>
 
-        <div className="w-full space-y-4">
-          <button
-            onClick={() => onNavigate('steward')}
-            className="w-full bg-gray-900 text-white py-4 px-6 rounded-2xl font-bold flex items-center justify-between group hover:bg-gray-800 transition-all active:scale-[0.98]"
-          >
-            <span className="flex items-center gap-3">
-              <UtensilsIcon className="w-5 h-5 text-amber-400" />
-              Continue as Guest
-            </span>
-            <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
-
-          <button
-            onClick={() => onNavigate('login')}
-            className="w-full py-4 px-4 rounded-2xl font-bold text-gray-900 border-2 border-gray-100 hover:border-gray-900 transition-all active:scale-[0.95]"
-          >
-            Login
-          </button>
-        </div>
-
-        <div className="mt-auto pt-8 text-center">
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-[2px]">
-            melissa's food court
-          </p>
+        <div className="flex flex-col gap-4 w-full max-w-xs opacity-0 animate-fade-up">
+           <Button onClick={() => setShowModal(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-5 rounded-3xl h-auto">
+              Get Started
+           </Button>
         </div>
       </div>
+
+      {/* Modern Welcome Popup Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500" 
+             onClick={() => setShowModal(false)}
+          ></div>
+          
+          <div className="bg-white rounded-[40px] w-full max-w-sm overflow-hidden relative z-[60] shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-modal-in">
+             <div className="h-48 relative overflow-hidden">
+                <img 
+                   src={restaurantImage} 
+                   alt="Welcome" 
+                   className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent"></div>
+                <div className="absolute bottom-4 left-8 right-8">
+                   <span className="bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[2px] mb-2 inline-block">
+                     Welcome Experience
+                   </span>
+                   <h2 className="text-2xl font-black text-gray-900 leading-tight">
+                      Experience <br /> Smart Dining
+                   </h2>
+                </div>
+             </div>
+
+             <div className="p-8 pt-2">
+                <p className="text-gray-500 mb-8 text-md leading-relaxed">
+                   Welcome back to Sri Lanka&apos;s finest. Please select your table to explore our menu and place your order.
+                </p>
+
+                <button
+                  onClick={() => onNavigate('table-selection')}
+                  className="w-full bg-gray-900 text-white py-5 px-6 rounded-3xl font-bold flex items-center justify-between group hover:bg-gray-800 transition-all active:scale-[0.98] shadow-xl shadow-gray-900/10"
+                >
+                  <span className="flex items-center gap-3">
+                    <SparklesIcon className="w-5 h-5 text-amber-400 fill-amber-400" />
+                    Select Table
+                  </span>
+                  <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes fade-up {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes modal-in {
+          from { opacity: 0; transform: scale(0.9) translateY(20px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-fade-up {
+          animation: fade-up 0.8s forwards 0.5s;
+        }
+        .animate-modal-in {
+          animation: modal-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+      `}} />
     </div>
   );
 }

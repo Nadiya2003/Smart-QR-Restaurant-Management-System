@@ -8,14 +8,14 @@ export const getSummary = async (req, res) => {
     try {
         const userId = req.user.userId;
         const [[activeDeliveries]] = await pool.query(
-            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND status = 'Out for Delivery'",
+            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND order_status = 'Out for Delivery'",
             [userId]
         );
         const [[pendingOrders]] = await pool.query(
-            "SELECT COUNT(*) as count FROM delivery_orders WHERE status = 'Pending'"
+            "SELECT COUNT(*) as count FROM delivery_orders WHERE order_status = 'Pending'"
         );
         const [[completedDeliveries]] = await pool.query(
-            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND status = 'Delivered' AND DATE(created_at) = CURDATE()",
+            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND order_status = 'Delivered' AND DATE(created_at) = CURDATE()",
             [userId]
         );
         const [[cancelRequests]] = await pool.query(
@@ -46,7 +46,7 @@ export const getOrders = async (req, res) => {
                        JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes)
                    ) FROM delivery_order_items doi JOIN menu_items mi ON doi.menu_item_id = mi.id WHERE doi.order_id = do.id) as items
             FROM delivery_orders do
-            WHERE do.status NOT IN ('Delivered')
+            WHERE do.order_status NOT IN ('Delivered')
             ORDER BY do.created_at DESC
         `);
 
@@ -75,9 +75,9 @@ export const createOrder = async (req, res) => {
         await connection.beginTransaction();
 
         const [result] = await connection.query(
-            `INSERT INTO delivery_orders (customer_name, phone, address, latitude, longitude, order_type, status, payment_status, total_price, created_by) 
-             VALUES (?, ?, ?, ?, ?, 'rider', 'Pending', ?, ?, ?)`,
-            [customer_name, phone, address, latitude, longitude, payment_status || 'Unpaid', total_price, riderId]
+            `INSERT INTO delivery_orders (customer_name, phone, address, latitude, longitude, order_type, order_status, payment_status, total_price, created_by, customer_id) 
+             VALUES (?, ?, ?, ?, ?, 'rider', 'Pending', ?, ?, ?, ?)`,
+            [customer_name, phone, address, latitude, longitude, payment_status || 'Unpaid', total_price, riderId, null]
         );
 
         const orderId = result.insertId;
@@ -140,18 +140,18 @@ export const updateOrderStatus = async (req, res) => {
         const riderId = req.user.userId;
 
         // If status is 'Out for Delivery', assign to this rider if not already
-        let updateQuery = 'UPDATE delivery_orders SET status = ?';
+        let updateQuery = 'UPDATE delivery_orders SET order_status = ?';
         let params = [status, id];
 
         if (status === 'Out for Delivery') {
-            updateQuery = 'UPDATE delivery_orders SET status = ?, created_by = ? WHERE id = ?';
+            updateQuery = 'UPDATE delivery_orders SET order_status = ?, created_by = ? WHERE id = ?';
             params = [status, riderId, id];
         } else if (status === 'Delivered') {
             // Mark as Paid when delivered if it was Cash on Delivery
-            updateQuery = "UPDATE delivery_orders SET status = ?, payment_status = 'Paid' WHERE id = ?";
+            updateQuery = "UPDATE delivery_orders SET order_status = ?, payment_status = 'Paid' WHERE id = ?";
             params = [status, id];
         } else {
-            updateQuery = 'UPDATE delivery_orders SET status = ? WHERE id = ?';
+            updateQuery = 'UPDATE delivery_orders SET order_status = ? WHERE id = ?';
             params = [status, id];
         }
 
@@ -267,7 +267,7 @@ export const getHistory = async (req, res) => {
         const riderId = req.user.userId;
         const { dateFrom, dateTo } = req.query;
 
-        let query = "SELECT * FROM delivery_orders WHERE created_by = ? AND status = 'Delivered'";
+        let query = "SELECT * FROM delivery_orders WHERE created_by = ? AND order_status = 'Delivered'";
         let params = [riderId];
 
         if (dateFrom && dateTo) {

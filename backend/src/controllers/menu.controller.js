@@ -2,12 +2,25 @@ import pool from '../config/db.js';
 
 export const getMenu = async (req, res) => {
     try {
-        const [items] = await pool.query(`
+        const [rows] = await pool.query(`
             SELECT m.*, c.name as category 
             FROM menu_items m 
             JOIN categories c ON m.category_id = c.id 
             ORDER BY c.name, m.name
         `);
+
+        // Prepend base URL to images for mobile/remote access
+        const host = req.get('host') || 'localhost:5000';
+        const protocol = req.protocol === 'https' ? 'https' : 'http';
+        const baseUrl = `${protocol}://${host}`;
+
+        const items = rows.map(item => ({
+            ...item,
+            image: item.image 
+                ? (item.image.startsWith('http') ? item.image : `${baseUrl}${item.image}`) 
+                : `${baseUrl}/uploads/menu/default.png`
+        }));
+        
         res.json(items);
 
     } catch (error) {
@@ -37,7 +50,19 @@ export const getMenuItemById = async (req, res) => {
 
 export const getCategories = async (req, res) => {
     try {
-        const [categories] = await pool.query('SELECT * FROM categories');
+        const [rows] = await pool.query('SELECT * FROM categories');
+        
+        const host = req.get('host') || 'localhost:5000';
+        const protocol = req.protocol === 'https' ? 'https' : 'http';
+        const baseUrl = `${protocol}://${host}`;
+
+        const categories = rows.map(cat => ({
+            ...cat,
+            image: cat.image 
+                ? (cat.image.startsWith('http') ? cat.image : `${baseUrl}${cat.image}`) 
+                : `${baseUrl}/uploads/categories/default.png`
+        }));
+        
         res.json(categories);
     } catch (error) {
         console.error('Get categories error:', error);

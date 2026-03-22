@@ -292,7 +292,7 @@ export const getAllOrders = async (req, res) => {
 
         const allOrders = [...deliveryOrders, ...takeawayOrders, ...dineInOrders].map(o => ({
             ...o,
-            status: o.status ? (statusMap[(o.status || '').toUpperCase()] || o.status) : 'Pending'
+            status: o.order_status ? (statusMap[(o.order_status || '').toUpperCase()] || o.order_status) : (o.status || 'Pending')
         })).sort((a, b) => 
             new Date(b.created_at) - new Date(a.created_at)
         );
@@ -459,7 +459,7 @@ export const handleCancellationAction = async (req, res) => {
         if (action === 'approve') {
             if (request.order_type === 'delivery') {
                 await connection.query(
-                    "UPDATE delivery_orders SET status = 'Cancelled', status_notes = ? WHERE id = ?",
+                    "UPDATE delivery_orders SET order_status = 'Cancelled', status_notes = ? WHERE id = ?",
                     [request.reason, request.order_id]
                 );
             } else if (request.order_type === 'takeaway') {
@@ -521,7 +521,7 @@ export const updateOrderStatus = async (req, res) => {
         const dbStatus = dbStatusMap[status] || status.toUpperCase();
 
         if (type === 'DELIVERY') {
-            await pool.query('UPDATE delivery_orders SET status = ? WHERE id = ?', [status, id]);
+            await pool.query('UPDATE delivery_orders SET order_status = ? WHERE id = ?', [status, id]);
         } else if (type === 'TAKEAWAY') {
             await pool.query('UPDATE takeaway_orders SET status = ? WHERE id = ?', [status, id]);
         } else {

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { SearchIcon, UserIcon } from 'lucide-react';
+import { SearchIcon, UserIcon, MapPinIcon } from 'lucide-react';
 import { BottomNav } from '../components/layout/BottomNav';
 import { CategoryFilter } from '../components/menu/CategoryFilter';
 import { FoodCard } from '../components/menu/FoodCard';
@@ -16,7 +16,7 @@ export function MenuPage({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   
   const { addItem } = useCart();
-  const { selectedStewardId } = useOrder();
+  const { selectedStewardId, tableNumber } = useOrder();
 
   useEffect(() => {
     fetchData();
@@ -75,14 +75,16 @@ export function MenuPage({ onNavigate }) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gray-100 rounded-full overflow-hidden flex items-center justify-center text-gray-700 font-bold border-2 border-white shadow-sm">
-              {steward?.image ? (
+              {steward?.avatar && !steward.avatar.includes('default.png') ? (
                 <img 
-                  src={steward.image.startsWith('http') ? steward.image : `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${steward.image}`} 
+                  src={steward.avatar} 
                   alt={steward.name}
                   className="w-full h-full object-cover"
                 />
-              ) : steward?.avatar || steward?.name?.charAt(0) || (
-                <UserIcon className="w-5 h-5" />
+              ) : (
+                <div className="w-full h-full bg-indigo-100 flex items-center justify-center text-indigo-700">
+                   {steward?.name?.charAt(0) || <UserIcon className="w-5 h-5" />}
+                </div>
               )}
             </div>
             <div>
@@ -93,6 +95,28 @@ export function MenuPage({ onNavigate }) {
                 </p>
                 <button
                   onClick={() => onNavigate('steward')}
+                  className="text-xs text-gray-900 underline font-medium"
+                >
+                  Change
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-8 w-[1px] bg-gray-200"></div>
+
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 font-bold border-2 border-white shadow-sm">
+                <MapPinIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Your Table</p>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-gray-900 text-sm">
+                  Table {tableNumber || '--'}
+                </p>
+                <button
+                  onClick={() => onNavigate('change-table')}
                   className="text-xs text-gray-900 underline font-medium"
                 >
                   Change

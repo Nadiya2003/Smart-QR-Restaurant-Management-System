@@ -6,7 +6,8 @@ import {
   SettingsIcon,
   LogOutIcon,
   AwardIcon,
-  LockIcon
+  LockIcon,
+  MapPinIcon
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
@@ -42,6 +43,7 @@ export function DashboardPage({ onNavigate }) {
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
       <Header
         title="My Account"
+        onNavigate={onNavigate}
         rightAction={
           isAuthenticated ? (
             <button
@@ -180,15 +182,21 @@ export function DashboardPage({ onNavigate }) {
               <LockIcon className="w-6 h-6 text-gray-400" />
             )}
             <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-700">
-                Settings
-              </span>
+              <span className="text-sm font-medium text-gray-700">Settings</span>
               {!isAuthenticated && (
-                <span className="text-[10px] text-gray-400 mt-1">
-                  Login Required
-                </span>
+                <span className="text-[10px] text-gray-400 mt-1">Login Required</span>
               )}
             </div>
+          </button>
+
+          <button
+            onClick={() => onNavigate('change-table')}
+            className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col items-center justify-center gap-2 hover:border-amber-300 transition-colors"
+          >
+            <div className="bg-amber-100 p-2 rounded-lg">
+              <MapPinIcon className="w-6 h-6 text-amber-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-700">Change Table</span>
           </button>
         </div>
       </div>

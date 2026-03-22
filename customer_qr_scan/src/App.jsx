@@ -15,6 +15,8 @@ import { RegisterPage } from './pages/RegisterPage.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
 import { OrderHistoryPage } from './pages/OrderHistoryPage.jsx';
 import { FeedbackPage } from './pages/FeedbackPage.jsx';
+import { TableSelectionPage } from './pages/TableSelectionPage.jsx';
+import { AuthSelectionPage } from './pages/AuthSelectionPage.jsx';
 
 function AppContent() {
   const [currentPage, setCurrentPage] = useState('welcome');
@@ -48,6 +50,12 @@ function AppContent() {
         return <OrderHistoryPage onNavigate={navigate} />;
       case 'feedback':
         return <FeedbackPage onNavigate={navigate} />;
+      case 'table-selection':
+        return <TableSelectionPage onNavigate={navigate} />;
+      case 'change-table':
+        return <TableSelectionPage onNavigate={navigate} isChangingTable={true} />;
+      case 'auth-selection':
+        return <AuthSelectionPage onNavigate={navigate} />;
       default:
         return <WelcomePage onNavigate={navigate} />;
     }

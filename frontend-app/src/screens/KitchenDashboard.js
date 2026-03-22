@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, SafeAreaView, Dimensions, Switch, Vibration, Platform
+    FlatList, Image, Dimensions, Switch, Vibration, Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
@@ -460,6 +461,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFB' },
     header: { padding: 15, backgroundColor: 'white', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
     profileBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
     profileInitial: { fontSize: 18, fontWeight: 'bold', color: '#1D4ED8' },
     greeting: { fontSize: 12, color: '#6B7280' },
     roleTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },

@@ -28,6 +28,7 @@ export function OrderHistoryPage({ onNavigate }) {
         title="Order History"
         showBack
         onBack={() => onNavigate('dashboard')}
+        onNavigate={onNavigate}
       />
 
       <div className="flex-1 p-4 overflow-y-auto">

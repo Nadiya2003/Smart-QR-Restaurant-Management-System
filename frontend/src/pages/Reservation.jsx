@@ -148,6 +148,9 @@ function Reservation() {
 
             if (response.ok) {
                 setShowSuccess(true);
+                // Scroll to top to see message
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
                 setFormData({
                     ...formData,
                     date: '',
@@ -157,8 +160,7 @@ function Reservation() {
                     tableId: '',
                     specialRequest: '',
                 });
-                // Hide success message after 5 seconds
-                setTimeout(() => setShowSuccess(false), 5000);
+                // Keep the success message visible until user takes action or navigates
             } else {
                 setError(data.message || 'Failed to submit reservation');
             }
@@ -185,19 +187,42 @@ function Reservation() {
 
                 {/* Status Messages */}
                 {showSuccess && (
-                    <div className="mb-6 bg-green-500/20 border border-green-500 rounded-2xl p-6 text-center animate-slide-up shadow-lg">
-                        <div className="text-3xl mb-3">✅</div>
-                        <h3 className="text-white font-bold text-xl mb-2">Reservation Successful!</h3>
-                        <p className="text-gray-300 mb-6">A confirmation email has been sent to your inbox.</p>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <Button onClick={() => navigate('/account')} className="bg-[#D4AF37] text-black">
-                                View in My Account
-                            </Button>
-                            <Button variant="outline" onClick={() => setShowSuccess(false)} className="border-white/20 text-white">
-                                Book Another Table
-                            </Button>
+                    <GlassCard className="mb-12 border-[#D4AF37] bg-gradient-to-br from-[#D4AF37]/20 to-black/40 p-10 text-center animate-fade-in shadow-[0_0_50px_rgba(212,175,55,0.15)] relative overflow-hidden group">
+                        {/* Decorative glow */}
+                        <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#D4AF37]/20 blur-[100px] rounded-full group-hover:bg-[#D4AF37]/30 transition-all duration-700"></div>
+                        
+                        <div className="relative z-10">
+                            <div className="w-20 h-20 bg-[#D4AF37] rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#D4AF37]/30 animate-bounce-subtle">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+
+                            <h2 className="text-4xl md:text-5xl font-serif text-white mb-4 tracking-tight">
+                                Reservation <span className="text-[#D4AF37]">Successful!</span>
+                            </h2>
+                            
+                            <p className="text-xl text-gray-300 mb-8 max-w-lg mx-auto leading-relaxed">
+                                We're excited to host you! A <span className="text-[#D4AF37] font-bold">confirmation email</span> has been sent with all your details. 
+                            </p>
+
+                            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
+                                <Button 
+                                    onClick={() => navigate('/account')} 
+                                    className="bg-[#D4AF37] hover:bg-[#E6C86E] text-black font-black uppercase tracking-widest px-8 h-14 shadow-lg shadow-[#D4AF37]/20"
+                                >
+                                    My Dashboard
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => setShowSuccess(false)} 
+                                    className="border-white/20 text-white hover:bg-white/5 h-14 px-8 uppercase font-bold tracking-widest backdrop-blur-sm"
+                                >
+                                    New Reservation
+                                </Button>
+                            </div>
                         </div>
-                    </div>
+                    </GlassCard>
                 )}
 
                 {error && (

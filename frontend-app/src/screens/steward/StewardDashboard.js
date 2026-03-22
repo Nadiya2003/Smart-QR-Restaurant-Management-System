@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, SafeAreaView, Dimensions, Switch, Vibration, Platform
+    FlatList, Image, Dimensions, Switch, Vibration, Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
 import AccountSection from '../AccountSection';
@@ -25,6 +26,7 @@ const StewardDashboard = () => {
     const [reservations, setReservations] = useState([]);
     const [isOnDuty, setIsOnDuty] = useState(false);
     const [diningAreas, setDiningAreas] = useState([]);
+    const [cart, setCart] = useState([]);
     
     // Modal States
     const [showOrderModal, setShowOrderModal] = useState(false);

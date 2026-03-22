@@ -185,16 +185,15 @@ export const loginStaff = async (req, res) => {
 
         // Record Attendance (Login)
         try {
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date();
+            // Use DB-native CURDATE() to ensure it matches later checks
             const [atRows] = await pool.query(
-                "SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ?",
-                [user.id, today]
+                "SELECT id FROM staff_attendance WHERE staff_id = ? AND date = CURDATE()",
+                [user.id]
             );
             if (atRows.length === 0) {
                 await pool.query(
-                    "INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, ?, ?, 'PRESENT')",
-                    [user.id, user.full_name, user.role_name, today, now]
+                    "INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, CURDATE(), NOW(), 'PRESENT')",
+                    [user.id, user.full_name, user.role_name]
                 );
             }
         } catch (attErr) {
@@ -301,12 +300,10 @@ export const resetPassword = async (req, res) => {
 export const logoutStaff = async (req, res) => {
     try {
         const userId = req.user.userId;
-        const today = new Date().toISOString().split('T')[0];
-        const now = new Date();
 
         await pool.query(
-            "UPDATE staff_attendance SET check_out_time = ? WHERE staff_id = ? AND date = ? AND check_out_time IS NULL",
-            [now, userId, today]
+            "UPDATE staff_attendance SET check_out_time = NOW() WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL",
+            [userId]
         );
 
         // Also set steward as off-duty if they are a steward

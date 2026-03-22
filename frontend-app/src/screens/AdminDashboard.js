@@ -2022,10 +2022,17 @@ const AdminDashboard = () => {
                 </TouchableOpacity>
 
                 <View style={styles.adminInfo_compact}>
-                    <View style={styles.adminAvatar_small}>
-                        <Text style={styles.avatarLetter_small}>{user?.name?.charAt(0).toUpperCase() || 'A'}</Text>
-                    </View>
-                    <TouchableOpacity onPress={handleLogout}>
+                    <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.adminAvatar_small, { overflow: 'hidden' }]}>
+                        {user?.profile_image ? (
+                            <Image 
+                                source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
+                                style={{ width: '100%', height: '100%', resizeMode: 'cover' }} 
+                            />
+                        ) : (
+                            <Text style={styles.avatarLetter_small}>{user?.name?.charAt(0).toUpperCase() || 'A'}</Text>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={logout}>
                         <Text style={styles.logoutLink}>Sign Out</Text>
                     </TouchableOpacity>
                 </View>

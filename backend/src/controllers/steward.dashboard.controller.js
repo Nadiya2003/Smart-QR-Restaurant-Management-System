@@ -240,14 +240,14 @@ export const checkIn = async (req, res) => {
 
         // 2. Create/Update attendance
         const [existing] = await connection.query(
-            'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ?',
-            [userId, today]
+            'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = CURDATE()',
+            [userId]
         );
 
         if (existing.length === 0) {
             await connection.query(
-                'INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, ?, NOW(), "PRESENT")',
-                [userId, name, role, today]
+                'INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, CURDATE(), NOW(), "PRESENT")',
+                [userId, name, role]
             );
         } else {
             // Idempotent: ensure check_out_time is null if previously checked out
@@ -291,8 +291,8 @@ export const checkOut = async (req, res) => {
 
         // 2. Update attendance logout
         await connection.query(
-            'UPDATE staff_attendance SET check_out_time = NOW() WHERE staff_id = ? AND date = ? AND check_out_time IS NULL',
-            [userId, today]
+            'UPDATE staff_attendance SET check_out_time = NOW() WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL',
+            [userId]
         );
 
         await connection.commit();
@@ -311,14 +311,20 @@ export const checkOut = async (req, res) => {
 export const getDutyStatus = async (req, res) => {
     try {
         const userId = req.user.userId;
-        // Check for an active attendance record (modern way)
+        console.log(`Checking duty status for UserID: ${userId}`);
+        
+        // 1. Get attendance record for today (UTC matching CURDATE)
         const [att] = await pool.query(
-            'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL',
+            'SELECT id, date, check_in_time FROM staff_attendance WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL ORDER BY id DESC',
             [userId]
         );
+        
         const onDuty = att.length > 0;
+        console.log(`Duty check for User ${userId}: ${onDuty ? 'ON DUTY' : 'OFF DUTY'} (Matches: ${att.length})`);
+        
         res.json({ onDuty });
     } catch (error) {
+        console.error('getDutyStatus error:', error);
         res.status(500).json({ message: 'Failed to fetch duty status' });
     }
 };

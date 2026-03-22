@@ -511,3 +511,75 @@ export const removeOrderItem = async (req, res) => {
         if (connection) connection.release();
     }
 };
+
+/**
+ * Get all tables for selection
+ */
+export const getAllTables = async (req, res) => {
+    try {
+        const [tables] = await pool.query(`
+            SELECT t.*, a.area_name 
+            FROM restaurant_tables t
+            JOIN dining_areas a ON t.area_id = a.id
+            ORDER BY a.area_name, t.table_number
+        `);
+        res.json({ tables });
+    } catch (err) {
+        console.error('Get all tables error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+/**
+ * Update the table for an active order
+ */
+export const updateOrderTable = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { orderId, newTableNumber } = req.body;
+        // const customerId = req.user ? req.user.userId : null;
+
+        await connection.beginTransaction();
+
+        // 1. Get new table id
+        const [tableRows] = await connection.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [newTableNumber]);
+        if (tableRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Table not found' });
+        }
+        const newTableId = tableRows[0].id;
+
+        // 2. Get old table id from order
+        const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [orderId]);
+        if (orderRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Order not found' });
+        }
+        const oldTableId = orderRows[0].table_id;
+
+        // 3. Update order
+        await connection.query('UPDATE orders SET table_id = ? WHERE id = ?', [newTableId, orderId]);
+
+        // 4. Update table statuses
+        if (oldTableId && oldTableId !== newTableId) {
+            // Check if any other active orders are on the old table before freeing it
+            const [otherOrders] = await connection.query(
+                "SELECT id FROM orders WHERE table_id = ? AND id != ? AND status_id IN (SELECT id FROM order_statuses WHERE name NOT IN ('COMPLETED', 'CANCELLED'))",
+                [oldTableId, orderId]
+            );
+            if (otherOrders.length === 0) {
+                await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [oldTableId]);
+            }
+        }
+        await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [newTableId]);
+
+        await connection.commit();
+        res.json({ message: 'Table updated successfully', tableNumber: newTableNumber });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Update order table error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    } finally {
+        if (connection) connection.release();
+    }
+};

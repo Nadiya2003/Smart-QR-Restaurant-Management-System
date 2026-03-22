@@ -27,7 +27,7 @@ export const getKitchenOrders = async (req, res) => {
             
             UNION ALL
 
-            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
                    do.customer_name, 'DELIVERY' as order_type_name,
                    'Rider' as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -37,7 +37,7 @@ export const getKitchenOrders = async (req, res) => {
                    JOIN categories cat ON mi.category_id = cat.id
                    WHERE doi.order_id = do.id AND cat.name != 'Beverages') as items
             FROM delivery_orders do
-            WHERE do.status NOT IN ('Delivered', 'Cancelled')
+            WHERE do.order_status NOT IN ('Delivered', 'Cancelled')
             
             ORDER BY created_at ASC
         `);
@@ -83,7 +83,7 @@ export const getBarOrders = async (req, res) => {
 
             UNION ALL
 
-            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
                    do.customer_name, 'DELIVERY' as order_type_name,
                    'Rider' as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -93,7 +93,7 @@ export const getBarOrders = async (req, res) => {
                    JOIN categories cat ON mi.category_id = cat.id
                    WHERE doi.order_id = do.id AND cat.name = 'Beverages') as items
             FROM delivery_orders do
-            WHERE do.status NOT IN ('Delivered', 'Cancelled')
+            WHERE do.order_status NOT IN ('Delivered', 'Cancelled')
 
             ORDER BY created_at ASC
         `);
@@ -277,7 +277,7 @@ export const getKitchenHistory = async (req, res) => {
             
             UNION ALL
             
-            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
                    do.customer_name, 'DELIVERY' as order_type_name,
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('name', mi.name, 'quantity', doi.quantity)
@@ -286,7 +286,7 @@ export const getKitchenHistory = async (req, res) => {
                    JOIN categories cat ON mi.category_id = cat.id
                    WHERE doi.order_id = do.id AND cat.name != 'Beverages') as items
             FROM delivery_orders do
-            WHERE do.status IN ('Delivered', 'Cancelled')
+            WHERE do.order_status IN ('Delivered', 'Cancelled')
             AND DATE(do.created_at) = CURDATE()
             
             ORDER BY created_at DESC
@@ -329,7 +329,7 @@ export const getBarHistory = async (req, res) => {
             
             UNION ALL
             
-            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.status) as status,
+            SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
                    do.customer_name, 'DELIVERY' as order_type_name,
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('name', mi.name, 'quantity', doi.quantity)
@@ -338,7 +338,7 @@ export const getBarHistory = async (req, res) => {
                    JOIN categories cat ON mi.category_id = cat.id
                    WHERE doi.order_id = do.id AND cat.name = 'Beverages') as items
             FROM delivery_orders do
-            WHERE do.status IN ('Delivered', 'Cancelled')
+            WHERE do.order_status IN ('Delivered', 'Cancelled')
             AND DATE(do.created_at) = CURDATE()
             
             ORDER BY created_at DESC

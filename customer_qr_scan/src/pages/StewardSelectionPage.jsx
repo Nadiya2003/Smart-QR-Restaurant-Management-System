@@ -62,7 +62,8 @@ export function StewardSelectionPage({
       <Header
         title="Select Your Steward"
         showBack
-        onBack={() => onNavigate('welcome')}
+        onBack={() => onNavigate('auth-selection')}
+        onNavigate={onNavigate}
       />
 
       <div className="p-4 flex-1 overflow-y-auto">
@@ -80,19 +81,21 @@ export function StewardSelectionPage({
         </p>
 
         <div className="space-y-3 mb-8">
-          {stewards.length === 0 ? (
+          {stewards.filter(s => s.status !== 'offline').length === 0 ? (
             <div className="bg-white p-8 rounded-2xl text-center border border-dashed border-gray-200">
               <p className="text-gray-500">No stewards are currently on duty. You can still order and our team will assist you!</p>
             </div>
           ) : (
-            stewards.map((steward) => (
-              <StewardCard
-                key={steward.id}
-                steward={steward}
-                isSelected={localSelectedId === steward.id}
-                onSelect={(s) => setLocalSelectedId(s.id)}
-              />
-            ))
+            stewards
+              .filter(s => s.status !== 'offline')
+              .map((steward) => (
+                <StewardCard
+                  key={steward.id}
+                  steward={steward}
+                  isSelected={localSelectedId === steward.id}
+                  onSelect={(s) => setLocalSelectedId(s.id)}
+                />
+              ))
           )}
         </div>
 

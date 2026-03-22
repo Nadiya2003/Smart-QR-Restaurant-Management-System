@@ -6,36 +6,35 @@ export const checkIn = async (req, res) => {
     try {
         const staffId = req.user.userId;
         const [staffRows] = await pool.query(
-            "SELECT su.full_name, sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
+            "SELECT su.id, su.full_name, sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
             [staffId]
         );
         
         if (staffRows.length === 0) return res.status(404).json({ message: "Staff not found" });
         
         const { full_name, role_name } = staffRows[0];
-        const today = new Date().toISOString().split('T')[0];
-        const now = new Date();
 
-        // Check if already checked in today
+        // 1. Update steward availability if role is steward
+        if (role_name.toLowerCase() === 'steward') {
+            await pool.query('UPDATE stewards SET is_available = 1 WHERE staff_id = ?', [staffId]);
+        }
+
+        // 2. Manage attendance record
         const [existing] = await pool.query(
-            "SELECT id, check_out_time FROM staff_attendance WHERE staff_id = ? AND date = ?",
-            [staffId, today]
+            "SELECT id, check_out_time FROM staff_attendance WHERE staff_id = ? AND date = CURDATE()",
+            [staffId]
         );
 
         if (existing.length > 0) {
-            // If there's an active session, just return success
-            if (!existing[0].check_out_time) {
-                return res.json({ success: true, message: "Already checked in" });
-            }
-            // If they checked out but want to check in again, clear the checkout time
+            // Re-open if checked out
             await pool.query(
-                "UPDATE staff_attendance SET check_out_time = NULL, check_in_time = ?, status = 'PRESENT' WHERE id = ?",
-                [now, existing[0].id]
+                "UPDATE staff_attendance SET check_out_time = NULL, status = 'PRESENT' WHERE id = ?",
+                [existing[0].id]
             );
         } else {
             await pool.query(
-                "INSERT INTO staff_attendance (staff_id, name, role, check_in_time, date, status) VALUES (?, ?, ?, ?, ?, 'PRESENT')",
-                [staffId, full_name, role_name, now, today]
+                "INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, CURDATE(), NOW(), 'PRESENT')",
+                [staffId, full_name, role_name]
             );
         }
 
@@ -49,12 +48,20 @@ export const checkIn = async (req, res) => {
 export const checkOut = async (req, res) => {
     try {
         const staffId = req.user.userId;
-        const today = new Date().toISOString().split('T')[0];
-        const now = new Date();
 
+        // 1. Update steward availability if role is steward
+        const [staffRows] = await pool.query(
+            "SELECT sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
+            [staffId]
+        );
+        if (staffRows.length > 0 && staffRows[0].role_name.toLowerCase() === 'steward') {
+            await pool.query('UPDATE stewards SET is_available = 0 WHERE staff_id = ?', [staffId]);
+        }
+
+        // 2. Mark attendance checkout
         const [result] = await pool.query(
-            "UPDATE staff_attendance SET check_out_time = ?, status = 'PRESENT' WHERE staff_id = ? AND date = ? AND check_out_time IS NULL",
-            [now, staffId, today]
+            "UPDATE staff_attendance SET check_out_time = NOW(), status = 'PRESENT' WHERE staff_id = ? AND date = CURDATE() AND check_out_time IS NULL",
+            [staffId]
         );
 
         if (result.affectedRows === 0) {
@@ -137,7 +144,7 @@ export const getAllOrders = async (req, res) => {
             
             UNION ALL
 
-            SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.status as status_name,
+            SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.order_status as status_name,
                    'delivery_orders' as source_table
             FROM delivery_orders do
             

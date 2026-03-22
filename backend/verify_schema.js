@@ -1,9 +1,17 @@
 import pool from './src/config/db.js';
 
-const checkSchema = async () => {
-    const [rows] = await pool.query("SHOW TABLES");
-    console.log(rows.map(r => Object.values(r)[0]));
-    process.exit(0);
+async function verify() {
+    try {
+        const [rows] = await pool.query('DESCRIBE delivery_orders');
+        const fields = rows.map(r => r.Field);
+        console.log('HAS_ORDER_STATUS:' + fields.includes('order_status'));
+        console.log('HAS_CUSTOMER_ID:' + fields.includes('customer_id'));
+        console.log('ALL_FIELDS:' + fields.join(','));
+    } catch (err) {
+        console.error('Verify failed:', err.message);
+    } finally {
+        process.exit();
+    }
 }
 
-checkSchema();
+verify();

@@ -185,9 +185,16 @@ const StaffDashboard = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => setShowAccount(true)}
-                        style={[styles.logoutIcon, { marginLeft: 10, backgroundColor: 'rgba(255,255,255,0.1)' }]}
+                        style={[styles.profileBox, { marginLeft: 10, borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1 }]}
                     >
-                        <Text style={{ fontSize: 20 }}>👤</Text>
+                        {user?.profile_image ? (
+                            <Image 
+                                source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
+                                style={styles.profileImg}
+                            />
+                        ) : (
+                            <Text style={{ fontSize: 20, color: 'white' }}>👤</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
 
@@ -293,6 +300,8 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
+    profileBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
     headerCard: {
         backgroundColor: '#111827',
         borderRadius: 24,

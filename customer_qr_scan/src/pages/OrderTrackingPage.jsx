@@ -14,7 +14,7 @@ export function OrderTrackingPage({ onNavigate }) {
   if (!currentOrder) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Header title="Active Order" />
+        <Header title="Active Order" onNavigate={onNavigate} />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             No Active Order
@@ -50,7 +50,7 @@ export function OrderTrackingPage({ onNavigate }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
-      <Header title={`Order ${currentOrder.id}`} />
+      <Header title={`Order #${currentOrder.id}`} onNavigate={onNavigate} />
 
       <div className="flex-1 overflow-y-auto">
         <div className="bg-white mb-2">

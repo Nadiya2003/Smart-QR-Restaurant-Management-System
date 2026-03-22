@@ -36,6 +36,7 @@ export function FeedbackPage({ onNavigate }) {
         title="Rate Your Experience"
         showBack
         onBack={() => onNavigate('menu')}
+        onNavigate={onNavigate}
       />
 
       <div className="flex-1 p-4 overflow-y-auto">

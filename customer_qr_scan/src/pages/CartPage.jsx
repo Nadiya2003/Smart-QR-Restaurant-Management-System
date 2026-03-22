@@ -75,6 +75,7 @@ export function CartPage({ onNavigate }) {
         title={`Your Cart (${cartItems.length})`}
         showBack
         onBack={() => onNavigate('menu')}
+        onNavigate={onNavigate}
       />
 
       <div className="flex-1 overflow-y-auto">

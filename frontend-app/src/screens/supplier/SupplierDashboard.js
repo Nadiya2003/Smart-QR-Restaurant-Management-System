@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, SafeAreaView, Dimensions, Switch, Vibration, Platform
+    FlatList, Image, Dimensions, Switch, Vibration, Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
 import AccountSection from '../AccountSection';
@@ -129,12 +130,12 @@ const SupplierDashboard = () => {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity 
                     onPress={() => setActiveTab('account')}
-                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#fff' }]}
+                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
                 >
                     {user?.profile_image || user?.image ? (
                         <Image 
                             source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
-                            style={{ width: '100%', height: '100%', borderRadius: 25 }}
+                            style={styles.profileImg}
                         />
                     ) : (
                         <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
@@ -449,7 +450,8 @@ const SupplierDashboard = () => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFB' },
     header: { padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff' },
-    profileBox: { width: 45, height: 45, borderRadius: 25, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center' },
+    profileBox: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
     profileInitial: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
     greeting: { fontSize: 18, fontWeight: '700', color: '#111827' },
     roleTitle: { fontSize: 13, color: '#6B7280' },

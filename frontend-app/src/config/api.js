@@ -6,11 +6,11 @@ import { Platform } from 'react-native';
 
 // IMPORTANT: Change this to your computer's local IP address
 // Find it with: ipconfig (Windows) or ifconfig (Mac/Linux)
-const LOCAL_IP = '192.168.1.2'; // Your PC's LAN IP (from ipconfig)
+const LOCAL_IP = '192.168.1.3'; // Updated to current PC IP
 
 const getBaseUrl = () => {
     if (Platform.OS === 'web') {
-        return 'http://192.168.1.2:5000';
+        return 'http://192.168.1.3:5000';
     }
     // For Android/iOS physical devices or emulators
     return `http://${LOCAL_IP}:5000`;

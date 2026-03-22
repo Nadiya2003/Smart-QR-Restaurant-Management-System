@@ -29,7 +29,8 @@ export function LoginPage({ onNavigate }) {
       <Header
         title="Welcome Back"
         showBack
-        onBack={() => onNavigate('welcome')}
+        onBack={() => onNavigate('auth-selection')}
+        onNavigate={onNavigate}
       />
 
       <div className="flex-1 p-6 flex flex-col justify-center">

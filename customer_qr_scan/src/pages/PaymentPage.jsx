@@ -18,8 +18,12 @@ export function PaymentPage({ onNavigate }) {
   if (!currentOrder) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Header title="Payment" showBack onBack={() => onNavigate('menu')} />
-        <div className="flex-1 flex items-center justify-center p-6">
+        <Header
+        title="Settle Bill"
+        showBack
+        onBack={() => onNavigate('dashboard')}
+        onNavigate={onNavigate}
+      />  <div className="flex-1 flex items-center justify-center p-6">
           <p className="text-gray-500">No active order to pay for.</p>
         </div>
       </div>

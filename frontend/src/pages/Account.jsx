@@ -329,69 +329,106 @@ function Account() {
 
                         {/* Tab Content: RESERVATIONS */}
                         {activeTab === 'reservations' && (
-                            <div className="space-y-6 animate-fade-in">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-2xl font-serif text-white">Your Bookings</h3>
-                                    <Button onClick={() => navigate('/reservation')} size="sm" variant="outline" className="border-[#D4AF37]/30 text-[#D4AF37]">+ New Booking</Button>
+                            <div className="space-y-8 animate-fade-in">
+                                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                                    <div>
+                                        <h3 className="text-3xl font-serif text-white mb-2">My Bookings</h3>
+                                        <p className="text-gray-500 text-sm uppercase tracking-[0.2em] font-bold">Manage your upcoming table experiences</p>
+                                    </div>
+                                    <Button onClick={() => navigate('/reservation')} className="bg-[#D4AF37] hover:bg-[#E6C86E] text-black h-12 px-8 flex items-center gap-2 font-bold uppercase tracking-wider">
+                                        <span className="text-xl">+</span> New Booking
+                                    </Button>
                                 </div>
+
                                 {reservations?.length === 0 ? (
-                                    <div className="text-center py-20 bg-white/[0.02] rounded-3xl border border-dashed border-white/10">
-                                        <p className="text-gray-500">No table experiences booked yet.</p>
+                                    <div className="text-center py-32 bg-white/[0.02] rounded-[2rem] border border-dashed border-white/10 backdrop-blur-sm">
+                                        <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                                            <span className="text-2xl">🍽️</span>
+                                        </div>
+                                        <h4 className="text-xl font-medium text-white mb-2">No bookings found</h4>
+                                        <p className="text-gray-500 max-w-xs mx-auto">Your upcoming culinary adventures will appear here once you make a reservation.</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-4">
-                                        {reservations.map(res => (
-                                            <GlassCard key={`${res.booking_type}-${res.id}`} className="p-6 border-white/5 bg-white/[0.01] hover:border-[#D4AF37]/20 transition-all">
-                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                                    <div className="flex items-start gap-4">
-                                                        <div className="w-12 h-12 bg-[#D4AF37]/10 rounded-xl flex flex-col items-center justify-center text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/20 overflow-hidden leading-tight">
-                                                            <span className="opacity-50">TYPE</span>
-                                                            <span className="text-[10px]">{res.booking_type === 'TABLE' ? 'TBL' : 'EVT'}</span>
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <p className="font-bold text-white text-lg">{res.booking_type === 'TABLE' ? 'Table Reservation' : 'Event Booking'}</p>
-                                                                <span className="text-[9px] bg-white/5 text-[#D4AF37] border border-white/10 px-2 py-0.5 rounded uppercase font-black tracking-tighter">{res.guests} Guests</span>
+                                    <div className="grid grid-cols-1 gap-6">
+                                        {reservations.map(res => {
+                                            const resDate = new Date(res.reservation_date);
+                                            const isPast = resDate < new Date() && res.status !== 'CANCELLED';
+                                            
+                                            return (
+                                                <GlassCard 
+                                                    key={`${res.booking_type}-${res.id}-${res.created_at}`} 
+                                                    className="p-8 border-white/5 bg-gradient-to-br from-white/[0.03] to-transparent hover:border-[#D4AF37]/30 transition-all duration-500 group"
+                                                >
+                                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                                                        <div className="flex flex-col sm:flex-row gap-8 flex-grow">
+                                                            {/* Date Badge */}
+                                                            <div className="flex-shrink-0 w-24 h-24 bg-gradient-to-b from-[#D4AF37]/20 to-[#D4AF37]/5 rounded-2xl border border-[#D4AF37]/30 flex flex-col items-center justify-center p-2 shadow-lg shadow-black/20 group-hover:scale-105 transition-transform">
+                                                                <span className="text-[10px] font-black text-[#D4AF37] opacity-60 uppercase mb-1">{resDate.toLocaleDateString(undefined, { month: 'short' })}</span>
+                                                                <span className="text-3xl font-black text-white leading-none">{resDate.getDate()}</span>
+                                                                <span className="text-[10px] font-black text-[#D4AF37] opacity-60 uppercase mt-1">{resDate.getFullYear()}</span>
                                                             </div>
-                                                             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-gray-500 uppercase tracking-widest font-bold">
-                                                                 <div className="flex items-center gap-1 opacity-80">
-                                                                     <span className="text-[#D4AF37]/50 text-[10px] font-black mr-1">T:</span> {res.reservation_time}
-                                                                 </div>
-                                                                 <div className="flex items-center gap-1 opacity-80">
-                                                                     <span className="text-[#D4AF37]/50 text-[10px] font-black mr-1">D:</span> {new Date(res.reservation_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                 </div>
-                                                                 {res.table_number && (
-                                                                    <div className="flex items-center gap-1 text-[#D4AF37]/80">
-                                                                        <span className="text-[#D4AF37]/50 text-[10px] font-black mr-1">AREA:</span> {res.area_name || 'Main Hall'} (#{res.table_number})
-                                                                    </div>
-                                                                 )}
-                                                             </div>
-                                                             {res.special_requests && (
-                                                                <div className="mt-3 bg-white/5 border-l-2 border-[#D4AF37]/30 p-2 rounded-r-lg">
-                                                                    <p className="text-[10px] text-gray-500 uppercase font-black mb-0.5 opacity-50">Special Request</p>
-                                                                    <p className="text-xs text-gray-400 italic">"{res.special_requests}"</p>
+
+                                                            <div className="space-y-4 flex-grow">
+                                                                <div className="flex flex-wrap items-center gap-3">
+                                                                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border ${
+                                                                        res.booking_type === 'TABLE' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                                                    }`}>
+                                                                        {res.booking_type === 'TABLE' ? 'Table Reservation' : 'Event Package'}
+                                                                    </span>
+                                                                    <span className="bg-white/5 text-gray-400 text-[9px] font-black uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-white/10">
+                                                                        {res.guests} Guests
+                                                                    </span>
                                                                 </div>
-                                                             )}
+
+                                                                <div>
+                                                                    <h4 className="text-2xl font-serif text-white group-hover:text-[#D4AF37] transition-colors">
+                                                                        {res.booking_type === 'TABLE' ? `Dining at ${res.area_name || 'Melissa Court'}` : 'Private Event Celebration'}
+                                                                    </h4>
+                                                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2 text-sm text-gray-400 font-medium">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[#D4AF37]">⏰</span> {res.reservation_time}
+                                                                        </div>
+                                                                        {res.table_number && (
+                                                                            <div className="flex items-center gap-2 bg-[#D4AF37]/10 px-3 py-0.5 rounded-lg text-[#D4AF37]/80 text-xs border border-[#D4AF37]/10">
+                                                                                <span className="font-black uppercase text-[10px]">Table</span> #{res.table_number}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {res.special_requests && (
+                                                                    <div className="bg-white/[0.02] border-l-2 border-[#D4AF37]/40 p-3 rounded-r-xl max-w-md">
+                                                                        <p className="text-[10px] text-[#D4AF37]/60 uppercase font-black tracking-widest mb-1">Preferences</p>
+                                                                        <p className="text-gray-400 text-xs italic leading-relaxed">"{res.special_requests}"</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-row lg:flex-col items-center lg:items-end gap-6 border-t lg:border-t-0 lg:border-l border-white/5 pt-6 lg:pt-0 lg:pl-10">
+                                                            <div className="text-center lg:text-right">
+                                                                <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Booking Status</p>
+                                                                <span className={`inline-flex px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg ${
+                                                                    res.status === 'CANCELLED' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
+                                                                    isPast ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'
+                                                                }`}>
+                                                                    {isPast && res.status === 'PENDING' ? 'COMPLETED' : res.status}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {res.status !== 'CANCELLED' && !isPast && (
+                                                                <button 
+                                                                    onClick={() => handleCancelAction('reservation', res.id)}
+                                                                    className="group/cancel flex items-center gap-2 px-6 py-3 bg-red-500/5 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 rounded-xl transition-all duration-300 font-bold uppercase text-[10px] tracking-[0.1em]"
+                                                                >
+                                                                    Cancel Order
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                                            res.status === 'CANCELLED' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'
-                                                        }`}>
-                                                            {res.status}
-                                                        </span>
-                                                        {res.status !== 'CANCELLED' && res.status !== 'COMPLETED' && (
-                                                            <button 
-                                                                onClick={() => handleCancelAction('reservation', res.id)}
-                                                                className="text-gray-500 hover:text-red-500 transition-colors text-sm font-bold border-b border-transparent hover:border-red-500"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </GlassCard>
-                                        ))}
+                                                </GlassCard>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, SafeAreaView, Dimensions, Switch
+    FlatList, Image, Dimensions, Switch
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
@@ -29,6 +30,9 @@ const CashierDashboard = () => {
 
     // POS Cart State
     const [cart, setCart] = useState([]);
+    const [showCartModal, setShowCartModal] = useState(false);
+    const [showSettlementModal, setShowSettlementModal] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState(null);
     const [posType, setPosType] = useState('DINE_IN');
     const [selectedPosTable, setSelectedPosTable] = useState(null);
     const [selectedStewardId, setSelectedStewardId] = useState(null);
@@ -241,7 +245,14 @@ const CashierDashboard = () => {
                     onPress={() => setActiveTab('account')} 
                     style={[styles.profileBox, activeTab === 'account' && { borderColor: '#111827', borderWidth: 2 }]}
                 >
-                    <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    {user?.profile_image ? (
+                        <Image 
+                            source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
+                            style={styles.profileImg} 
+                        />
+                    ) : (
+                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                    )}
                 </TouchableOpacity>
                 <View style={{ marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
@@ -488,7 +499,6 @@ const CashierDashboard = () => {
         </View>
     );
 
-    const [showCartModal, setShowCartModal] = useState(false);
 
     const renderCartModal = () => (
         <Modal visible={showCartModal} transparent animationType="slide">
@@ -881,6 +891,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFB' },
     header: { padding: 15, backgroundColor: 'white', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
     profileBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
     profileInitial: { fontSize: 18, fontWeight: 'bold', color: '#1D4ED8' },
     greeting: { fontSize: 12, color: '#6B7280' },
     roleTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },

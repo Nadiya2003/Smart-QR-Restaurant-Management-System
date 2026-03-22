@@ -32,6 +32,7 @@ export function RegisterPage({ onNavigate }) {
         title="Create Account"
         showBack
         onBack={() => onNavigate('welcome')}
+        onNavigate={onNavigate}
       />
 
       <div className="flex-1 p-6 flex flex-col justify-center">

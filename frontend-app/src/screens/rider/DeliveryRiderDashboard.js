@@ -342,7 +342,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     {user?.profile_image || user?.image ? (
                         <Image 
                             source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
-                            style={{ width: '100%', height: '100%' }}
+                            style={styles.profileImg}
                         />
                     ) : (
                         <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
@@ -869,9 +869,10 @@ const styles = StyleSheet.create({
         padding: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' 
     },
     profileBox: { 
-        width: 40, height: 40, borderRadius: 20, backgroundColor: '#111827', 
-        justifyContent: 'center', alignItems: 'center' 
+        width: 44, height: 44, borderRadius: 22, backgroundColor: '#111827', 
+        justifyContent: 'center', alignItems: 'center', overflow: 'hidden'
     },
+    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
     profileInitial: { color: 'white', fontWeight: 'bold', fontSize: 18 },
     greeting: { fontSize: 13, color: '#6B7280' },
     roleTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },

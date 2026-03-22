@@ -16,10 +16,20 @@ export function OrderProvider({ children }) {
     
     if (tableFromUrl) {
       localStorage.setItem('activeTable', tableFromUrl);
+      // Remove table from URL to prevent re-setting if user navigates back
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
       return tableFromUrl;
     }
     
-    return localStorage.getItem('activeTable') || '05'; // Fallback to 05
+    return localStorage.getItem('activeTable') || null;
+  };
+
+  const [tableNumber, setTableNumber] = useState(getTableNumber());
+
+  const setTable = (num) => {
+    localStorage.setItem('activeTable', num);
+    setTableNumber(num);
   };
 
   const isGuest = !user;
@@ -147,6 +157,30 @@ export function OrderProvider({ children }) {
     }
   };
 
+  const changeTable = async (newTableNumber) => {
+    try {
+      // If there's an active order, update it on the backend
+      if (currentOrder?.id) {
+        await api.post('/orders/update-table', {
+          orderId: currentOrder.id,
+          newTableNumber
+        });
+        
+        setCurrentOrder(prev => ({
+          ...prev,
+          tableNumber: newTableNumber
+        }));
+      }
+      
+      // Update local state and storage
+      setTable(newTableNumber);
+      return true;
+    } catch (error) {
+      console.error('Failed to change table:', error);
+      throw error;
+    }
+  };
+
   const addToExistingOrder = async (items, additionalTotal) => {
     if (!currentOrder?.id) return placeOrder(items, additionalTotal);
     
@@ -228,7 +262,9 @@ export function OrderProvider({ children }) {
       requestOrderCancellation,
       updateOrderStatus,
       clearCurrentOrder,
-      tableNumber: getTableNumber(),
+      tableNumber,
+      setTable,
+      changeTable,
       isGuest
     }}>
       {children}
