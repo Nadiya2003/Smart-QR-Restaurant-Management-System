@@ -28,8 +28,7 @@ export function DashboardPage({ onNavigate }) {
 
   const handleLogout = async () => {
     logout();
-    await clearOrder();
-    localStorage.removeItem('guestSession'); // Clean guest portal flag too
+    localStorage.removeItem('guestSession'); // Refresh portal flag
     onNavigate('welcome');
   };
 

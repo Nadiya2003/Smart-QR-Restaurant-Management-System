@@ -17,6 +17,9 @@ import { OrderHistoryPage } from './pages/OrderHistoryPage.jsx';
 import { FeedbackPage } from './pages/FeedbackPage.jsx';
 import { TableSelectionPage } from './pages/TableSelectionPage.jsx';
 import { AuthSelectionPage } from './pages/AuthSelectionPage.jsx';
+import { RewardsPage } from './pages/RewardsPage.jsx';
+import { SettingsPage } from './pages/SettingsPage.jsx';
+
 
 function AppContent() {
   const [currentPage, setCurrentPage] = useState('welcome');
@@ -56,6 +59,10 @@ function AppContent() {
         return <TableSelectionPage onNavigate={navigate} isChangingTable={true} />;
       case 'auth-selection':
         return <AuthSelectionPage onNavigate={navigate} />;
+      case 'rewards':
+        return <RewardsPage onNavigate={navigate} />;
+      case 'settings':
+        return <SettingsPage onNavigate={navigate} />;
       default:
         return <WelcomePage onNavigate={navigate} />;
     }

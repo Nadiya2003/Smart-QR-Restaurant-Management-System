@@ -280,9 +280,9 @@ export function OrderProvider({ children }) {
     );
   };
 
-    const clearOrder = async () => {
+    const clearOrder = async (terminateOnServer = true) => {
         try {
-            if (currentOrder?.id) {
+            if (terminateOnServer && currentOrder?.id) {
                 await api.post('/orders/dine-in/end-session', { orderId: currentOrder.id });
             }
         } catch (err) {

@@ -233,6 +233,65 @@ export const getProfile = async (req, res) => {
     }
 };
 
+export const updateProfile = async (req, res) => {
+    try {
+        const { userId, role } = req.user;
+        const { name, email, phone } = req.body;
+
+        if (role === 'ADMIN' && userId === 0) {
+            return res.status(403).json({ message: 'Admin profile cannot be updated via this endpoint' });
+        }
+
+        let table = role === 'CUSTOMER' ? 'online_customers' : 'staff_users';
+        let nameField = role === 'CUSTOMER' ? 'name' : 'full_name';
+
+        // Check if email already exists for another user
+        const [existing] = await pool.query(`SELECT id FROM ${table} WHERE email = ? AND id != ?`, [email, userId]);
+        if (existing.length > 0) {
+            return res.status(400).json({ message: 'Email is already in use by another account' });
+        }
+
+        await pool.query(
+            `UPDATE ${table} SET ${nameField} = ?, email = ?, phone = ? WHERE id = ?`,
+            [name, email, phone || null, userId]
+        );
+
+        res.json({ message: 'Profile updated successfully' });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ message: 'Failed to update profile' });
+    }
+};
+
+export const changePassword = async (req, res) => {
+    try {
+        const { userId, role } = req.user;
+        const { currentPassword, newPassword } = req.body;
+
+        if (role === 'ADMIN' && userId === 0) {
+            return res.status(403).json({ message: 'Admin password cannot be changed via this endpoint' });
+        }
+
+        let table = role === 'CUSTOMER' ? 'online_customers' : 'staff_users';
+
+        // Get current password
+        const [rows] = await pool.query(`SELECT password FROM ${table} WHERE id = ?`, [userId]);
+        if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+
+        const isMatch = await bcrypt.compare(currentPassword, rows[0].password);
+        if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect' });
+
+        // Hash and update
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await pool.query(`UPDATE ${table} SET password = ? WHERE id = ?`, [hashedPassword, userId]);
+
+        res.json({ message: 'Password changed successfully' });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({ message: 'Failed to change password' });
+    }
+};
+
 export const forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;

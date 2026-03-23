@@ -24,7 +24,7 @@ router.get('/customer', protect, getCustomerOrders);
 router.get('/active-table/:tableNumber', getActiveOrderByTable);
 router.put('/delivery/cancel/:id', protect, cancelDeliveryOrder);
 router.put('/takeaway/cancel/:id', protect, cancelTakeawayOrder);
-router.post('/dine-in/cancel-request/:id', protect, requestDineInCancellation);
+router.post('/dine-in/cancel-request/:id', resolveUser, requestDineInCancellation);
 router.delete('/:orderId/items/:itemId', resolveUser, removeOrderItem);
 router.get('/tables', getAllTables);
 router.post('/update-table', resolveUser, updateOrderTable);

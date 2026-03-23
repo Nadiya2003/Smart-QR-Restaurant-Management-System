@@ -64,7 +64,7 @@ export function PaymentPage({ onNavigate }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header title="Payment" showBack onBack={() => onNavigate('tracking')} />
+      <Header title="Payment" showBack onBack={() => onNavigate('dashboard')} />
 
       <div className="flex-1 p-4 overflow-y-auto">
         <div className="bg-white rounded-xl p-6 text-center mb-6 shadow-sm border border-gray-100">

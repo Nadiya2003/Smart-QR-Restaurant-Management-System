@@ -3,8 +3,9 @@ import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
 import { OrderStatusTracker } from '../components/order/OrderStatusTracker';
 import { Button } from '../components/ui/Button';
-import { ClockIcon } from 'lucide-react';
+import { ClockIcon, XCircleIcon, CheckCircleIcon } from 'lucide-react';
 import { useOrder } from '../hooks/useOrder';
+
 
 export function OrderTrackingPage({ onNavigate }) {
   const { currentOrder, requestOrderCancellation } = useOrder();
@@ -12,6 +13,8 @@ export function OrderTrackingPage({ onNavigate }) {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelComment, setCancelComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+
 
   // Cancellation reasons
   const reasons = [
@@ -56,9 +59,9 @@ export function OrderTrackingPage({ onNavigate }) {
       setCancelModalOpen(false);
       setCancelReason('');
       setCancelComment('');
-      alert('Cancellation request submitted for the entire order!');
+      setCancelSuccess(true); // Show inline success card
     } catch (err) {
-      alert('Failed to request cancellation: ' + err.message);
+      alert('Failed to submit cancellation: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -69,12 +72,36 @@ export function OrderTrackingPage({ onNavigate }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
-      <Header title={`Order #${currentOrder.id}`} onNavigate={onNavigate} />
+      <Header 
+        title={`Order #${currentOrder.id}`} 
+        showBack 
+        onBack={() => onNavigate('dashboard')} 
+        onNavigate={onNavigate} 
+      />
 
       <div className="flex-1 overflow-y-auto">
         <div className="bg-white mb-2">
           <OrderStatusTracker currentStatus={currentOrder.status} />
-          {currentOrder.cancellation_status === 'PENDING' && (
+
+          {/* ---- Cancellation SUCCESS banner ---- */}
+          {cancelSuccess && (
+            <div className="mx-4 my-3 bg-green-50 border border-green-200 rounded-2xl p-5 text-center animate-fade-in">
+              <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto mb-3" />
+              <h3 className="font-bold text-green-800 text-lg mb-1">Request Submitted!</h3>
+              <p className="text-green-700 text-sm mb-4">
+                Your cancellation request for <strong>Order #{currentOrder.id}</strong> has been sent.<br />
+                Your steward has been notified and will process it shortly.
+              </p>
+              <button
+                onClick={() => onNavigate('menu')}
+                className="bg-green-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-green-600 transition-colors"
+              >
+                Return to Menu
+              </button>
+            </div>
+          )}
+
+          {!cancelSuccess && currentOrder.cancellation_status === 'PENDING' && (
             <div className="bg-orange-50 p-3 text-orange-700 text-sm border-y border-orange-100 text-center animate-pulse">
               ⏳ Cancellation request is pending approval by manager.
             </div>

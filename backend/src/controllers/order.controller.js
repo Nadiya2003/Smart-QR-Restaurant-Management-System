@@ -445,13 +445,14 @@ export const requestDineInCancellation = async (req, res) => {
     try {
         const { id } = req.params;
         const { reason } = req.body;
-        const customer_id = req.user.userId;
-
+        const customer_id = req.user ? req.user.userId : null;
+        const query = req.user 
+            ? 'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id = ?'
+            : 'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id IS NULL';
+        const params = req.user ? [id, customer_id] : [id];
+        
         // 1. Check if order exists and belongs to this customer
-        const [orders] = await pool.query(
-            'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id = ?',
-            [id, customer_id]
-        );
+        const [orders] = await pool.query(query, params);
 
         if (orders.length === 0) {
             return res.status(404).json({ message: 'Order not found' });
@@ -474,7 +475,7 @@ export const requestDineInCancellation = async (req, res) => {
         // 3. Insert into cancel_requests
         await pool.query(
             'INSERT INTO cancel_requests (order_id, requested_by, reason, status) VALUES (?, ?, ?, "pending")',
-            [id, customer_id, reason || 'Customer requested cancellation via App']
+            [id, customer_id || null, reason || 'Customer requested cancellation via App']
         );
 
         // 4. Update order state
@@ -482,6 +483,34 @@ export const requestDineInCancellation = async (req, res) => {
             'UPDATE orders SET cancellation_status = "PENDING", cancellation_reason = ? WHERE id = ?',
             [reason, id]
         );
+
+        // 5. Notify steward via socket
+        try {
+            const [orderDetails] = await pool.query(`
+                SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
+                       c.name as customer_name,
+                       CASE WHEN o.customer_id IS NOT NULL THEN 'registered' ELSE 'guest' END as customer_type
+                FROM orders o
+                LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+                LEFT JOIN stewards s ON o.steward_id = s.id
+                LEFT JOIN online_customers c ON o.customer_id = c.id
+                WHERE o.id = ?
+            `, [id]);
+
+            if (global.io && orderDetails.length > 0) {
+                const od = orderDetails[0];
+                global.io.emit('cancelRequest', {
+                    orderId: parseInt(id),
+                    tableNumber: od.table_number,
+                    staffId: od.staff_id,
+                    customerName: od.customer_name || 'Guest',
+                    customerType: od.customer_type,
+                    reason: reason || 'Not specified'
+                });
+            }
+        } catch (notifErr) {
+            console.error('Cancel notify error (non-fatal):', notifErr);
+        }
 
         res.json({ message: '✅ Cancellation request sent. Please wait for manager approval.' });
     } catch (error) {

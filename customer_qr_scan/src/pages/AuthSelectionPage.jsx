@@ -5,10 +5,11 @@ import { useOrder } from '../hooks/useOrder';
 import { useAuth } from '../hooks/useAuth';
 
 export function AuthSelectionPage({ onNavigate }) {
-  const { tableNumber } = useOrder();
+  const { tableNumber, clearOrder } = useOrder();
   const { enterAsGuest } = useAuth();
 
-  const handleGuestEntry = () => {
+  const handleGuestEntry = async () => {
+    await clearOrder(false); // Only clear locally so we don't kill a previous user's active DB order
     enterAsGuest();      // Clear registered session data, flag as guest portal
     onNavigate('steward');
   };

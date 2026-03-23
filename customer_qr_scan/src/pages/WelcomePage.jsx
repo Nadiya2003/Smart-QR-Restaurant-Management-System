@@ -34,14 +34,20 @@ export function WelcomePage({ onNavigate }) {
   }, [currentOrder, isAuthenticated, onNavigate, loading, isInitialLoading]);
 
   const handleStartFresh = () => {
-    clearOrder();
+    clearOrder(false); // Only clear locally, don't kill session in DB
     setShowSessionPopup(false);
     setShowModal(true);
   };
 
   const handleContinueSession = () => {
     setShowSessionPopup(false);
-    onNavigate('dashboard');
+    // If this session belongs to a registered customer but we aren't logged in,
+    // force login portal to restore the state accurately.
+    if (currentOrder?.customer_id && !isAuthenticated) {
+      onNavigate('login');
+    } else {
+      onNavigate('dashboard');
+    }
   };
 
   return (
@@ -141,7 +147,7 @@ export function WelcomePage({ onNavigate }) {
                     className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-black text-sm tracking-wide shadow-lg shadow-amber-200"
                     onClick={handleContinueSession}
                   >
-                    Continue Previous Order
+                    Continue with Previous Order
                   </Button>
                   <Button
                     variant="ghost"
@@ -149,7 +155,7 @@ export function WelcomePage({ onNavigate }) {
                     className="text-gray-400 font-bold hover:text-red-500 transition-colors"
                     onClick={handleStartFresh}
                   >
-                    Start Fresh Session
+                    Start as New Order
                   </Button>
                </div>
             </div>

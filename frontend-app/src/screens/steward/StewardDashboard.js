@@ -50,6 +50,7 @@ const StewardDashboard = () => {
     const [filterModal, setFilterModal] = useState({ show: false, title: '', placeholder: '', value: '', type: '', onSubmit: null });
     // Real-time order notification modal
     const [newOrderNotif, setNewOrderNotif] = useState(null);
+    const [cancelNotif, setCancelNotif] = useState(null);
 
     // Reservation Filters
     const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
@@ -124,6 +125,14 @@ const StewardDashboard = () => {
                 Vibration && Vibration.vibrate([100, 200, 100, 200]);
                 setNewOrderNotif(data); // Trigger rich modal
                 fetchData(true); 
+            }
+        });
+
+        socket.on('cancelRequest', (data) => {
+            if (data.staffId === user.id) {
+                Vibration && Vibration.vibrate([300, 150, 300]);
+                setCancelNotif(data);
+                fetchData(true);
             }
         });
 
@@ -915,6 +924,72 @@ const StewardDashboard = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity onPress={() => setNewOrderNotif(null)} style={{ marginTop: 12 }}>
+                            <Text style={{ color: '#9CA3AF', fontSize: 13 }}>Dismiss</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* ============ RICH CANCELLATION REQUEST MODAL ============ */}
+            <Modal
+                visible={!!cancelNotif}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setCancelNotif(null)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                    <View style={{ backgroundColor: 'white', borderRadius: 28, padding: 28, width: '100%', maxWidth: 380, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20 }}>
+                        {/* Icon */}
+                        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                            <Text style={{ fontSize: 36 }}>🚫</Text>
+                        </View>
+
+                        {/* Title */}
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 4, textAlign: 'center' }}>
+                            Cancel Request!
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 20, textAlign: 'center' }}>
+                            A customer wants to cancel their order.
+                        </Text>
+
+                        {/* Highlighted Details */}
+                        <View style={{ width: '100%', backgroundColor: '#FEF2F2', borderRadius: 16, padding: 16, gap: 10, marginBottom: 20 }}>
+                            {/* Order ID */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600' }}>Order</Text>
+                                <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                    <Text style={{ fontWeight: '900', color: '#B91C1C', fontSize: 14 }}>#{cancelNotif?.orderId}</Text>
+                                </View>
+                            </View>
+
+                            {/* Table */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600' }}>Table</Text>
+                                <View style={{ backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#FEE2E2' }}>
+                                    <Text style={{ fontWeight: '900', color: '#B91C1C', fontSize: 14 }}>
+                                        🪑 Table {cancelNotif?.tableNumber || 'N/A'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Reason */}
+                            <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#FECACA', pt: 8 }}>
+                                <Text style={{ fontSize: 11, color: '#991B1B', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Reason:</Text>
+                                <Text style={{ fontStyle: 'italic', color: '#4B5563', fontSize: 13 }}>"{cancelNotif?.reason || 'No reason provided'}"</Text>
+                            </View>
+                        </View>
+
+                        {/* Action Btn */}
+                        <TouchableOpacity
+                            style={{ width: '100%', backgroundColor: '#DC2626', paddingVertical: 14, borderRadius: 20, alignItems: 'center' }}
+                            onPress={() => { setCancelNotif(null); setActiveTab('orders'); }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>
+                                👁️ View & Approve
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity onPress={() => setCancelNotif(null)} style={{ marginTop: 12 }}>
                             <Text style={{ color: '#9CA3AF', fontSize: 13 }}>Dismiss</Text>
                         </TouchableOpacity>
                     </View>
