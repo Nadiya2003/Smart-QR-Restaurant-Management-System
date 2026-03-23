@@ -2,19 +2,28 @@ import React from 'react';
 import { UtensilsIcon, ChevronRightIcon, UserIcon, LogInIcon, ArrowLeftIcon } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useOrder } from '../hooks/useOrder';
+import { useAuth } from '../hooks/useAuth';
 
 export function AuthSelectionPage({ onNavigate }) {
   const { tableNumber } = useOrder();
+  const { enterAsGuest } = useAuth();
+
+  const handleGuestEntry = () => {
+    enterAsGuest();      // Clear registered session data, flag as guest portal
+    onNavigate('steward');
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-amber-500">
       <div className="p-8 flex items-center justify-between">
-         <button onClick={() => onNavigate('table-selection')} className="text-white hover:bg-white/10 p-2 rounded-full transition-all">
+         <button onClick={() => onNavigate('welcome')} className="text-white hover:bg-white/10 p-2 rounded-full transition-all">
             <ArrowLeftIcon className="w-6 h-6" />
          </button>
-         <div className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-white font-bold text-sm tracking-wide">
-            Table {tableNumber}
-         </div>
+         {tableNumber && (
+            <div className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-white font-bold text-sm tracking-wide">
+               Table {tableNumber}
+            </div>
+         )}
       </div>
 
       <div className="flex-1 flex flex-col justify-center px-8 pb-10">
@@ -46,7 +55,7 @@ export function AuthSelectionPage({ onNavigate }) {
             </button>
 
             <button
-               onClick={() => onNavigate('steward')}
+               onClick={handleGuestEntry}
                className="w-full bg-amber-600/50 backdrop-blur-md border border-white/30 text-white py-5 px-8 rounded-3xl font-bold flex items-center justify-between hover:bg-amber-600/70 transition-all active:scale-[0.98]"
             >
                <span className="flex items-center gap-4">

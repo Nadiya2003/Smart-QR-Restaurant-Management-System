@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Header } from '../components/layout/Header';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
+import { useOrder } from '../hooks/useOrder';
 
 export function LoginPage({ onNavigate }) {
   const [email, setEmail] = useState('');
@@ -9,13 +10,47 @@ export function LoginPage({ onNavigate }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { currentOrder } = useOrder();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      const loggedInUser = await login(email, password);
+
+      // Immediately check the server for any active order within the last 6 hours
+      // (handles case where user logged out mid-session and returns)
+      try {
+        const token = loggedInUser?.token || localStorage.getItem('token');
+        const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const res = await fetch(`${API_URL}/api/orders/customer`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        const orders = data.orders || [];
+
+        const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
+        const activeOrder = orders.find(o => {
+          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase());
+          const isDineIn = o.type === 'DINE-IN' || o.order_type === 'registered' || o.order_type === 'guest';
+          const isRecent = new Date(o.created_at).getTime() > sixHoursAgo;
+          return isActive && isDineIn && isRecent;
+        });
+
+        if (activeOrder) {
+          localStorage.setItem('activeOrderId', activeOrder.id.toString());
+          if (activeOrder.table_number) {
+            localStorage.setItem('activeTable', activeOrder.table_number.toString());
+          }
+          onNavigate('dashboard'); // WelcomePage will redirect to tracking via existing logic
+          return;
+        }
+      } catch (_) {
+        // Ignore — fallback to standard flow below
+      }
+
+      // No active order: send through normal flow
       onNavigate('steward');
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');

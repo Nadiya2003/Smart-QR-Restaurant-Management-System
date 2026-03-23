@@ -36,16 +36,22 @@ export function CartPage({ onNavigate }) {
     setIsConfirmOpen(true);
   };
 
-  const onConfirmOrder = () => {
-    const isUpdate = currentOrder && currentOrder.status !== 'SERVED';
-    if (isUpdate) {
-      addToExistingOrder(cartItems, total);
-    } else {
-      placeOrder(cartItems, total);
+  const onConfirmOrder = async () => {
+    try {
+      const isUpdate = currentOrder && !['SERVED', 'COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase());
+      if (isUpdate) {
+        await addToExistingOrder(cartItems, total);
+      } else {
+        await placeOrder(cartItems, total);
+      }
+      clearCart();
+      setIsConfirmOpen(false);
+      onNavigate('tracking');
+    } catch (error) {
+      console.error('Order placement failed:', error);
+      alert('Could not place order. Please try again.');
+      setIsConfirmOpen(false);
     }
-    clearCart();
-    setIsConfirmOpen(false);
-    onNavigate('tracking');
   };
 
   if (cartItems.length === 0) {

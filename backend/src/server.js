@@ -13,6 +13,9 @@ export const io = new Server(server, {
     }
 });
 
+// Set global io for controllers to use (Requirement 13)
+global.io = io;
+
 io.on('connection', (socket) => {
     console.log('👤 A user connected:', socket.id);
     
@@ -25,6 +28,33 @@ io.on('connection', (socket) => {
         console.log('👤 User disconnected');
     });
 });
+
+import pool from './config/db.js';
+
+// Requirement 10: Auto Order Completion Logic (6 hours)
+// Check every 30 minutes and complete orders that were started more than 6 hours ago
+setInterval(async () => {
+    try {
+        console.log('[Maintenance] Checking for stale orders (>6h)...');
+        const [statusRows] = await pool.query("SELECT id FROM order_statuses WHERE name = 'COMPLETED'");
+        const completedId = statusRows[0]?.id || 5;
+
+        const [result] = await pool.query(`
+            UPDATE orders 
+            SET status_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE status_id NOT IN (
+                SELECT id FROM order_statuses WHERE name IN ('COMPLETED', 'CANCELLED')
+            )
+            AND created_at < DATE_SUB(NOW(), INTERVAL 6 HOUR)
+        `, [completedId]);
+
+        if (result.affectedRows > 0) {
+            console.log(`[Maintenance] Auto-completed ${result.affectedRows} stale orders.`);
+        }
+    } catch (err) {
+        console.error('[Maintenance] Auto-completion task failed:', err.message);
+    }
+}, 30 * 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);

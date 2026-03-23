@@ -8,7 +8,7 @@ import { api } from '../utils/api';
 export function StewardSelectionPage({
   onNavigate
 }) {
-  const { selectedStewardId, setSteward } = useOrder();
+  const { selectedStewardId, setSteward, tableNumber } = useOrder();
   const [localSelectedId, setLocalSelectedId] = useState(
     selectedStewardId
   );
@@ -34,18 +34,18 @@ export function StewardSelectionPage({
   const handleContinue = () => {
     if (localSelectedId) {
       setSteward(localSelectedId);
-      onNavigate('menu');
+      onNavigate(tableNumber ? 'menu' : 'table-selection');
     }
   };
 
   const handleRandom = () => {
-    const available = stewards.filter((s) => s.isAvailable);
+    const available = stewards.filter((s) => s.is_available || s.isAvailable);
     if (available.length > 0) {
       const randomSteward =
         available[Math.floor(Math.random() * available.length)];
       setLocalSelectedId(randomSteward.id);
       setSteward(randomSteward.id);
-      onNavigate('menu');
+      onNavigate(tableNumber ? 'menu' : 'table-selection');
     }
   };
 
@@ -109,7 +109,7 @@ export function StewardSelectionPage({
           disabled={!localSelectedId}
           onClick={handleContinue}
         >
-          Continue to Menu
+          Confirm Steward
         </Button>
       </div>
     </div>

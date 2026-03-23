@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
 import AccountSection from '../AccountSection';
+import { io } from 'socket.io-client';
 
 const { width } = Dimensions.get('window');
 
@@ -47,6 +48,8 @@ const StewardDashboard = () => {
     
     // Cross-platform Filter Modal
     const [filterModal, setFilterModal] = useState({ show: false, title: '', placeholder: '', value: '', type: '', onSubmit: null });
+    // Real-time order notification modal
+    const [newOrderNotif, setNewOrderNotif] = useState(null);
 
     // Reservation Filters
     const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
@@ -110,8 +113,25 @@ const StewardDashboard = () => {
         const interval = setInterval(() => {
             fetchData(true);
         }, 10000);
-        return () => clearInterval(interval);
-    }, [fetchData]);
+
+        // Set up real-time socket for notifications
+        const socket = io(apiConfig.API_BASE_URL, {
+            transports: ['websocket']
+        });
+
+        socket.on('orderUpdate', (data) => {
+            if (data.staffId === user.id && data.status !== 'SESSION_ENDED') {
+                Vibration && Vibration.vibrate([100, 200, 100, 200]);
+                setNewOrderNotif(data); // Trigger rich modal
+                fetchData(true); 
+            }
+        });
+
+        return () => {
+             clearInterval(interval);
+             socket.disconnect();
+        };
+    }, [fetchData, user.id]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -369,6 +389,41 @@ const StewardDashboard = () => {
             {renderDutyCard()}
             {renderStats()}
             
+            {/* My Active Orders Section */}
+            {orders.length > 0 && (
+                <View style={[styles.areaSection, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 2 }]}>
+                    <View style={styles.areaHeader}>
+                        <Text style={[styles.areaTitle, { color: '#166534' }]}>📋 My Orders</Text>
+                        <Text style={styles.areaSub}>You have {orders.length} active orders to attend</Text>
+                    </View>
+                    <View style={styles.tableGrid}>
+                        {orders.map(order => {
+                            const isOccupied = order.status !== 'COMPLETED';
+                            return (
+                                <TouchableOpacity 
+                                    key={`order-${order.id}`} 
+                                    style={[styles.tableBox, isOccupied ? styles.tableBoxOccupied : styles.tableBoxAvailable]}
+                                    onPress={() => setActiveTab('orders')}
+                                >
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Text style={styles.tableNum}>T-{order.table_number}</Text>
+                                        <Text style={{ fontSize: 12 }}>{isOccupied ? '🔴' : '🟢'}</Text>
+                                    </View>
+                                    <View style={{ marginTop: 5, backgroundColor: '#FEF3C7', paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 }}>
+                                        <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center', color: '#92400E' }} numberOfLines={1}>
+                                            👤 {order.customer_name || 'Guest'}
+                                        </Text>
+                                    </View>
+                                    <View style={{ marginTop: 4, paddingHorizontal: 4, paddingVertical: 2, backgroundColor: '#DBEAFE', borderRadius: 4 }}>
+                                        <Text style={{ fontSize: 8, color: '#1E40AF', fontWeight: 'bold', textAlign: 'center' }}>{order.status}</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </View>
+            )}
+
             <View style={styles.sectionHeader}>
                 <View>
                     <Text style={styles.sectionTitle}>🗺️ Restaurant Layout</Text>
@@ -554,7 +609,25 @@ const StewardDashboard = () => {
                                 <Text style={styles.statusText}>{order.status}</Text>
                             </View>
                         </View>
-                        <Text style={styles.orderTable}>Table {order.table_number}</Text>
+
+                        {/* Table + Customer Info Row */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <Text style={styles.orderTable}>Table {order.table_number}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <View style={{ 
+                                    backgroundColor: order.customer_type === 'Registered' ? '#EEF2FF' : '#FEF3C7', 
+                                    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 
+                                }}>
+                                    <Text style={{ 
+                                        fontSize: 10, fontWeight: '700', 
+                                        color: order.customer_type === 'Registered' ? '#4F46E5' : '#92400E' 
+                                    }}>
+                                        {order.customer_type === 'Registered' ? '👤' : '🙋'} {order.customer_name || 'Guest'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
                         <View style={styles.orderItems}>
                             {order.items?.map((item, idx) => (
                                 <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -775,7 +848,79 @@ const StewardDashboard = () => {
                 </SafeAreaView>
             </View>
             
-            <View style={styles.mainContainer}>
+        <View style={styles.mainContainer}>
+            {/* ============ RICH ORDER NOTIFICATION MODAL ============ */}
+            <Modal
+                visible={!!newOrderNotif}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setNewOrderNotif(null)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                    <View style={{ backgroundColor: 'white', borderRadius: 28, padding: 28, width: '100%', maxWidth: 380, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20 }}>
+                        {/* Icon */}
+                        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: newOrderNotif?.isUpdate ? '#FEF3C7' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                            <Text style={{ fontSize: 36 }}>{newOrderNotif?.isUpdate ? '🔄' : '🛎️'}</Text>
+                        </View>
+
+                        {/* Title */}
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 4, textAlign: 'center' }}>
+                            {newOrderNotif?.isUpdate ? 'Order Updated!' : 'New Order!'}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 20, textAlign: 'center' }}>
+                            {newOrderNotif?.isUpdate
+                                ? 'A customer has added more items to their existing order.'
+                                : 'A new order has been placed and assigned to you.'}
+                        </Text>
+
+                        {/* Highlighted Details */}
+                        <View style={{ width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, gap: 10, marginBottom: 20 }}>
+                            {/* Order ID */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: '#6B7280', fontWeight: '600' }}>Order</Text>
+                                <View style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                    <Text style={{ fontWeight: '900', color: '#4F46E5', fontSize: 14 }}>#{newOrderNotif?.orderId}</Text>
+                                </View>
+                            </View>
+
+                            {/* Table */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: '#6B7280', fontWeight: '600' }}>Table</Text>
+                                <View style={{ backgroundColor: newOrderNotif?.isUpdate ? '#FEF3C7' : '#DCFCE7', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                    <Text style={{ fontWeight: '900', color: newOrderNotif?.isUpdate ? '#92400E' : '#166534', fontSize: 14 }}>
+                                        🪑 Table {newOrderNotif?.tableNumber || 'N/A'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Customer */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: '#6B7280', fontWeight: '600' }}>Customer</Text>
+                                <View style={{ backgroundColor: newOrderNotif?.customerType === 'registered' ? '#EEF2FF' : '#FEF3C7', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                    <Text style={{ fontWeight: '900', color: newOrderNotif?.customerType === 'registered' ? '#4F46E5' : '#92400E', fontSize: 14 }}>
+                                        {newOrderNotif?.customerType === 'registered' ? '👤' : '🙋'} {newOrderNotif?.customerName || 'Guest'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* CTA Button */}
+                        <TouchableOpacity
+                            style={{ width: '100%', backgroundColor: newOrderNotif?.isUpdate ? '#F59E0B' : '#10B981', paddingVertical: 14, borderRadius: 20, alignItems: 'center' }}
+                            onPress={() => { setNewOrderNotif(null); setActiveTab('orders'); }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>
+                                {newOrderNotif?.isUpdate ? '🔄  View Updated Order' : '✅  Got it! View Orders'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity onPress={() => setNewOrderNotif(null)} style={{ marginTop: 12 }}>
+                            <Text style={{ color: '#9CA3AF', fontSize: 13 }}>Dismiss</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
                 {activeTab === 'home' && renderHome()}
                 {activeTab === 'orders' && renderOrders()}
                 {activeTab === 'menu' && renderMenu()}

@@ -1,20 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsIcon, ChevronRightIcon, SparklesIcon } from 'lucide-react';
+import { UtensilsIcon, ChevronRightIcon, SparklesIcon, ClockIcon } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useOrder } from '../hooks/useOrder';
+import { useAuth } from '../hooks/useAuth';
 
 export function WelcomePage({ onNavigate }) {
-  const { tableNumber } = useOrder();
+  const { currentOrder, clearOrder, isInitialLoading } = useOrder();
+  const { isAuthenticated, loading } = useAuth();
   const [showModal, setShowModal] = useState(false);
-
-  // Use the local image from the public folder
+  const [showSessionPopup, setShowSessionPopup] = useState(false);
   const restaurantImage = '/2.jpg';
 
   useEffect(() => {
-    // Show modal after a small delay for animation effect
+    if (loading || isInitialLoading) return;
+
+    // Smart Redirection & Session Detection (Requirement 9 & 11)
+    const isOngoing = currentOrder && !['COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase());
+
+    if (isAuthenticated && isOngoing) {
+       onNavigate('dashboard');
+       return;
+    }
+
+    if (!isAuthenticated && isOngoing) {
+       // Guest with active session detected - ask to continue (Requirement 9)
+       setShowSessionPopup(true);
+       return;
+    }
+
+    // Default: Show landing modal after delay
     const timer = setTimeout(() => setShowModal(true), 1200);
     return () => clearTimeout(timer);
-  }, []);
+  }, [currentOrder, isAuthenticated, onNavigate, loading, isInitialLoading]);
+
+  const handleStartFresh = () => {
+    clearOrder();
+    setShowSessionPopup(false);
+    setShowModal(true);
+  };
+
+  const handleContinueSession = () => {
+    setShowSessionPopup(false);
+    onNavigate('dashboard');
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-white overflow-hidden">
@@ -50,7 +78,7 @@ export function WelcomePage({ onNavigate }) {
       </div>
 
       {/* Modern Welcome Popup Modal */}
-      {showModal && (
+      {showModal && !showSessionPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500"
@@ -69,30 +97,63 @@ export function WelcomePage({ onNavigate }) {
                 <span className="bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[2px] mb-2 inline-block">
                   Welcome Experience
                 </span>
-                <h2 className="text-md font-black text-gray-900 leading-tight">
-                  {/* MELISSAS' FOOD COURT */}
-                </h2>
               </div>
             </div>
 
             <div className="p-8 pt-2">
               <p className="text-gray-500 mb-8 text-md leading-relaxed">
-                Welcome back to Sri Lanka&apos;s finest. Please select your table to explore our menu and place your order.
+                Welcome to Sri Lanka&apos;s finest. Please select your table to explore our menu and place your order.
               </p>
 
               <button
-                onClick={() => onNavigate('table-selection')}
+                onClick={() => onNavigate('auth-selection')}
                 className="w-full bg-gray-900 text-white py-5 px-6 rounded-3xl font-bold flex items-center justify-between group hover:bg-gray-800 transition-all active:scale-[0.98] shadow-xl shadow-gray-900/10"
               >
                 <span className="flex items-center gap-3">
                   <SparklesIcon className="w-5 h-5 text-amber-400 fill-amber-400" />
-                  Select Table
+                  Explore Experience
                 </span>
                 <ChevronRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Session Recovery Popup (Requirement 9) */}
+      {showSessionPopup && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white rounded-[40px] p-10 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-500 text-center">
+               <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <ClockIcon className="w-10 h-10" />
+               </div>
+               
+               <h3 className="text-2xl font-black text-gray-900 mb-2 leading-tight">
+                  Welcome back!
+               </h3>
+               <p className="text-gray-500 text-sm mb-10 leading-relaxed px-2">
+                  We found your previous order for <b>Table {currentOrder?.tableNumber || currentOrder?.table_id}</b>. Would you like to continue?
+               </p>
+
+               <div className="flex flex-col gap-4">
+                  <Button
+                    fullWidth
+                    className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-black text-sm tracking-wide shadow-lg shadow-amber-200"
+                    onClick={handleContinueSession}
+                  >
+                    Continue Previous Order
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    fullWidth
+                    className="text-gray-400 font-bold hover:text-red-500 transition-colors"
+                    onClick={handleStartFresh}
+                  >
+                    Start Fresh Session
+                  </Button>
+               </div>
+            </div>
+         </div>
       )}
 
       <style dangerouslySetInnerHTML={{
@@ -115,5 +176,3 @@ export function WelcomePage({ onNavigate }) {
     </div>
   );
 }
-
-

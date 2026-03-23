@@ -11,7 +11,7 @@ import { Button } from '../components/ui/Button';
 import { useOrder } from '../hooks/useOrder';
 
 export function PaymentPage({ onNavigate }) {
-  const { currentOrder, clearCurrentOrder, isGuest } = useOrder();
+  const { currentOrder, clearOrder, isGuest } = useOrder();
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('idle');
 
@@ -39,7 +39,7 @@ export function PaymentPage({ onNavigate }) {
   };
 
   const handleFinish = () => {
-    clearCurrentOrder();
+    clearOrder();
     onNavigate('feedback');
   };
 

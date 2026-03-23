@@ -22,7 +22,7 @@ export const getTableStatus = async (req, res) => {
             LEFT JOIN order_statuses os ON o.status_id = os.id
             LEFT JOIN stewards s ON o.steward_id = s.id
             LEFT JOIN staff_users su ON s.staff_id = su.id
-            ORDER BY rt.table_number ASC
+            ORDER BY (CASE WHEN da.area_name = 'Italian Area' THEN 0 ELSE 1 END), da.area_name, rt.table_number ASC
         `;
         
         const [tables] = await pool.query(tablesQuery);

@@ -64,12 +64,17 @@ export const getKitchenOrders = async (req, res) => {
         });
 
         // 3. Process and filter all orders
+        console.log(`[Kitchen] Total orders in Union: ${orders.length}`);
         const kitchenOrders = orders.map(o => {
             let pItems = [];
             if (o.order_type_name === 'TAKEAWAY' && takeawayMap[o.id]) {
                 pItems = takeawayMap[o.id];
             } else {
-                pItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+                let itemsRaw = o.items;
+                if (Buffer.isBuffer(itemsRaw)) {
+                    itemsRaw = itemsRaw.toString('utf8');
+                }
+                pItems = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw || '[]') : (itemsRaw || []);
             }
             
             // Filter only food items for kitchen
@@ -77,6 +82,10 @@ export const getKitchenOrders = async (req, res) => {
                 const cat = (i.category || i.category_name || '').toLowerCase();
                 return cat !== 'beverages';
             });
+            
+            if (o.items.length === 0 && pItems.length > 0) {
+                console.log(`[Kitchen] Order ${o.id} (${o.order_type_name}) filtered out - only beverages found:`, pItems.map(p => p.category));
+            }
             return o;
         }).filter(o => o.items && o.items.length > 0);
 
@@ -152,12 +161,17 @@ export const getBarOrders = async (req, res) => {
         });
 
         // 3. Process and filter all orders
+        console.log(`[Bar] Total orders in Union: ${orders.length}`);
         const barOrders = orders.map(o => {
             let pItems = [];
             if (o.order_type_name === 'TAKEAWAY' && takeawayMap[o.id]) {
                 pItems = takeawayMap[o.id];
             } else {
-                pItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+                let itemsRaw = o.items;
+                if (Buffer.isBuffer(itemsRaw)) {
+                    itemsRaw = itemsRaw.toString('utf8');
+                }
+                pItems = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw || '[]') : (itemsRaw || []);
             }
             
             // Filter only beverages for bar
@@ -165,6 +179,10 @@ export const getBarOrders = async (req, res) => {
                 const cat = (i.category || i.category_name || '').toLowerCase();
                 return cat === 'beverages';
             });
+            
+            if (o.items.length === 0 && pItems.length > 0) {
+                console.log(`[Bar] Order ${o.id} (${o.order_type_name}) filtered out - no beverages found:`, pItems.map(p => p.category));
+            }
             return o;
         }).filter(o => o.items && o.items.length > 0);
 

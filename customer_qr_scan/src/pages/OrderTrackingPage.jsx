@@ -3,19 +3,32 @@ import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
 import { OrderStatusTracker } from '../components/order/OrderStatusTracker';
 import { Button } from '../components/ui/Button';
+import { ClockIcon } from 'lucide-react';
 import { useOrder } from '../hooks/useOrder';
 
 export function OrderTrackingPage({ onNavigate }) {
-  const { currentOrder, cancelItem } = useOrder();
+  const { currentOrder, requestOrderCancellation } = useOrder();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const [itemToCancel, setItemToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelComment, setCancelComment] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Cancellation reasons
+  const reasons = [
+    "Changed my mind",
+    "Wrong order",
+    "Delay",
+    "Other"
+  ];
 
   if (!currentOrder) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header title="Active Order" onNavigate={onNavigate} />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6 text-gray-300">
+             <ClockIcon className="w-10 h-10" />
+          </div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             No Active Order
           </h2>
@@ -29,24 +42,30 @@ export function OrderTrackingPage({ onNavigate }) {
     );
   }
 
-  const handleCancelRequest = (itemId) => {
-    setItemToCancel(itemId);
+  const handleFullOrderCancel = () => {
     setCancelModalOpen(true);
   };
 
   const submitCancel = async () => {
-    if (itemToCancel) {
-      try {
-        await cancelItem(itemToCancel, cancelReason);
-        setCancelModalOpen(false);
-        setItemToCancel(null);
-        setCancelReason('');
-        alert('Cancellation request submitted!');
-      } catch (err) {
-        alert('Failed to request cancellation: ' + err.message);
-      }
+    if (!cancelReason) return;
+    
+    setLoading(true);
+    try {
+      const finalReason = cancelReason === 'Other' ? `Other: ${cancelComment}` : cancelReason;
+      await requestOrderCancellation(finalReason);
+      setCancelModalOpen(false);
+      setCancelReason('');
+      setCancelComment('');
+      alert('Cancellation request submitted for the entire order!');
+    } catch (err) {
+      alert('Failed to request cancellation: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Check if cancellation is allowed (Requirement 9: ONLY BEFORE Preparing)
+  const canCancel = ['PENDING', 'ORDER PLACED', 'RECEIVED'].includes(currentOrder.status?.toUpperCase());
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
@@ -82,14 +101,6 @@ export function OrderTrackingPage({ onNavigate }) {
                   </span>
                   <div>
                     <p className="text-gray-900">{item.menuItem?.name || item.name}</p>
-                    {['PENDING', 'received'].includes(currentOrder.status) && (
-                      <button
-                        onClick={() => handleCancelRequest(item.menuItem?.id || item.id)}
-                        className="text-xs text-red-500 hover:text-red-600 mt-1"
-                      >
-                        Cancel Item
-                      </button>
-                    )}
                   </div>
                 </div>
                 <span className="font-medium text-gray-900">
@@ -122,6 +133,18 @@ export function OrderTrackingPage({ onNavigate }) {
         </div>
 
         <div className="p-4 space-y-3">
+          {canCancel && (
+            <Button
+              variant="outline"
+              fullWidth
+              className="text-red-500 border-red-200 hover:bg-red-50"
+              onClick={handleFullOrderCancel}
+              disabled={currentOrder.cancellation_status === 'PENDING'}
+            >
+              Cancel Entire Order
+            </Button>
+          )}
+
           {!['SERVED', 'COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase()) && (
             <Button
               variant="outline"
@@ -140,40 +163,66 @@ export function OrderTrackingPage({ onNavigate }) {
         </div>
       </div>
 
-      {/* Cancel Modal */}
+      {/* Cancel Modal (Item 10) */}
       {cancelModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">
-              Cancel Item
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-300">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              Cancel Order?
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Please provide a reason for cancellation.
+            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+              We'll notify the kitchen to stop your order. Please let us know why.
             </p>
 
-            <textarea
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="E.g., Changed my mind"
-              className="w-full border border-gray-200 rounded-lg p-3 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-gray-900"
-              rows={3}
-            />
+            <div className="space-y-4 mb-8">
+               <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                     Reason for cancellation
+                  </label>
+                  <select
+                     value={cancelReason}
+                     onChange={(e) => setCancelReason(e.target.value)}
+                     className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-amber-500 appearance-none shadow-inner"
+                  >
+                     <option value="" disabled>Select a reason</option>
+                     {reasons.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                     ))}
+                  </select>
+               </div>
 
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                fullWidth
-                onClick={() => setCancelModalOpen(false)}
-              >
-                Keep Item
-              </Button>
-              <Button
-                fullWidth
-                onClick={submitCancel}
-                disabled={!cancelReason.trim()}
-              >
-                Confirm Cancel
-              </Button>
+               {cancelReason === 'Other' && (
+                  <textarea
+                     value={cancelComment}
+                     onChange={(e) => setCancelComment(e.target.value)}
+                     placeholder="Please specify..."
+                     className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-amber-500 shadow-inner"
+                     rows={3}
+                  />
+               )}
+            </div>
+
+            <div className="flex flex-col gap-3">
+               <Button
+                 fullWidth
+                 className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-200"
+                 onClick={submitCancel}
+                 disabled={!cancelReason || (cancelReason === 'Other' && !cancelComment.trim()) || loading}
+               >
+                 {loading ? 'Processing...' : 'Request Cancellation'}
+               </Button>
+               <Button
+                 variant="ghost"
+                 fullWidth
+                 className="text-gray-400 font-bold"
+                 onClick={() => {
+                   setCancelModalOpen(false);
+                   setCancelReason('');
+                   setCancelComment('');
+                 }}
+               >
+                 Nevermind
+               </Button>
             </div>
           </div>
         </div>

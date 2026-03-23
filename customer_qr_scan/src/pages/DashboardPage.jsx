@@ -17,7 +17,7 @@ import { useOrder } from '../hooks/useOrder';
 
 export function DashboardPage({ onNavigate }) {
   const { user, isAuthenticated, logout } = useAuth();
-  const { currentOrder, orderHistory } = useOrder();
+  const { currentOrder, orderHistory, clearOrder } = useOrder();
   
   const hasOrders = currentOrder !== null || orderHistory.length > 0;
 
@@ -26,14 +26,16 @@ export function DashboardPage({ onNavigate }) {
   const displayEmail = isAuthenticated ? user?.email : 'Anonymous Session';
   const showStats = isAuthenticated;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     logout();
+    await clearOrder();
+    localStorage.removeItem('guestSession'); // Clean guest portal flag too
     onNavigate('welcome');
   };
 
   const restrictedAction = (target) => {
     if (!isAuthenticated) {
-      alert("Please login to access this feature.");
+      alert("🔒 This feature is only available to Login Portal.\n\nGo to your Profile tab → 'Login / Register' to switch to the registered portal.");
       return;
     }
     onNavigate(target);
@@ -45,35 +47,57 @@ export function DashboardPage({ onNavigate }) {
         title="My Account"
         onNavigate={onNavigate}
         rightAction={
-          isAuthenticated ? (
-            <button
-              onClick={handleLogout}
-              className="text-gray-500 hover:text-red-500 p-2"
-            >
-              <LogOutIcon className="w-5 h-5" />
-            </button>
-          ) : (
-            <button
-              onClick={() => onNavigate('login')}
-              className="text-gray-900 font-bold p-2 text-sm"
-            >
-              Login
-            </button>
-          )
+          <button
+            onClick={handleLogout}
+            className="text-gray-500 hover:text-red-500 p-2 transition-colors flex items-center gap-2 group"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
+              {isAuthenticated ? 'Logout' : 'End Session'}
+            </span>
+            <LogOutIcon className="w-5 h-5" />
+          </button>
         }
       />
 
       <div className="p-4 flex-1 overflow-y-auto">
         {/* Profile Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-gray-900 font-bold text-xl uppercase">
-            {displayName.charAt(0)}
+        {isAuthenticated ? (
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-16 h-16 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-xl uppercase ring-4 ring-white shadow-sm">
+              {user?.name?.charAt(0) || 'U'}
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{user?.name}</h2>
+              <p className="text-gray-500 text-sm">{user?.email}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{displayName}</h2>
-            <p className="text-gray-500 text-sm">{displayEmail}</p>
+        ) : (
+          <div className="bg-amber-50 rounded-2xl p-5 mb-6 border border-amber-100">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-14 h-14 bg-amber-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-amber-200 flex-shrink-0">
+                 <UserIcon className="w-7 h-7" />
+              </div>
+              <div>
+                 <h2 className="text-lg font-bold text-amber-900">Guest Session</h2>
+                 <p className="text-amber-700/60 text-xs font-medium uppercase tracking-wider">Browsing anonymously</p>
+              </div>
+            </div>
+            <div className="border-t border-amber-100 pt-4 flex gap-2">
+              <button
+                onClick={() => onNavigate('auth-selection')}
+                className="flex-1 text-center bg-amber-500 text-white py-2.5 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors"
+              >
+                Login / Register
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 text-center bg-red-50 text-red-600 py-2.5 rounded-xl text-sm font-bold border border-red-100 hover:bg-red-100 transition-colors"
+              >
+                End Session
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Loyalty Card - Only for Registered Users */}
         {showStats && (

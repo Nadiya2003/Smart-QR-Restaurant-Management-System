@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { SearchIcon, UserIcon, MapPinIcon } from 'lucide-react';
+import { SearchIcon, UserIcon, MapPinIcon, LogOutIcon } from 'lucide-react';
 import { BottomNav } from '../components/layout/BottomNav';
 import { CategoryFilter } from '../components/menu/CategoryFilter';
 import { FoodCard } from '../components/menu/FoodCard';
 import { useCart } from '../hooks/useCart';
 import { useOrder } from '../hooks/useOrder';
+import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
 
 export function MenuPage({ onNavigate }) {
@@ -16,7 +17,8 @@ export function MenuPage({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   
   const { addItem } = useCart();
-  const { selectedStewardId, tableNumber } = useOrder();
+  const { selectedStewardId, tableNumber, clearOrder } = useOrder();
+  const { isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     fetchData();
@@ -124,6 +126,20 @@ export function MenuPage({ onNavigate }) {
               </div>
             </div>
           </div>
+
+          {!isAuthenticated && (
+            <button 
+              onClick={async () => {
+                logout();
+                await clearOrder();
+                onNavigate('welcome');
+              }}
+              className="flex flex-col items-center gap-1 text-gray-500 hover:text-red-500 transition-colors"
+            >
+              <LogOutIcon className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-tighter">Exit</span>
+            </button>
+          )}
         </div>
 
         {/* Search */}

@@ -549,15 +549,22 @@ export const updateOrderStatus = async (req, res) => {
                 const statusName = statusRows[0].name;
                 await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusId, id]);
 
-                // If completed/finished, free the table
-                if (['COMPLETED', 'FINISHED'].includes(statusName)) {
+                // If completed/finished/cancelled, free the table (Requirement 11)
+                if (['COMPLETED', 'FINISHED', 'CANCELLED'].includes(statusName)) {
                     const [orderRows] = await pool.query('SELECT table_id FROM orders WHERE id = ?', [id]);
                     if (orderRows.length > 0 && orderRows[0].table_id) {
                         await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                        console.log(`[StatusUpdate] Table ${orderRows[0].table_id} freed due to order ${id} status: ${statusName}`);
                     }
                 }
             }
         }
+        
+        // Real-time update emit (Requirement 13)
+        if (global.io) {
+            global.io.emit('orderUpdate', { id, type: type || 'DINE-IN', status: dbStatus });
+        }
+
         res.json({ message: 'Order status updated' });
     } catch (err) {
         console.error('Update order status error:', err);

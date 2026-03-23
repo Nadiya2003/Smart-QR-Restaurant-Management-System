@@ -371,7 +371,34 @@ export const createDineInOrder = async (req, res) => {
             await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [tableId]);
         }
 
+        // Fetch customer name for notification
+        let customerName = 'Guest';
+        let customerType = 'guest';
+        if (customer_id) {
+            const [custRows] = await connection.query('SELECT name FROM online_customers WHERE id = ?', [customer_id]);
+            if (custRows.length > 0) {
+                customerName = custRows[0].name;
+                customerType = 'registered';
+            }
+        }
+        const isUpdate = !!order_id; // true if customer added items to an existing order
+
         await connection.commit();
+        
+        // Emit for Real-time update (Requirement 13)
+        if (global.io) {
+            global.io.emit('orderUpdate', { 
+                orderId: targetOrderId, 
+                type: 'DINE-IN',
+                isUpdate,
+                stewardId: resolvedStewardId,
+                staffId: steward_id,
+                tableNumber: table_number,
+                customerName,
+                customerType
+            });
+        }
+
         res.status(201).json({ 
             message: '✅ Order placed successfully! Your steward will be with you shortly.', 
             orderId: targetOrderId 
@@ -522,10 +549,35 @@ export const removeOrderItem = async (req, res) => {
 export const getAllTables = async (req, res) => {
     try {
         const [tables] = await pool.query(`
-            SELECT t.*, a.area_name 
+            SELECT t.*, a.area_name,
+                   (SELECT rs.reservation_time 
+                    FROM reservations rs 
+                    WHERE rs.table_id = t.id 
+                    AND rs.status NOT IN ('CANCELLED')
+                    AND DATE(rs.reservation_date) = CURDATE()
+                    ORDER BY rs.reservation_time ASC LIMIT 1) as reservation_time,
+                   (SELECT rs.customer_name 
+                    FROM reservations rs 
+                    WHERE rs.table_id = t.id 
+                    AND rs.status NOT IN ('CANCELLED')
+                    AND DATE(rs.reservation_date) = CURDATE()
+                    ORDER BY rs.reservation_time ASC LIMIT 1) as reservation_customer,
+                   (SELECT os.name 
+                    FROM orders o 
+                    JOIN order_statuses os ON o.status_id = os.id
+                    WHERE o.table_id = t.id 
+                    AND os.name NOT IN ('COMPLETED', 'CANCELLED')
+                    ORDER BY o.created_at DESC LIMIT 1) as active_order_status,
+                   (SELECT su.full_name 
+                    FROM orders o 
+                    JOIN stewards s ON o.steward_id = s.id 
+                    JOIN staff_users su ON s.staff_id = su.id
+                    WHERE o.table_id = t.id 
+                    AND o.status_id NOT IN (SELECT id FROM order_statuses WHERE name IN ('COMPLETED', 'CANCELLED'))
+                    ORDER BY o.created_at DESC LIMIT 1) as steward_name
             FROM restaurant_tables t
             JOIN dining_areas a ON t.area_id = a.id
-            ORDER BY a.area_name, t.table_number
+            ORDER BY (CASE WHEN a.area_name = 'Italian Area' THEN 0 ELSE 1 END), a.area_name, t.table_number
         `);
         res.json({ tables });
     } catch (err) {
@@ -582,6 +634,66 @@ export const updateOrderTable = async (req, res) => {
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Update order table error:', err);
+        res.status(500).json({ message: 'Server Error' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+/**
+ * End a dine-in session and free the table (Item 11)
+ */
+export const endDineInSession = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { orderId } = req.body;
+        if (!orderId) return res.status(400).json({ message: 'Order ID required' });
+
+        await connection.beginTransaction();
+
+        // 1. Get the table ID for this order
+        const [orderRows] = await connection.query('SELECT table_id, status_id FROM orders WHERE id = ?', [orderId]);
+        if (orderRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Order not found' });
+        }
+        const { table_id: tableId, status_id: statusId } = orderRows[0];
+
+        // 2. Resolve status name
+        const [statusRows] = await connection.query('SELECT name FROM order_statuses WHERE id = ?', [statusId]);
+        const statusName = statusRows[0]?.name;
+
+        // 3. Mark table as available IF no other active orders exist on it
+        if (tableId) {
+            // Check if any other active orders are on this table
+            const [otherOrders] = await connection.query(
+                "SELECT id FROM orders WHERE table_id = ? AND id != ? AND status_id IN (SELECT id FROM order_statuses WHERE name NOT IN ('COMPLETED', 'CANCELLED'))",
+                [tableId, orderId]
+            );
+            if (otherOrders.length === 0) {
+                await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [tableId]);
+                console.log(`[SessionEnd] Table ${tableId} freed via session end for order ${orderId}`);
+            }
+        }
+
+        // 4. Optionally mark order as CANCELLED if it was still PENDING or merely PLACED
+        if (['PENDING', 'ORDER PLACED'].includes(statusName?.toUpperCase())) {
+            const [cancelledStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+            if (cancelledStatus.length > 0) {
+                await connection.query('UPDATE orders SET status_id = ? WHERE id = ?', [cancelledStatus[0].id, orderId]);
+            }
+        }
+
+        await connection.commit();
+
+        // Real-time update emit (Requirement 13)
+        if (global.io) {
+            global.io.emit('orderUpdate', { orderId, type: 'DINE-IN', status: 'SESSION_ENDED' });
+        }
+
+        res.json({ success: true, message: 'Session ended and table freed' });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('End dine-in session error:', err);
         res.status(500).json({ message: 'Server Error' });
     } finally {
         if (connection) connection.release();

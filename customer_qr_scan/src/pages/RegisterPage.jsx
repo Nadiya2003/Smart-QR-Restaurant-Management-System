@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Header } from '../components/layout/Header';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
+import { useOrder } from '../hooks/useOrder';
 
 export function RegisterPage({ onNavigate }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { register } = useAuth();
+  const { currentOrder, tableNumber } = useOrder();
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,7 +20,12 @@ export function RegisterPage({ onNavigate }) {
     setLoading(true);
     try {
       await register({ name, email, password });
-      onNavigate('steward');
+      // Smart Redirection
+      if (currentOrder && !['COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase())) {
+        onNavigate('dashboard');
+      } else {
+        onNavigate('steward');
+      }
     } catch (err) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {

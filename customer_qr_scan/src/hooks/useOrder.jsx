@@ -26,6 +26,7 @@ export function OrderProvider({ children }) {
   };
 
   const [tableNumber, setTableNumber] = useState(getTableNumber());
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const setTable = (num) => {
     localStorage.setItem('activeTable', num);
@@ -35,6 +36,13 @@ export function OrderProvider({ children }) {
   const isGuest = !user;
 
   useEffect(() => {
+    const initFetch = async () => {
+        if (user) await fetchOrderHistory();
+        else await fetchGuestOrder();
+        setIsInitialLoading(false);
+    };
+    initFetch();
+
     // Poll for status updates
     const interval = setInterval(() => {
       if (user) {
@@ -43,10 +51,6 @@ export function OrderProvider({ children }) {
         fetchGuestOrder();
       }
     }, 5000); // Improved polling: 5s for real-time feel
-    
-    // Initial fetch
-    if (user) fetchOrderHistory();
-    else fetchGuestOrder();
     
     return () => clearInterval(interval);
   }, [user, currentOrder?.id]);
@@ -57,11 +61,11 @@ export function OrderProvider({ children }) {
       const orders = data.orders || [];
       setOrderHistory(orders);
       
-      setOrderHistory(orders);
-      
-      // Check if we have a current session order to track
+      // Check if we have a current session order tracked locally
       const storedOrderId = localStorage.getItem('activeOrderId');
+      
       if (storedOrderId) {
+        // Case 1: We have a locally tracked order — try to sync its status
         const matchingOrder = orders.find(o => o.id.toString() === storedOrderId);
         if (matchingOrder && !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(matchingOrder.status?.toUpperCase())) {
           setCurrentOrder(prev => ({
@@ -73,9 +77,37 @@ export function OrderProvider({ children }) {
             items: matchingOrder.items || prev?.items || []
           }));
         } else if (matchingOrder) {
-          // If it was completed/cancelled, clear it from current focus
+          // Completed/cancelled: clear local focus
           localStorage.removeItem('activeOrderId');
+          localStorage.removeItem('activeTable');
           setCurrentOrder(null);
+        }
+      } else {
+        // Case 2: No local order ID (e.g. user logged out and back in)
+        // Look for any recent active DINE-IN order placed within the last 6 hours
+        const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
+        const recentActiveOrder = orders.find(o => {
+          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase());
+          const isDineIn = o.type === 'DINE-IN' || o.order_type === 'registered' || o.order_type === 'guest';
+          const isRecent = new Date(o.created_at).getTime() > sixHoursAgo;
+          return isActive && isDineIn && isRecent;
+        });
+        
+        if (recentActiveOrder) {
+          // Restore the session
+          localStorage.setItem('activeOrderId', recentActiveOrder.id.toString());
+          if (recentActiveOrder.table_number) {
+            localStorage.setItem('activeTable', recentActiveOrder.table_number.toString());
+            setTableNumber(recentActiveOrder.table_number.toString());
+          }
+          setCurrentOrder({
+            ...recentActiveOrder,
+            id: recentActiveOrder.id,
+            status: recentActiveOrder.status?.toUpperCase(),
+            total: recentActiveOrder.total_price || 0,
+            items: recentActiveOrder.items || [],
+            tableNumber: recentActiveOrder.table_number
+          });
         }
       }
     } catch (error) {
@@ -105,9 +137,11 @@ export function OrderProvider({ children }) {
           total: o.total_price,
           items: o.items || prev?.items || []
         }));
-      } else if (data.order && data.order.id.toString() !== storedOrderId) {
-        // If the table order has changed, clear our local storage
+      } else {
+        // If server returns null OR a different order, clear the local session focus
+        // This ensures fresh start after server restart or checkout/completion
         localStorage.removeItem('activeOrderId');
+        setCurrentOrder(null);
       }
     } catch (error) {
       console.error('Failed to fetch guest order:', error);
@@ -246,31 +280,43 @@ export function OrderProvider({ children }) {
     );
   };
 
-  const clearCurrentOrder = () => {
-    setCurrentOrder(null);
-  };
+    const clearOrder = async () => {
+        try {
+            if (currentOrder?.id) {
+                await api.post('/orders/dine-in/end-session', { orderId: currentOrder.id });
+            }
+        } catch (err) {
+            console.warn('Session end notification failed:', err);
+        } finally {
+            localStorage.removeItem('activeOrderId');
+            localStorage.removeItem('activeTable');
+            setCurrentOrder(null);
+            setTableNumber(null);
+        }
+    };
 
-  return (
-    <OrderContext.Provider value={{
-      currentOrder,
-      orderHistory,
-      selectedStewardId,
-      setSteward,
-      placeOrder,
-      addToExistingOrder,
-      cancelItem,
-      requestOrderCancellation,
-      updateOrderStatus,
-      clearCurrentOrder,
-      tableNumber,
-      setTable,
-      changeTable,
-      isGuest
-    }}>
-      {children}
-    </OrderContext.Provider>
-  );
-}
+    return (
+        <OrderContext.Provider value={{
+            currentOrder,
+            orderHistory,
+            selectedStewardId,
+            setSteward,
+            placeOrder,
+            addToExistingOrder,
+            cancelItem,
+            requestOrderCancellation,
+            updateOrderStatus,
+            clearOrder,
+            tableNumber,
+            setTable,
+            changeTable,
+            isGuest,
+            isInitialLoading
+        }}>
+            {children}
+        </OrderContext.Provider>
+    );
+};
 
 export function useOrder() {
   const context = useContext(OrderContext);

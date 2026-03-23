@@ -31,8 +31,10 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const data = await api.post('/auth/login', { email, password });
+      // REGISTERED PORTAL: set token, clear all guest-only storage
       localStorage.setItem('token', data.token);
-      localStorage.removeItem('activeOrderId'); // Clear current session order on new login
+      localStorage.removeItem('activeOrderId');  // Will be re-fetched from server
+      localStorage.removeItem('guestSession');   // Clear any guest session flag
       setUser(data.user);
       return data;
     } catch (error) {
@@ -41,9 +43,19 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    // REGISTERED PORTAL: clear auth but keep table/order state only if guest re-enters
     localStorage.removeItem('token');
     localStorage.removeItem('activeOrderId');
+    localStorage.removeItem('activeTable');
+    localStorage.removeItem('tableNumber');
     setUser(null);
+  };
+
+  // Guest portal entry — marks a pure guest session to prevent data bleed
+  const enterAsGuest = () => {
+    localStorage.removeItem('token');     // Ensure not logged in
+    localStorage.removeItem('activeOrderId'); // Fresh guest order
+    localStorage.setItem('guestSession', '1');
   };
 
   const register = async (userData) => {
@@ -60,7 +72,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, register }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, register, enterAsGuest }}>
       {!loading && children}
     </AuthContext.Provider>
   );

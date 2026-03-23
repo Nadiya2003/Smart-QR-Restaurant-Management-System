@@ -10,7 +10,8 @@ import {
     requestDineInCancellation,
     removeOrderItem,
     getAllTables,
-    updateOrderTable
+    updateOrderTable,
+    endDineInSession
 } from '../controllers/order.controller.js';
 import { protect, resolveUser } from '../middleware/authMiddleware.js';
 
@@ -27,5 +28,6 @@ router.post('/dine-in/cancel-request/:id', protect, requestDineInCancellation);
 router.delete('/:orderId/items/:itemId', resolveUser, removeOrderItem);
 router.get('/tables', getAllTables);
 router.post('/update-table', resolveUser, updateOrderTable);
+router.post('/dine-in/end-session', resolveUser, endDineInSession);
 
 export default router;
