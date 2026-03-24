@@ -3,6 +3,7 @@ import { Header } from '../components/layout/Header';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
 import { useOrder } from '../hooks/useOrder';
+import { api } from '../utils/api';
 
 export function RegisterPage({ onNavigate }) {
   const [name, setName] = useState('');
@@ -19,7 +20,17 @@ export function RegisterPage({ onNavigate }) {
     setError('');
     setLoading(true);
     try {
-      await register({ name, email, password });
+      const newUser = await register({ name, email, password });
+
+      // --- SYNC GUEST ORDER IF APPLICABLE ---
+      if (tableNumber) {
+        try {
+          await api.post('/orders/sync-guest', { tableNumber });
+        } catch (syncErr) {
+          console.error('Failed to sync guest order:', syncErr);
+        }
+      }
+
       // Smart Redirection
       if (currentOrder && !['COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase())) {
         onNavigate('dashboard');

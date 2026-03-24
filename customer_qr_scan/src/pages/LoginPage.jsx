@@ -3,6 +3,7 @@ import { Header } from '../components/layout/Header';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
 import { useOrder } from '../hooks/useOrder';
+import { api } from '../utils/api';
 
 export function LoginPage({ onNavigate }) {
   const [email, setEmail] = useState('');
@@ -10,14 +11,22 @@ export function LoginPage({ onNavigate }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const { currentOrder } = useOrder();
-
+  const { currentOrder, tableNumber } = useOrder();
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       const loggedInUser = await login(email, password);
+
+      // --- SYNC GUEST ORDER IF APPLICABLE ---
+      if (tableNumber) {
+        try {
+          await api.post('/orders/sync-guest', { tableNumber });
+        } catch (syncErr) {
+          console.error('Failed to sync guest order:', syncErr);
+        }
+      }
 
       // Immediately check the server for any active order within the last 6 hours
       // (handles case where user logged out mid-session and returns)

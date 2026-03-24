@@ -181,3 +181,85 @@ export const updateProfile = async (req, res) => {
         res.status(500).json({ message: "Failed to update profile" });
     }
 };
+
+export const getRewards = async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM loyalty_reward_definitions WHERE is_active = 1');
+        res.json({ rewards: rows });
+    } catch (err) {
+        res.status(500).json({ message: "Failed to fetch rewards" });
+    }
+};
+
+export const getMyRewards = async (req, res) => {
+    try {
+        const customerId = req.user.userId;
+        const [rows] = await pool.query(`
+            SELECT cr.*, rd.name, rd.description, rd.reward_type, rd.reward_value, rd.min_order_value
+            FROM customer_rewards cr
+            JOIN loyalty_reward_definitions rd ON cr.reward_id = rd.id
+            WHERE cr.customer_id = ? AND cr.is_used = 0
+            ORDER BY cr.earned_at DESC
+        `, [customerId]);
+        res.json({ myRewards: rows });
+    } catch (err) {
+        res.status(500).json({ message: "Failed to fetch your rewards" });
+    }
+};
+
+export const redeemReward = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const customerId = req.user.userId;
+        const { rewardId } = req.body;
+
+        await connection.beginTransaction();
+
+        // 1. Get Reward details and cost
+        const [rewardRows] = await connection.query('SELECT name, points_cost FROM loyalty_reward_definitions WHERE id = ? AND is_active = 1', [rewardId]);
+        if (rewardRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Reward not found or inactive" });
+        }
+        const reward = rewardRows[0];
+
+        // 2. Check customer points
+        const [custRows] = await connection.query('SELECT loyalty_points FROM online_customers WHERE id = ?', [customerId]);
+        if (custRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Customer not found" });
+        }
+        const points = custRows[0].loyalty_points;
+
+        if (points < reward.points_cost) {
+            await connection.rollback();
+            return res.status(400).json({ message: `Insufficient points. You need ${reward.points_cost} points.` });
+        }
+
+        // 3. Deduct points
+        await connection.query('UPDATE online_customers SET loyalty_points = loyalty_points - ? WHERE id = ?', [reward.points_cost, customerId]);
+
+        // 4. Generate Coupon Code
+        const couponCode = 'RW-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+
+        // 5. Grant Reward (expiry in 30 days)
+        await connection.query(
+            'INSERT INTO customer_rewards (customer_id, reward_id, coupon_code, expiry_date) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))',
+            [customerId, rewardId, couponCode]
+        );
+
+        await connection.commit();
+        res.json({ 
+            message: `Successfully redeemed ${reward.name}!`, 
+            couponCode,
+            pointsRemaining: points - reward.points_cost
+        });
+
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error("redeemReward error:", err);
+        res.status(500).json({ message: "Failed to redeem reward" });
+    } finally {
+        if (connection) connection.release();
+    }
+};

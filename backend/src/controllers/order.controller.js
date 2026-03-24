@@ -444,12 +444,13 @@ export const getActiveOrderByTable = async (req, res) => {
 export const requestDineInCancellation = async (req, res) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
-        const customer_id = req.user ? req.user.userId : null;
+        const { reason, itemIds } = req.body;
+
+        const customer_id_val = req.user ? req.user.userId : null;
         const query = req.user 
-            ? 'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id = ?'
-            : 'SELECT o.id, o.status_id, o.cancellation_status FROM orders o WHERE o.id = ? AND o.customer_id IS NULL';
-        const params = req.user ? [id, customer_id] : [id];
+            ? 'SELECT o.id, o.status_id, o.cancellation_status, o.table_id FROM orders o WHERE o.id = ? AND o.customer_id = ?'
+            : 'SELECT o.id, o.status_id, o.cancellation_status, o.table_id FROM orders o WHERE o.id = ? AND o.customer_id IS NULL';
+        const params = req.user ? [id, customer_id_val] : [id];
         
         // 1. Check if order exists and belongs to this customer
         const [orders] = await pool.query(query, params);
@@ -462,29 +463,104 @@ export const requestDineInCancellation = async (req, res) => {
 
         // 2. Check current status
         const [statusRows] = await pool.query('SELECT name FROM order_statuses WHERE id = ?', [order.status_id]);
-        const statusName = statusRows[0]?.name;
+        const statusName = statusRows[0]?.name?.toUpperCase();
 
         if (['CANCELLED', 'COMPLETED', 'SERVED', 'FINISHED'].includes(statusName)) {
             return res.status(400).json({ message: `Order is already ${statusName}. Cannot cancel now.` });
         }
 
+        // --- DIRECT CANCELLATION FOR EARLY ORDERS ---
+        if (['PENDING', 'ACCEPTED', 'RECEIVED', 'ORDER PLACED', 'CONFIRMED'].includes(statusName)) {
+            const isPartial = itemIds && Array.isArray(itemIds) && itemIds.length > 0;
+            
+            if (isPartial) {
+                // PARTIAL DIRECT CANCELLATION
+                // Delete selected items
+                await pool.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [id, itemIds]);
+                
+                // Also clean up analytics for these specific items if they existed
+                await pool.query('DELETE FROM order_analytics WHERE order_id = ? AND quantity > 0 LIMIT ?', [id, itemIds.length]);
+
+                // Recalculate Total
+                const [itemRows] = await pool.query('SELECT price, quantity FROM order_items WHERE order_id = ?', [id]);
+                if (itemRows.length === 0) {
+                   // If no items left, cancel the entire order instead
+                   const [cancelStatusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                   await pool.query('UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [cancelStatusRows[0].id, id]);
+                   if (order.table_id) await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [order.table_id]);
+                } else {
+                   const subtotal = itemRows.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                   const total = subtotal * 1.15; // 10% SC, 5% Tax
+                   await pool.query('UPDATE orders SET total_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [total, id]);
+                }
+                console.log(`[Cancel] Partial cancellation for Order #${id}: ${itemIds.length} items removed`);
+            } else {
+                // FULL DIRECT CANCELLATION
+                const [cancelStatusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                const cancelStatusId = cancelStatusRows[0]?.id || 2;
+                
+                await pool.query(
+                    'UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED", cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    [cancelStatusId, reason || 'Customer cancelled via App', id]
+                );
+
+                if (order.table_id) {
+                    await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [order.table_id]);
+                }
+                console.log(`[Cancel] Full direct cancellation for Order #${id}`);
+            }
+
+            // Notify Steward
+            try {
+                const [orderDetails] = await pool.query(`
+                    SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
+                           c.name as customer_name,
+                           CASE WHEN o.customer_id IS NOT NULL THEN 'registered' ELSE 'guest' END as customer_type
+                    FROM orders o
+                    LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+                    LEFT JOIN stewards s ON o.steward_id = s.id
+                    LEFT JOIN online_customers c ON o.customer_id = c.id
+                    WHERE o.id = ?
+                `, [id]);
+
+                if (global.io && orderDetails.length > 0) {
+                    const od = orderDetails[0];
+                    global.io.emit('cancelRequest', {
+                        orderId: parseInt(id),
+                        tableNumber: od.table_number,
+                        staffId: od.staff_id,
+                        customerName: od.customer_name || 'Guest',
+                        customerType: od.customer_type,
+                        reason: reason || (isPartial ? 'Partial items removed' : 'Customer Cancelled'),
+                        isDirect: true,
+                        playSound: true,
+                        isPartial: isPartial
+                    });
+                }
+            } catch (notifErr) {
+                console.error('Notify cancellation error:', notifErr);
+            }
+
+            return res.json({ success: true, partial: isPartial, message: isPartial ? '✅ Selected items removed.' : '✅ Order cancelled successfully.' });
+        }
+
+        // --- FALLBACK: REQUEST BASED CANCELLATION FOR LATE ORDERS ---
         if (order.cancellation_status === 'PENDING') {
             return res.status(400).json({ message: 'Cancellation request is already pending.' });
         }
 
-        // 3. Insert into cancel_requests
+        // Insert into cancel_requests for manager review
         await pool.query(
-            'INSERT INTO cancel_requests (order_id, requested_by, reason, status) VALUES (?, ?, ?, "pending")',
-            [id, customer_id || null, reason || 'Customer requested cancellation via App']
+            'INSERT INTO cancel_requests (order_id, requested_by, reason, status, item_ids) VALUES (?, ?, ?, "pending", ?)',
+            [id, customer_id || null, reason || 'Customer requested via App', itemIds ? JSON.stringify(itemIds) : null]
         );
 
-        // 4. Update order state
         await pool.query(
             'UPDATE orders SET cancellation_status = "PENDING", cancellation_reason = ? WHERE id = ?',
             [reason, id]
         );
 
-        // 5. Notify steward via socket
+        // Notify steward of the request
         try {
             const [orderDetails] = await pool.query(`
                 SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
@@ -505,17 +581,20 @@ export const requestDineInCancellation = async (req, res) => {
                     staffId: od.staff_id,
                     customerName: od.customer_name || 'Guest',
                     customerType: od.customer_type,
-                    reason: reason || 'Not specified'
+                    reason: reason || 'Not specified',
+                    isDirect: false,
+                    playSound: true,
+                    isPartial: !!itemIds
                 });
             }
         } catch (notifErr) {
-            console.error('Cancel notify error (non-fatal):', notifErr);
+            console.error('Cancel request notify error:', notifErr);
         }
 
-        res.json({ message: '✅ Cancellation request sent. Please wait for manager approval.' });
+        res.json({ success: false, message: '✅ Cancellation request sent. Steward has been notified.' });
     } catch (error) {
-        console.error('Request dine-in cancellation error:', error);
-        res.status(500).json({ message: 'Failed to request cancellation' });
+        console.error('Dine-in cancellation handler error:', error);
+        res.status(500).json({ message: 'Failed to process cancellation' });
     }
 };
 
@@ -724,6 +803,66 @@ export const endDineInSession = async (req, res) => {
         if (connection) await connection.rollback();
         console.error('End dine-in session error:', err);
         res.status(500).json({ message: 'Server Error' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const syncGuestOrder = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { tableNumber } = req.body;
+        const customerId = req.user.userId;
+
+        if (!tableNumber) {
+            return res.status(400).json({ message: 'Table number is required for syncing' });
+        }
+
+        await connection.beginTransaction();
+
+        // 1. Get the table ID from table number
+        const [tableRows] = await connection.query('SELECT id FROM restaurant_tables WHERE table_number = ?', [tableNumber]);
+        if (tableRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Table not found' });
+        }
+        const tableId = tableRows[0].id;
+
+        // 2. Find the most recent active guest order for this table
+        const [orderRows] = await connection.query(
+            `SELECT id FROM orders 
+             WHERE table_id = ? AND customer_id IS NULL AND order_type = 'guest'
+             AND status_id NOT IN (SELECT id FROM order_statuses WHERE name IN ('COMPLETED', 'CANCELLED'))
+             ORDER BY created_at DESC LIMIT 1`,
+            [tableId]
+        );
+
+        if (orderRows.length === 0) {
+            await connection.rollback();
+            return res.json({ message: 'No active guest order found to sync', synced: false });
+        }
+
+        const orderId = orderRows[0].id;
+
+        // 3. Update the order with customer ID and change type to 'registered'
+        await connection.query(
+            "UPDATE orders SET customer_id = ?, order_type = 'registered' WHERE id = ?",
+            [customerId, orderId]
+        );
+
+        // 4. Update customer_name from user if available
+        const [userRows] = await connection.query('SELECT name FROM online_customers WHERE id = ?', [customerId]);
+        if (userRows.length > 0) {
+            await connection.query('UPDATE orders SET customer_name = ? WHERE id = ?', [userRows[0].name, orderId]);
+        }
+
+        await connection.commit();
+        res.json({ message: 'Order synced successfully', synced: true, orderId });
+
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Sync guest order error:', error);
+        res.status(500).json({ message: 'Failed to sync guest order', error: error.message });
     } finally {
         if (connection) connection.release();
     }

@@ -8,12 +8,16 @@ import { useOrder } from '../hooks/useOrder';
 
 
 export function OrderTrackingPage({ onNavigate }) {
-  const { currentOrder, requestOrderCancellation } = useOrder();
+  const { currentOrder, requestOrderCancellation, clearOrder } = useOrder();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelComment, setCancelComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
+  const [isDirectCancel, setIsDirectCancel] = useState(false);
+  const [cancelType, setCancelType] = useState('full'); // 'full' or 'partial'
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [isPartialSuccess, setIsPartialSuccess] = useState(false);
 
 
   // Cancellation reasons
@@ -24,7 +28,7 @@ export function OrderTrackingPage({ onNavigate }) {
     "Other"
   ];
 
-  if (!currentOrder) {
+  if (!currentOrder && !cancelSuccess) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header title="Active Order" onNavigate={onNavigate} />
@@ -51,15 +55,28 @@ export function OrderTrackingPage({ onNavigate }) {
 
   const submitCancel = async () => {
     if (!cancelReason) return;
+    if (cancelType === 'partial' && selectedItemIds.length === 0) {
+        alert('Please select the items you wish to cancel.');
+        return;
+    }
     
     setLoading(true);
     try {
       const finalReason = cancelReason === 'Other' ? `Other: ${cancelComment}` : cancelReason;
-      await requestOrderCancellation(finalReason);
+      const response = await requestOrderCancellation({ 
+          reason: finalReason, 
+          itemIds: cancelType === 'partial' ? selectedItemIds : null 
+      });
+      
       setCancelModalOpen(false);
       setCancelReason('');
       setCancelComment('');
-      setCancelSuccess(true); // Show inline success card
+      
+      if (response.success) {
+        setIsDirectCancel(true);
+        if (cancelType === 'partial') setIsPartialSuccess(true);
+      }
+      setCancelSuccess(true); 
     } catch (err) {
       alert('Failed to submit cancellation: ' + err.message);
     } finally {
@@ -68,7 +85,7 @@ export function OrderTrackingPage({ onNavigate }) {
   };
 
   // Check if cancellation is allowed (Requirement 9: ONLY BEFORE Preparing)
-  const canCancel = ['PENDING', 'ORDER PLACED', 'RECEIVED'].includes(currentOrder.status?.toUpperCase());
+  const canCancel = ['PENDING', 'ORDER PLACED', 'RECEIVED', 'CONFIRMED', 'ACCEPTED'].includes(currentOrder.status?.toUpperCase());
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
@@ -87,16 +104,33 @@ export function OrderTrackingPage({ onNavigate }) {
           {cancelSuccess && (
             <div className="mx-4 my-3 bg-green-50 border border-green-200 rounded-2xl p-5 text-center animate-fade-in">
               <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto mb-3" />
-              <h3 className="font-bold text-green-800 text-lg mb-1">Request Submitted!</h3>
+              <h3 className="font-bold text-green-800 text-lg mb-1">
+                {isDirectCancel ? 'Order Cancelled!' : 'Request Submitted!'}
+              </h3>
               <p className="text-green-700 text-sm mb-4">
-                Your cancellation request for <strong>Order #{currentOrder.id}</strong> has been sent.<br />
-                Your steward has been notified and will process it shortly.
+                {isDirectCancel ? (
+                    isPartialSuccess ? (
+                        <span>Your selected items have been removed from your order. Total bill updated.</span>
+                    ) : (
+                        <span>Your order has been cancelled successfully. Your table is now available.</span>
+                    )
+                ) : (
+                    <span>Your cancellation request for <strong>Order #{currentOrder?.id}</strong> has been sent.<br />Our team will process it shortly.</span>
+                )}
               </p>
               <button
-                onClick={() => onNavigate('menu')}
+                onClick={async () => {
+                   if (isDirectCancel && !isPartialSuccess) await clearOrder(false); // Only exit if full cancel
+                   if (isPartialSuccess) {
+                       setCancelSuccess(false);
+                       setIsPartialSuccess(false);
+                   } else {
+                       onNavigate('welcome');
+                   }
+                }}
                 className="bg-green-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-green-600 transition-colors"
               >
-                Return to Menu
+                {isPartialSuccess ? 'Return to Order' : 'Return to Welcome'}
               </button>
             </div>
           )}
@@ -193,50 +227,108 @@ export function OrderTrackingPage({ onNavigate }) {
       {/* Cancel Modal (Item 10) */}
       {cancelModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-300">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
-              Cancel Order?
+          <div className="bg-white rounded-[32px] p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden flex flex-col max-h-[90vh]">
+            <h3 className="text-xl font-black text-gray-900 mb-2">
+               Cancellation Options
             </h3>
-            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-              We'll notify the kitchen to stop your order. Please let us know why.
-            </p>
+            
+            {/* Full/Partial Toggle */}
+            <div className="flex bg-gray-100 p-1 rounded-2xl mb-6">
+                <button 
+                    onClick={() => setCancelType('full')}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${cancelType === 'full' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                >
+                    Entire Order
+                </button>
+                <button 
+                    onClick={() => setCancelType('partial')}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${cancelType === 'partial' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                >
+                    Specific Items
+                </button>
+            </div>
 
-            <div className="space-y-4 mb-8">
-               <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                     Reason for cancellation
-                  </label>
-                  <select
-                     value={cancelReason}
-                     onChange={(e) => setCancelReason(e.target.value)}
-                     className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-amber-500 appearance-none shadow-inner"
-                  >
-                     <option value="" disabled>Select a reason</option>
-                     {reasons.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                     ))}
-                  </select>
-               </div>
+            <div className="flex-1 overflow-y-auto pr-1 space-y-6 mb-6">
+                {cancelType === 'partial' && (
+                    <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                            Select items to remove
+                        </label>
+                        {currentOrder.items.map((item, index) => {
+                            const itemId = item.id || item.menuItem?.id;
+                            const isSelected = selectedItemIds.includes(itemId);
+                            
+                            return (
+                                <label 
+                                    key={itemId || `item-${index}`} 
+                                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all cursor-pointer ${isSelected ? 'border-red-500 bg-red-50' : 'border-gray-50 bg-gray-50'}`}
+                                >
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                            if (itemId === undefined) return; // Prevent selection of items without valid IDs
+                                            if (e.target.checked) setSelectedItemIds(prev => [...prev, itemId]);
+                                            else setSelectedItemIds(prev => prev.filter(id => id !== itemId));
+                                        }}
+                                        className="w-5 h-5 accent-red-500"
+                                    />
+                                    <div className="flex-1">
+                                        <p className="font-bold text-sm text-gray-900">{item.name || item.menuItem?.name}</p>
+                                        <p className="text-[10px] text-gray-500 font-medium">Qty: {item.quantity}</p>
+                                    </div>
+                                    <span className="font-bold text-sm text-gray-900">
+                                        Rs. {((item.price || item.menuItem?.price || 0) * item.quantity).toLocaleString()}
+                                    </span>
+                                </label>
+                            );
+                        })}
+                    </div>
+                )}
 
-               {cancelReason === 'Other' && (
-                  <textarea
-                     value={cancelComment}
-                     onChange={(e) => setCancelComment(e.target.value)}
-                     placeholder="Please specify..."
-                     className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-amber-500 shadow-inner"
-                     rows={3}
-                  />
-               )}
+                <div className="space-y-4">
+                   <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1 mb-2">
+                         Why are you cancelling?
+                      </label>
+                      <select
+                         value={cancelReason}
+                         onChange={(e) => setCancelReason(e.target.value)}
+                         className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-red-500 appearance-none shadow-inner font-medium"
+                      >
+                         <option value="" disabled>Select a reason</option>
+                         {reasons.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                         ))}
+                      </select>
+                   </div>
+
+                   {cancelReason === 'Other' && (
+                      <textarea
+                         value={cancelComment}
+                         onChange={(e) => setCancelComment(e.target.value)}
+                         placeholder="Please tell us more..."
+                         className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-red-500 shadow-inner min-h-[80px]"
+                      />
+                   )}
+                </div>
             </div>
 
             <div className="flex flex-col gap-3">
                <Button
                  fullWidth
-                 className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-200"
+                 className="bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-red-200 uppercase tracking-wider text-xs"
                  onClick={submitCancel}
-                 disabled={!cancelReason || (cancelReason === 'Other' && !cancelComment.trim()) || loading}
+                 disabled={!cancelReason || (cancelReason === 'Other' && !cancelComment.trim()) || (cancelType === 'partial' && selectedItemIds.length === 0) || loading}
                >
-                 {loading ? 'Processing...' : 'Request Cancellation'}
+                                {loading ? (
+                        <span className="flex items-center justify-center gap-2">
+                             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                             Processing...
+                        </span>
+                    ) : (
+                        cancelType === 'partial' ? `Remove Selected (${selectedItemIds.length})` : 'Cancel Entire Order'
+                    )}
                </Button>
                <Button
                  variant="ghost"
@@ -246,6 +338,8 @@ export function OrderTrackingPage({ onNavigate }) {
                    setCancelModalOpen(false);
                    setCancelReason('');
                    setCancelComment('');
+                   setSelectedItemIds([]);
+                   setCancelType('full');
                  }}
                >
                  Nevermind

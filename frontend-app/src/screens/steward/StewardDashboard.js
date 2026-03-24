@@ -5,6 +5,7 @@ import {
     FlatList, Image, Dimensions, Switch, Vibration, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
 import AccountSection from '../AccountSection';
@@ -56,6 +57,23 @@ const StewardDashboard = () => {
     const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterTableDate, setFilterTableDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterTableTime, setFilterTableTime] = useState('19:00');
+
+    const playNotificationSound = async () => {
+        try {
+            // Short notification buzzer
+            const { sound } = await Audio.Sound.createAsync(
+                { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+                { shouldPlay: true }
+            );
+            await sound.playAsync();
+            // Automatically unload from memory after playing to prevent memory leaks
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.didJustFinish) sound.unloadAsync();
+            });
+        } catch (error) {
+            console.warn('Sound play error:', error);
+        }
+    };
 
     const headers = {
         'Content-Type': 'application/json',
@@ -123,6 +141,7 @@ const StewardDashboard = () => {
         socket.on('orderUpdate', (data) => {
             if (data.staffId === user.id && data.status !== 'SESSION_ENDED') {
                 Vibration && Vibration.vibrate([100, 200, 100, 200]);
+                playNotificationSound(); // <-- NEW PIANO/BUZZER SOUND
                 setNewOrderNotif(data); // Trigger rich modal
                 fetchData(true); 
             }
@@ -131,6 +150,7 @@ const StewardDashboard = () => {
         socket.on('cancelRequest', (data) => {
             if (data.staffId === user.id) {
                 Vibration && Vibration.vibrate([300, 150, 300]);
+                if (data.playSound || true) playNotificationSound(); // <-- MANDATORY SOUND FOR CANCEL
                 setCancelNotif(data);
                 fetchData(true);
             }
@@ -954,6 +974,13 @@ const StewardDashboard = () => {
 
                         {/* Highlighted Details */}
                         <View style={{ width: '100%', backgroundColor: '#FEF2F2', borderRadius: 16, padding: 16, gap: 10, marginBottom: 20 }}>
+                            {/* Partial Indicator */}
+                            {cancelNotif?.isPartial && (
+                                <View style={{ backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={{ fontWeight: '900', color: 'white', fontSize: 11, letterSpacing: 0.5 }}>⚠️ PARTIAL CANCELLATION</Text>
+                                </View>
+                            )}
+
                             {/* Order ID */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600' }}>Order</Text>

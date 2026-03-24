@@ -11,7 +11,8 @@ import {
     removeOrderItem,
     getAllTables,
     updateOrderTable,
-    endDineInSession
+    endDineInSession,
+    syncGuestOrder
 } from '../controllers/order.controller.js';
 import { protect, resolveUser } from '../middleware/authMiddleware.js';
 
@@ -29,5 +30,6 @@ router.delete('/:orderId/items/:itemId', resolveUser, removeOrderItem);
 router.get('/tables', getAllTables);
 router.post('/update-table', resolveUser, updateOrderTable);
 router.post('/dine-in/end-session', resolveUser, endDineInSession);
+router.post('/sync-guest', protect, syncGuestOrder);
 
 export default router;

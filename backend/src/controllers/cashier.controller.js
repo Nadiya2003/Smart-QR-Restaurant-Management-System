@@ -304,10 +304,65 @@ export const settleOrder = async (req, res) => {
 
         if (resUpdate.affectedRows === 0) throw new Error("Order not found or already settled");
 
-        // 2. Clear table status if it was a dine-in order
-        const [orderRows] = await connection.query("SELECT table_id, total_price, customer_name FROM orders WHERE id = ?", [id]);
-        if (orderRows[0].table_id) {
-            await connection.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [orderRows[0].table_id]);
+        // 2. Fetch order details for table status and loyalty points
+        const [orderRows] = await connection.query(
+            "SELECT table_id, total_price, customer_name, customer_id FROM orders WHERE id = ?", 
+            [id]
+        );
+        
+        if (orderRows.length === 0) throw new Error("Order data missing during settlement");
+        const order = orderRows[0];
+
+        // 3. Clear table status if it was a dine-in order
+        if (order.table_id) {
+            await connection.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
+        }
+
+        // 4. Grant Loyalty Points if registered customer
+        if (order.customer_id) {
+            const totalPrice = order.total_price || 0;
+            // Basic: 1 pt per 100
+            let pointsEarned = Math.floor(totalPrice / 100);
+            
+            // Item-based Bonus Points
+            const [bonusRows] = await connection.query(`
+                SELECT SUM(mi.bonus_points * oi.quantity) as bonus
+                FROM order_items oi
+                JOIN menu_items mi ON oi.menu_item_id = mi.id
+                WHERE oi.order_id = ?
+            `, [id]);
+            
+            const itemBonus = parseInt(bonusRows[0]?.bonus || 0);
+            pointsEarned += itemBonus;
+
+            if (pointsEarned > 0) {
+                await connection.query(
+                    'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
+                    [pointsEarned, order.customer_id]
+                );
+                console.log(`[Loyalty] Granted ${pointsEarned} points (Basic: ${Math.floor(totalPrice/100)}, Item Bonus: ${itemBonus}) to CUSTOMER#${order.customer_id}`);
+
+                // --- MILESTONE REWARD GENERATION ---
+                // If they reach milestones (5th, 10th, 20th order), grant special coupons
+                const [orderCountRows] = await connection.query(
+                    "SELECT COUNT(*) as count FROM orders WHERE customer_id = ?",
+                    [order.customer_id]
+                );
+                const count = orderCountRows[0].count;
+                
+                if ([5, 10, 20, 50].includes(count)) {
+                    const couponCode = `MIL-${count}-` + Math.random().toString(36).substring(2, 6).toUpperCase();
+                    // Just take the first reward for now as a gift
+                    const [defRows] = await connection.query('SELECT id FROM loyalty_reward_definitions LIMIT 1');
+                    if (defRows.length > 0) {
+                        await connection.query(
+                            'INSERT INTO customer_rewards (customer_id, reward_id, coupon_code, expiry_date) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 14 DAY))',
+                            [order.customer_id, defRows[0].id, couponCode]
+                        );
+                        console.log(`[Reward] Auto-generated MIL-${count} reward for CUSTOMER#${order.customer_id}`);
+                    }
+                }
+            }
         }
 
         await connection.commit();

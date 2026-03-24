@@ -487,18 +487,43 @@ export const handleCancellationAction = async (req, res) => {
                 );
             } else {
                 // Dine-in order cancellation
-                const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
-                const cancelStatusId = cancelStatus[0]?.id;
-                
-                await connection.query(
-                    'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
-                    [cancelStatusId || 0, request.reason, request.order_id]
-                );
+                if (request.item_ids) {
+                    const itemIds = typeof request.item_ids === 'string' ? JSON.parse(request.item_ids) : request.item_ids;
+                    
+                    // Delete specific items
+                    await connection.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [request.order_id, itemIds]);
+                    
+                    // Clean analytics if needed (optional here depending on how analytics works, but keep consistent)
+                    
+                    // Recalculate Total
+                    const [itemRows] = await connection.query('SELECT price, quantity FROM order_items WHERE order_id = ?', [request.order_id]);
+                    if (itemRows.length === 0) {
+                        const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                        await connection.query('UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [cancelStatus[0].id, request.order_id]);
+                        
+                        const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
+                        if (orderRows.length > 0 && orderRows[0].table_id) {
+                            await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                        }
+                    } else {
+                        const subtotal = itemRows.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                        const total = subtotal * 1.15; // 10% SC, 5% Tax
+                        await connection.query('UPDATE orders SET total_price = ?, cancellation_status = "APPROVED", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [total, request.order_id]);
+                    }
+                } else {
+                    const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                    const cancelStatusId = cancelStatus[0]?.id;
+                    
+                    await connection.query(
+                        'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
+                        [cancelStatusId || 0, request.reason, request.order_id]
+                    );
 
-                // Free up table if it was DINE-IN
-                const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
-                if (orderRows.length > 0 && orderRows[0].table_id) {
-                    await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                    // Free up table if it was DINE-IN
+                    const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
+                    if (orderRows.length > 0 && orderRows[0].table_id) {
+                        await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
+                    }
                 }
             }
         } else {

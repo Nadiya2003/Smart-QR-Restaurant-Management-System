@@ -247,16 +247,20 @@ export function OrderProvider({ children }) {
     }
   };
 
-  const requestOrderCancellation = async (reason) => {
+  const requestOrderCancellation = async (options) => {
     if (!currentOrder?.id) return;
+    const { reason, itemIds } = typeof options === 'string' ? { reason: options } : options;
     try {
-      const response = await api.post(`/orders/dine-in/cancel-request/${currentOrder.id}`, { reason });
+      const response = await api.post(`/orders/dine-in/cancel-request/${currentOrder.id}`, { reason, itemIds });
       
-      // Update local state
-      setCurrentOrder(prev => ({
-        ...prev,
-        cancellation_status: 'PENDING'
-      }));
+      // Update local state: If it was direct (response.success), we'll eventually clear it, 
+      // but if not, we show pending.
+      if (!response.success) {
+        setCurrentOrder(prev => ({
+          ...prev,
+          cancellation_status: 'PENDING'
+        }));
+      }
       
       return response;
     } catch (error) {

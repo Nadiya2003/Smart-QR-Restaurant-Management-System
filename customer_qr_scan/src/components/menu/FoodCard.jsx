@@ -1,5 +1,4 @@
-import React from 'react';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, StarIcon } from 'lucide-react';
 
 export function FoodCard({ menuItem, onAddToCart }) {
   return (
@@ -11,6 +10,14 @@ export function FoodCard({ menuItem, onAddToCart }) {
           className="w-full h-full object-cover"
           loading="lazy"
         />
+        {menuItem.bonus_points > 0 && (
+          <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+            <div className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-lg flex items-center gap-1 uppercase tracking-tighter">
+              <StarIcon className="w-2.5 h-2.5 fill-white" />
+              +{menuItem.bonus_points} pts
+            </div>
+          </div>
+        )}
         {!menuItem.isAvailable && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
             <span className="bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">
