@@ -36,6 +36,11 @@ export function OrderProvider({ children }) {
   const isGuest = !user;
 
   useEffect(() => {
+    // If logging out, clear order immediately to prevent stale redirection on Welcome
+    if (!user) {
+        setCurrentOrder(null);
+    }
+
     const initFetch = async () => {
         if (user) await fetchOrderHistory();
         else await fetchGuestOrder();
@@ -67,7 +72,8 @@ export function OrderProvider({ children }) {
       if (storedOrderId) {
         // Case 1: We have a locally tracked order — try to sync its status
         const matchingOrder = orders.find(o => o.id.toString() === storedOrderId);
-        if (matchingOrder && !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(matchingOrder.status?.toUpperCase())) {
+        // Allow COMPLETED/FINISHED orders to stay in state so they can trigger the Feedback redirect in OrderTrackingPage
+        if (matchingOrder && !['CANCELLED'].includes(matchingOrder.status?.toUpperCase())) {
           setCurrentOrder(prev => ({
             ...(prev || {}),
             ...matchingOrder,
@@ -76,8 +82,8 @@ export function OrderProvider({ children }) {
             total: matchingOrder.total_price || prev?.total || 0,
             items: matchingOrder.items || prev?.items || []
           }));
-        } else if (matchingOrder) {
-          // Completed/cancelled: clear local focus
+        } else if (matchingOrder && matchingOrder.status?.toUpperCase() === 'CANCELLED') {
+          // Cancelled: clear local focus immediately
           localStorage.removeItem('activeOrderId');
           localStorage.removeItem('activeTable');
           setCurrentOrder(null);

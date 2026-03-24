@@ -951,3 +951,25 @@ export const getAuditLogs = async (req, res) => {
         res.status(500).json({ message: 'Server Error' });
     }
 };
+
+// --- Feedback & Reviews ---
+export const getFeedbacks = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT rf.*, 
+                   oc.name as customer_name, 
+                   oc.email as customer_email,
+                   (SELECT s.name FROM staff_users s 
+                    JOIN orders o ON rf.order_id = o.id 
+                    JOIN stewards st ON o.steward_id = st.id 
+                    WHERE s.id = st.staff_id LIMIT 1) as steward_name
+            FROM restaurant_feedbacks rf
+            LEFT JOIN online_customers oc ON rf.customer_id = oc.id
+            ORDER BY rf.created_at DESC
+        `);
+        res.json({ feedbacks: rows });
+    } catch (err) {
+        console.error('getFeedbacks error:', err);
+        res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+};

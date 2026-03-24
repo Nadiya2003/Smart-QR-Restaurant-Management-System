@@ -28,6 +28,19 @@ export function OrderTrackingPage({ onNavigate }) {
     "Other"
   ];
 
+  // Automatically redirect to feedback when completed
+  React.useEffect(() => {
+    if (currentOrder?.status?.toUpperCase() === 'COMPLETED' || currentOrder?.status?.toUpperCase() === 'FINISHED') {
+        const timer = setTimeout(() => {
+            onNavigate('feedback', { 
+                orderId: currentOrder.id, 
+                stewardId: currentOrder.steward_id 
+            });
+        }, 1500); 
+        return () => clearTimeout(timer);
+    }
+  }, [currentOrder?.status, onNavigate, currentOrder?.id, currentOrder?.steward_id]);
+
   if (!currentOrder && !cancelSuccess) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">

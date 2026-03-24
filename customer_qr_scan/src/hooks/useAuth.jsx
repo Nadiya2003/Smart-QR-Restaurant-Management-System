@@ -43,10 +43,9 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    // Portals: Registered vs Guest
-    // We clean the token to logout, but we KEEP the active order/table locally
-    // This allows the registered user to see the same order if they log back in within 6 hours.
     localStorage.removeItem('token');
+    localStorage.removeItem('activeOrderId'); // Clear session tracking to allow landing on Welcome
+    localStorage.removeItem('guestSession');
     setUser(null);
   };
 

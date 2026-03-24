@@ -26,9 +26,8 @@ export function DashboardPage({ onNavigate }) {
   const displayEmail = isAuthenticated ? user?.email : 'Anonymous Session';
   const showStats = isAuthenticated;
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     logout();
-    localStorage.removeItem('guestSession'); // Refresh portal flag
     onNavigate('welcome');
   };
 

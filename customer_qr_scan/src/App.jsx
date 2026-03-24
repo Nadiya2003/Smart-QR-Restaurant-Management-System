@@ -22,49 +22,52 @@ import { SettingsPage } from './pages/SettingsPage.jsx';
 
 
 function AppContent() {
+  const [pageData, setPageData] = useState(null);
   const [currentPage, setCurrentPage] = useState('welcome');
 
-  const navigate = (page) => {
+  const navigate = (page, data = null) => {
+    setPageData(data);
     setCurrentPage(page);
     window.scrollTo(0, 0);
   };
 
   const renderPage = () => {
+    const commonProps = { onNavigate: navigate, data: pageData };
     switch (currentPage) {
       case 'welcome':
-        return <WelcomePage onNavigate={navigate} />;
+        return <WelcomePage {...commonProps} />;
       case 'steward':
-        return <StewardSelectionPage onNavigate={navigate} />;
+        return <StewardSelectionPage {...commonProps} />;
       case 'menu':
-        return <MenuPage onNavigate={navigate} />;
+        return <MenuPage {...commonProps} />;
       case 'cart':
-        return <CartPage onNavigate={navigate} />;
+        return <CartPage {...commonProps} />;
       case 'tracking':
-        return <OrderTrackingPage onNavigate={navigate} />;
+        return <OrderTrackingPage {...commonProps} />;
       case 'payment':
-        return <PaymentPage onNavigate={navigate} />;
+        return <PaymentPage {...commonProps} />;
       case 'login':
-        return <LoginPage onNavigate={navigate} />;
+        return <LoginPage {...commonProps} />;
       case 'register':
-        return <RegisterPage onNavigate={navigate} />;
+        return <RegisterPage {...commonProps} />;
       case 'dashboard':
-        return <DashboardPage onNavigate={navigate} />;
+        return <DashboardPage {...commonProps} />;
       case 'history':
-        return <OrderHistoryPage onNavigate={navigate} />;
+        return <OrderHistoryPage {...commonProps} />;
       case 'feedback':
-        return <FeedbackPage onNavigate={navigate} />;
+        return <FeedbackPage {...commonProps} />;
       case 'table-selection':
-        return <TableSelectionPage onNavigate={navigate} />;
+        return <TableSelectionPage {...commonProps} />;
       case 'change-table':
-        return <TableSelectionPage onNavigate={navigate} isChangingTable={true} />;
+        return <TableSelectionPage {...commonProps} isChangingTable={true} />;
       case 'auth-selection':
-        return <AuthSelectionPage onNavigate={navigate} />;
+        return <AuthSelectionPage {...commonProps} />;
       case 'rewards':
-        return <RewardsPage onNavigate={navigate} />;
+        return <RewardsPage {...commonProps} />;
       case 'settings':
-        return <SettingsPage onNavigate={navigate} />;
+        return <SettingsPage {...commonProps} />;
       default:
-        return <WelcomePage onNavigate={navigate} />;
+        return <WelcomePage {...commonProps} />;
     }
   };
 

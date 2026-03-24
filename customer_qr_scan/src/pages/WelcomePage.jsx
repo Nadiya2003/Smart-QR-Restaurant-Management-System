@@ -11,20 +11,27 @@ export function WelcomePage({ onNavigate }) {
   const [showSessionPopup, setShowSessionPopup] = useState(false);
   const restaurantImage = '/2.jpg';
 
-  useEffect(() => {
+    useEffect(() => {
     if (loading || isInitialLoading) return;
 
-    // Smart Redirection & Session Detection (Requirement 9 & 11)
-    const isOngoing = currentOrder && !['COMPLETED', 'CANCELLED'].includes(currentOrder.status?.toUpperCase());
-
+    // Check if there is an active order (Requirement 9 & 11)
+    const isOngoing = currentOrder && !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(currentOrder.status?.toUpperCase());
+    
+    // Automatically redirect authenticated users with active orders
     if (isAuthenticated && isOngoing) {
        onNavigate('dashboard');
        return;
     }
 
+    // Guest with active session: If it was their order, ask to continue. 
+    // BUT if the found order belongs to a registered customer (customer_id set), 
+    // it's likely them (or someone trying to access their order). Let's force login to restore securely.
     if (!isAuthenticated && isOngoing) {
-       // Guest with active session detected - ask to continue (Requirement 9)
-       setShowSessionPopup(true);
+       if (currentOrder?.customer_id) {
+          onNavigate('login');
+       } else {
+          setShowSessionPopup(true);
+       }
        return;
     }
 

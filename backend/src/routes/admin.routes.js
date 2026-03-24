@@ -25,7 +25,8 @@ import {
     updateTable,
     updateTableStatus,
     getCancellationRequests,
-    handleCancellationAction
+    handleCancellationAction,
+    getFeedbacks
 } from '../controllers/admin.controller.js';
 import {
     getAttendance,
@@ -130,5 +131,8 @@ router.put('/suppliers/:id/status', isStaff, updateSupplierStatus);
 router.get('/permissions', adminOnly, getAllPermissions);
 router.get('/roles/:roleId/permissions', adminOnly, getRolePermissions);
 router.put('/roles/:roleId/permissions', adminOnly, updateRolePermissions);
+
+// Feedback
+router.get('/feedbacks', isStaff, getFeedbacks);
 
 export default router;
