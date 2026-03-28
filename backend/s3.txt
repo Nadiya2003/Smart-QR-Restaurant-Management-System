@@ -1,0 +1,14 @@
+CREATE TABLE `stewards` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `staff_id` int NOT NULL,
+  `is_available` tinyint(1) DEFAULT '1',
+  `image` varchar(255) DEFAULT NULL,
+  `assigned_section` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `loyalty_points` int DEFAULT '0',
+  `rating` decimal(3,2) DEFAULT '5.00',
+  `review_count` int DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `staff_id` (`staff_id`),
+  CONSTRAINT `stewards_ibfk_1` FOREIGN KEY (`staff_id`) REFERENCES `staff_users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci

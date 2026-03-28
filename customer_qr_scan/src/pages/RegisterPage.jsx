@@ -51,6 +51,7 @@ export function RegisterPage({ onNavigate }) {
         showBack
         onBack={() => onNavigate('welcome')}
         onNavigate={onNavigate}
+        hideTable
       />
 
       <div className="flex-1 p-6 flex flex-col justify-center">

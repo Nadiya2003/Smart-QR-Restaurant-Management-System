@@ -20,11 +20,6 @@ export function AuthSelectionPage({ onNavigate }) {
          <button onClick={() => onNavigate('welcome')} className="text-white hover:bg-white/10 p-2 rounded-full transition-all">
             <ArrowLeftIcon className="w-6 h-6" />
          </button>
-         {tableNumber && (
-            <div className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-white font-bold text-sm tracking-wide">
-               Table {tableNumber}
-            </div>
-         )}
       </div>
 
       <div className="flex-1 flex flex-col justify-center px-8 pb-10">

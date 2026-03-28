@@ -244,9 +244,13 @@ export const checkIn = async (req, res) => {
 
         await connection.beginTransaction();
  
-        // 1. Update steward availability if role is STEWARD
+        // 1. Update steward availability if role is STEWARD (Upsert logic)
         if (role.toUpperCase() === 'STEWARD') {
-            await connection.query('UPDATE stewards SET is_available = 1 WHERE staff_id = ?', [userId]);
+            await connection.query(`
+                INSERT INTO stewards (staff_id, is_available, created_at) 
+                VALUES (?, 1, NOW()) 
+                ON DUPLICATE KEY UPDATE is_available = 1
+            `, [userId]);
         }
 
         // 2. Create/Update attendance
@@ -367,5 +371,34 @@ export const getUpcomingReservations = async (req, res) => {
     } catch (error) {
         console.error('Get reservations error:', error);
         res.status(500).json({ message: 'Failed to fetch reservations' });
+    }
+};
+
+/**
+ * GET /api/steward-dashboard/my-stats
+ * Fetch current steward's rating and points
+ */
+export const getMyStats = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const [stats] = await pool.query(
+            `SELECT rating, loyalty_points as points, review_count 
+             FROM stewards 
+             WHERE staff_id = ?`,
+            [userId]
+        );
+
+        if (stats.length === 0) {
+            return res.json({ 
+                rating: 0, 
+                points: 0, 
+                review_count: 0 
+            });
+        }
+
+        res.json(stats[0]);
+    } catch (error) {
+        console.error('getMyStats error:', error);
+        res.status(500).json({ message: 'Failed to fetch steward stats' });
     }
 };

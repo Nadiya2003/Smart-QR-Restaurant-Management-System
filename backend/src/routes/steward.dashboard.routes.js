@@ -9,7 +9,8 @@ import {
     checkIn,
     checkOut,
     getDutyStatus,
-    getUpcomingReservations
+    getUpcomingReservations,
+    getMyStats
 } from '../controllers/steward.dashboard.controller.js';
 import { protect, isStaff } from '../middleware/authMiddleware.js';
 
@@ -17,6 +18,9 @@ const router = express.Router();
 
 router.use(protect);
 router.use(isStaff);
+
+// Steward Stats & Performance
+router.get('/my-stats', getMyStats);
 
 // Tables
 router.get('/tables', getTableStatus);

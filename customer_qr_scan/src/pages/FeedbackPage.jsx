@@ -20,15 +20,14 @@ export function FeedbackPage({ onNavigate, data }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Submit Steward/Service Rating
-      if (stewardId) {
-          await api.post('/portal/rate', {
-              stewardId,
-              rating: serviceRating,
-              comment: comment || `Order #${orderId} Service Feedback`,
-              orderId
-          });
-      }
+      // Submit Steward/Service Rating (includes meal rating)
+      await api.post('/customer/rate', {
+          stewardId,
+          rating: serviceRating,
+          mealRating,
+          comment: comment || `Order #${orderId} Feedback`,
+          orderId
+      });
 
       // Submit Restaurant/Meal Feedback (Optional enhancement: a separate endpoint if needed, but for now we link it)
       // If the backend handles both in one, great. For now we use the existing rate endpoint which updates steward.
@@ -55,7 +54,7 @@ export function FeedbackPage({ onNavigate, data }) {
         <Button 
             fullWidth 
             className="py-5 rounded-3xl font-black uppercase tracking-widest text-xs" 
-            onClick={() => { clearOrder(false); onNavigate('welcome'); }}
+            onClick={() => { clearOrder(true); onNavigate('welcome'); }}
         >
           Return to Home
         </Button>

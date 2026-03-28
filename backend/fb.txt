@@ -1,0 +1,12 @@
+CREATE TABLE `feedback` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `order_id` int DEFAULT NULL,
+  `rating` decimal(2,1) DEFAULT '5.0',
+  `comment` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `steward_id` int DEFAULT NULL,
+  `is_complaint` tinyint(1) DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `fk_feedback_order` (`order_id`),
+  CONSTRAINT `fk_feedback_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci

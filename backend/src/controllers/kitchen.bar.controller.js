@@ -1,3 +1,4 @@
+
 import pool from '../config/db.js';
 
 /**
@@ -8,7 +9,9 @@ export const getKitchenOrders = async (req, res) => {
     try {
         const [orders] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
-                   coalesce(o.customer_name, c.name) as customer_name, 
+                   coalesce(o.customer_name, c.name) as customer_name,
+                   coalesce(o.phone, c.phone) as customer_phone,
+                   c.email as customer_email,
                    coalesce(ot.name, 'DINE_IN') as order_type_name,
                    COALESCE(su.full_name, su.username, 'System') as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -24,21 +27,21 @@ export const getKitchenOrders = async (req, res) => {
             LEFT JOIN stewards s ON o.steward_id = s.id
             LEFT JOIN staff_users su ON s.staff_id = su.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
-            WHERE os.name IS NULL OR UPPER(os.name) NOT IN ('COMPLETED', 'CANCELLED', 'DELIVERED')
+            WHERE os.name IS NULL OR UPPER(os.name) NOT IN ('COMPLETED', 'CANCELLED', 'DELIVERED', 'READY', 'SERVED', 'FINISHED')
             
             UNION ALL
 
             SELECT to_ord.id, to_ord.total_price, to_ord.created_at, NULL as table_number, UPPER(to_ord.order_status) as status,
-                   to_ord.customer_name, 'TAKEAWAY' as order_type_name,
+                   to_ord.customer_name, to_ord.phone as customer_phone, NULL as customer_email, 'TAKEAWAY' as order_type_name,
                    'Takeaway' as steward_name,
                    NULL as items -- We'll parse items from JSON below
             FROM takeaway_orders to_ord
-            WHERE to_ord.order_status NOT IN ('Completed', 'Cancelled')
+            WHERE UPPER(to_ord.order_status) NOT IN ('COMPLETED', 'CANCELLED', 'READY', 'DELIVERED')
 
             UNION ALL
 
             SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
-                   do.customer_name, 'DELIVERY' as order_type_name,
+                   do.customer_name, do.phone as customer_phone, NULL as customer_email, 'DELIVERY' as order_type_name,
                    'Rider' as steward_name,
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'price', mi.price, 'category', cat.name)
@@ -76,13 +79,13 @@ export const getKitchenOrders = async (req, res) => {
                 }
                 pItems = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw || '[]') : (itemsRaw || []);
             }
-            
+
             // Filter only food items for kitchen
             o.items = pItems.filter(i => {
                 const cat = (i.category || i.category_name || '').toLowerCase();
                 return cat !== 'beverages';
             });
-            
+
             if (o.items.length === 0 && pItems.length > 0) {
                 console.log(`[Kitchen] Order ${o.id} (${o.order_type_name}) filtered out - only beverages found:`, pItems.map(p => p.category));
             }
@@ -106,6 +109,8 @@ export const getBarOrders = async (req, res) => {
         const [orders] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
                    coalesce(o.customer_name, c.name) as customer_name,
+                   coalesce(o.phone, c.phone) as customer_phone,
+                   c.email as customer_email,
                    coalesce(ot.name, 'DINE_IN') as order_type_name,
                    COALESCE(su.full_name, su.username, 'System') as steward_name,
                    (SELECT JSON_ARRAYAGG(
@@ -121,21 +126,21 @@ export const getBarOrders = async (req, res) => {
             LEFT JOIN stewards s ON o.steward_id = s.id
             LEFT JOIN staff_users su ON s.staff_id = su.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
-            WHERE os.name IS NULL OR UPPER(os.name) NOT IN ('COMPLETED', 'CANCELLED')
+            WHERE os.name IS NULL OR UPPER(os.name) NOT IN ('COMPLETED', 'CANCELLED', 'DELIVERED', 'READY', 'SERVED', 'FINISHED')
             
             UNION ALL
 
             SELECT to_ord.id, to_ord.total_price, to_ord.created_at, NULL as table_number, UPPER(to_ord.order_status) as status,
-                   to_ord.customer_name, 'TAKEAWAY' as order_type_name,
+                   to_ord.customer_name, to_ord.phone as customer_phone, NULL as customer_email, 'TAKEAWAY' as order_type_name,
                    'Takeaway' as steward_name,
                    NULL as items
             FROM takeaway_orders to_ord
-            WHERE to_ord.order_status NOT IN ('Completed', 'Cancelled')
+            WHERE UPPER(to_ord.order_status) NOT IN ('COMPLETED', 'CANCELLED', 'READY', 'DELIVERED')
 
             UNION ALL
 
             SELECT do.id, do.total_price, do.created_at, NULL as table_number, UPPER(do.order_status) as status,
-                   do.customer_name, 'DELIVERY' as order_type_name,
+                   do.customer_name, do.phone as customer_phone, NULL as customer_email, 'DELIVERY' as order_type_name,
                    'Rider' as steward_name,
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'price', mi.price, 'category', cat.name)
@@ -144,7 +149,7 @@ export const getBarOrders = async (req, res) => {
                    JOIN categories cat ON mi.category_id = cat.id
                    WHERE doi.order_id = do.id) as items
             FROM delivery_orders do
-            WHERE do.order_status NOT IN ('Delivered', 'Cancelled')
+            WHERE UPPER(do.order_status) NOT IN ('DELIVERED', 'CANCELLED', 'READY')
             
             ORDER BY created_at ASC
         `);
@@ -173,13 +178,13 @@ export const getBarOrders = async (req, res) => {
                 }
                 pItems = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw || '[]') : (itemsRaw || []);
             }
-            
+
             // Filter only beverages for bar
             o.items = pItems.filter(i => {
                 const cat = (i.category || i.category_name || '').toLowerCase();
                 return cat === 'beverages';
             });
-            
+
             if (o.items.length === 0 && pItems.length > 0) {
                 console.log(`[Bar] Order ${o.id} (${o.order_type_name}) filtered out - no beverages found:`, pItems.map(p => p.category));
             }
@@ -213,7 +218,7 @@ export const getInventory = async (req, res) => {
         }
 
         query += " ORDER BY i.item_name ASC";
-        
+
         const [rows] = await pool.query(query, params);
         res.json({ inventory: rows });
     } catch (error) {
@@ -235,7 +240,7 @@ export const getDutyStatus = async (req, res) => {
             'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ? AND check_out_time IS NULL',
             [userId, today]
         );
-        
+
         const onDuty = rows.length > 0;
         res.json({ onDuty });
     } catch (error) {

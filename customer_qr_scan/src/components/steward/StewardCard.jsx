@@ -8,17 +8,19 @@ export function StewardCard({
   isSelected,
   onSelect
 }) {
+  const isOffline = steward.status === 'offline';
+
   return (
     <button
       onClick={() => onSelect(steward)}
-      disabled={!steward.isAvailable}
-      className={`w-full text-left p-4 rounded-xl border ${isSelected ? 'border-gray-900 ring-1 ring-gray-900 bg-gray-50' : 'border-gray-100 bg-white hover:border-gray-300'} ${!steward.isAvailable ? 'opacity-60 cursor-not-allowed' : ''}`}
+      disabled={isOffline}
+      className={`w-full text-left p-4 rounded-xl border ${isSelected ? 'border-gray-900 ring-1 ring-gray-900 bg-gray-50' : 'border-gray-100 bg-white hover:border-gray-300'} ${isOffline ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <div className="flex items-center gap-4">
         <div
           className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-xl font-bold ${isSelected ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
         >
-          {steward.avatar && steward.avatar !== '/stewards/default.png' ? (
+          {steward.avatar && !steward.avatar.includes('default') ? (
             <img 
               src={steward.avatar} 
               alt={steward.name}
@@ -47,8 +49,12 @@ export function StewardCard({
 
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <StarRating rating={steward.rating} size="sm" readonly />
-            <span>({steward.rating})</span>
+            <span>({steward.rating?.toFixed ? steward.rating.toFixed(1) : steward.rating})</span>
           </div>
+
+          {steward.status !== 'offline' && (
+            <p className="text-xs text-gray-400 mt-1">{steward.activeOrders || 0} active order{steward.activeOrders !== 1 ? 's' : ''}</p>
+          )}
         </div>
       </div>
     </button>

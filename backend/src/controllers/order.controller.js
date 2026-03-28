@@ -150,12 +150,15 @@ export const getCustomerOrders = async (req, res) => {
             [customerId]
         );
 
-        // Fetch Dine-in Orders (Joining with status tables)
+        // Fetch Dine-in Orders (Joining with status tables and items)
         const [dineInOrders] = await pool.query(
             `SELECT o.*, 
                     os.name as status,
                     ps.name as payment_status,
                     COALESCE(o.total_price, (SELECT SUM(total_price) FROM order_analytics WHERE order_id = o.id AND order_source = 'DINE-IN')) as total_price,
+                    (SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
+                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
                     "DINE-IN" as type 
              FROM orders o 
              LEFT JOIN order_statuses os ON o.status_id = os.id
@@ -165,7 +168,17 @@ export const getCustomerOrders = async (req, res) => {
             [customerId]
         );
 
-        const allOrders = [...deliveryOrders, ...takeawayOrders, ...dineInOrders].sort((a, b) => 
+        // Parse items JSON if returned as string (for Delivery/Takeaway)
+        const formatOrders = (orders) => orders.map(o => ({
+            ...o,
+            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
+        }));
+
+        const allOrders = [
+            ...formatOrders(deliveryOrders), 
+            ...formatOrders(takeawayOrders), 
+            ...formatOrders(dineInOrders)
+        ].sort((a, b) => 
             new Date(b.created_at) - new Date(a.created_at)
         );
 

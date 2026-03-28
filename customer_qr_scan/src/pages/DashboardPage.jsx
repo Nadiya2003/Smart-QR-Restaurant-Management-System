@@ -7,7 +7,8 @@ import {
   LogOutIcon,
   AwardIcon,
   LockIcon,
-  MapPinIcon
+  MapPinIcon,
+  ClipboardListIcon
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
@@ -222,6 +223,33 @@ export function DashboardPage({ onNavigate }) {
           </button>
         </div>
       </div>
+
+      {/* Floating View Active Order Button (Requirement 13) */}
+      {currentOrder && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-sm z-30 animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <button 
+             onClick={() => onNavigate('tracking')}
+             className="w-full bg-gray-900 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between group overflow-hidden relative"
+           >
+              {/* Shine effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+              
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                    <ClipboardListIcon className="w-5 h-5 text-amber-400" />
+                 </div>
+                 <div className="text-left">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 leading-none mb-1">Active Order</p>
+                    <p className="text-sm font-bold truncate max-w-[180px]">Order #{currentOrder.id}</p>
+                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl">
+                 <span className="text-[10px] font-black uppercase tracking-tighter">View Details</span>
+              </div>
+           </button>
+        </div>
+      )}
 
       <BottomNav currentPage="dashboard" onNavigate={onNavigate} />
     </div>

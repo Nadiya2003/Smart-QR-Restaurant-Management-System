@@ -30,41 +30,66 @@ export const submitRating = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { stewardId, rating, comment, orderId, mealRating } = req.body;
-        const customerId = req.user.userId;
+        const customerId = req.user?.userId;
 
-        // 1. Insert into Steward Ratings (Legacy/Current system)
+        // 1. Insert into feedback table
+        // Handles both order-specific and general feedback
         await connection.query(
-            "INSERT INTO ratings (customer_id, steward_id, rating, comment) VALUES (?, ?, ?, ?)",
-            [customerId, stewardId, rating, comment]
+            "INSERT INTO feedback (order_id, steward_id, rating, comment, is_complaint) VALUES (?, ?, ?, ?, ?)",
+            [orderId || null, stewardId || null, rating, comment || '', (rating <= 2) ? 1 : 0]
         );
 
-        // 2. Insert into NEW Restaurant Feedbacks table
-        await connection.query(
-            `INSERT INTO restaurant_feedbacks (customer_id, order_id, meal_rating, service_rating, comment, is_complaint) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [customerId, orderId || null, mealRating || rating, rating, comment, (rating <= 2 || mealRating <= 2) ? 1 : 0]
-        );
+        // 2. Insert into restaurant_feedbacks for full history
+        try {
+            await connection.query(
+                `INSERT INTO restaurant_feedbacks (customer_id, order_id, steward_id, meal_rating, service_rating, comment, is_complaint) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [customerId || null, orderId || null, stewardId || null, mealRating || rating, rating, comment || '', (rating <= 2 || mealRating <= 2) ? 1 : 0]
+            );
+        } catch (fbErr) {
+            console.warn('restaurant_feedbacks insert skipped:', fbErr.message);
+        }
 
-        // 3. Update Steward Average Rating and LOYALTY POINTS
-        // Reward: 5 stars = 10 pts, 4 stars = 5 pts, 3 stars = 2 pts
+        // 3. Update Steward Rating & Review Count
+        if (stewardId) {
+            // Calculate new average: (old_rating * old_count + new_rating) / (old_count + 1)
+            await connection.query(`
+                UPDATE stewards 
+                SET 
+                    rating = (rating * review_count + ?) / (review_count + 1),
+                    review_count = review_count + 1
+                WHERE id = ? OR staff_id = ?
+            `, [rating, stewardId, stewardId]);
+            
+            // Steward Incentive: Award points to steward for good ratings (4 or 5 stars)
+            if (rating >= 4) {
+                await connection.query(
+                    'UPDATE stewards SET loyalty_points = loyalty_points + ? WHERE id = ? OR staff_id = ?',
+                    [rating === 5 ? 10 : 5, stewardId, stewardId]
+                );
+            }
+        }
+
+        // 4. Award loyalty points to the customer for submitting feedback (Only for registered users)
         let rewardPoints = 0;
-        if (rating === 5) rewardPoints = 10;
-        else if (rating === 4) rewardPoints = 5;
-        else if (rating === 3) rewardPoints = 2;
-
-        await connection.query(`
-            UPDATE stewards 
-            SET rating_avg = (SELECT AVG(rating) FROM ratings WHERE steward_id = ?),
-                loyalty_points = loyalty_points + ?
-            WHERE id = ?
-        `, [stewardId, rewardPoints, stewardId]);
+        if (customerId) {
+            rewardPoints = rating >= 4 ? 10 : rating === 3 ? 5 : 2;
+            await connection.query(
+                'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
+                [rewardPoints, customerId]
+            );
+        }
 
         await connection.commit();
-        res.json({ message: 'Rating and Feedback submitted successfully' });
+        res.json({ 
+            message: 'Feedback submitted successfully', 
+            pointsEarned: rewardPoints,
+            stewardUpdated: !!stewardId 
+        });
     } catch (err) {
         if (connection) await connection.rollback();
         console.error("submitRating error:", err);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ message: "Internal server error", error: err.message });
     } finally {
         if (connection) connection.release();
     }

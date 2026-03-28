@@ -29,6 +29,7 @@ const StewardDashboard = () => {
     const [isOnDuty, setIsOnDuty] = useState(false);
     const [diningAreas, setDiningAreas] = useState([]);
     const [cart, setCart] = useState([]);
+    const [stewardStats, setStewardStats] = useState({ rating: 5.0, points: 0, review_count: 0 });
     
     // Modal States
     const [showOrderModal, setShowOrderModal] = useState(false);
@@ -84,13 +85,14 @@ const StewardDashboard = () => {
         if (!isSilent) setLoading(true);
         try {
             // Parallel fetches
-            const [tableRes, orderRes, notifRes, menuRes, dutyRes, resvRes] = await Promise.all([
+            const [tableRes, orderRes, notifRes, menuRes, dutyRes, resvRes, statsRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/tables?date=${filterTableDate}&time=${filterTableTime}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/steward/${user.id}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/menu`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/duty/status`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/reservations?date=${filterResDate}`, { headers })
+                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/reservations?date=${filterResDate}`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/my-stats`, { headers })
             ]);
 
             if (tableRes.ok) setTables((await tableRes.json()).tables || []);
@@ -107,6 +109,7 @@ const StewardDashboard = () => {
 
             if (dutyRes.ok) setIsOnDuty((await dutyRes.json()).onDuty);
             if (resvRes.ok) setReservations((await resvRes.json()).reservations || []);
+            if (statsRes.ok) setStewardStats(await statsRes.json());
 
             // Fetch dining areas for grouping
             const areaRes = await fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers });
@@ -340,21 +343,31 @@ const StewardDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity 
-                    onPress={() => setActiveTab('account')}
-                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
-                >
-                    {user?.profile_image || user?.steward_image ? (
-                        <Image 
-                            source={{ uri: (user.profile_image || user.steward_image).startsWith('http') ? (user.profile_image || user.steward_image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.steward_image}` }} 
-                            style={styles.profileImg}
-                        />
-                    ) : (
-                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                    )}
-                </TouchableOpacity>
+                <View style={styles.headerProfileContainer}>
+                    <TouchableOpacity 
+                        onPress={() => setActiveTab('account')}
+                        style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
+                    >
+                        {user?.profile_image || user?.steward_image ? (
+                            <Image 
+                                source={{ uri: (user.profile_image || user.steward_image).startsWith('http') ? (user.profile_image || user.steward_image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.steward_image}` }} 
+                                style={styles.profileImg}
+                            />
+                        ) : (
+                            <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                        )}
+                    </TouchableOpacity>
+                    <View style={styles.ratingBadge}>
+                        <Text style={styles.ratingText}>⭐ {Number(stewardStats.rating || 0).toFixed(1)}</Text>
+                    </View>
+                </View>
                 <View style={{ marginLeft: 12 }}>
-                    <Text style={styles.greeting}>Hello, {user?.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.greeting}>Hello, {user?.name}</Text>
+                        <View style={styles.pointsBadge}>
+                           <Text style={styles.pointsText}>🪙 {stewardStats.points || 0}</Text>
+                        </View>
+                    </View>
                     <Text style={styles.roleTitle}>Steward Dashboard</Text>
                 </View>
             </View>
@@ -1520,7 +1533,29 @@ const styles = StyleSheet.create({
     totalLabel: { fontSize: 16, color: '#6B7280' },
     totalValue: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
     finalOrderBtn: { backgroundColor: '#10B981', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    finalOrderBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' }
+    finalOrderBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+    headerProfileContainer: { position: 'relative' },
+    ratingBadge: { 
+        position: 'absolute', 
+        bottom: -5, 
+        right: -5, 
+        backgroundColor: '#1E293B', 
+        paddingHorizontal: 6, 
+        paddingVertical: 2, 
+        borderRadius: 8,
+        borderWidth: 1.5,
+        borderColor: '#fff'
+    },
+    ratingText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+    pointsBadge: { 
+        backgroundColor: '#FEF3C7', 
+        paddingHorizontal: 10, 
+        paddingVertical: 4, 
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#FDE68A'
+    },
+    pointsText: { color: '#92400E', fontSize: 11, fontWeight: 'bold' },
 });
 
 export default StewardDashboard;

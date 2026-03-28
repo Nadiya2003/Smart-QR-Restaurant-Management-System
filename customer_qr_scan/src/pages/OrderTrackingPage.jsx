@@ -3,7 +3,7 @@ import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
 import { OrderStatusTracker } from '../components/order/OrderStatusTracker';
 import { Button } from '../components/ui/Button';
-import { ClockIcon, XCircleIcon, CheckCircleIcon } from 'lucide-react';
+import { ClockIcon, XCircleIcon, CheckCircleIcon, ClipboardListIcon } from 'lucide-react';
 import { useOrder } from '../hooks/useOrder';
 
 
@@ -155,33 +155,52 @@ export function OrderTrackingPage({ onNavigate }) {
           )}
         </div>
 
-        <div className="bg-white p-4 border-y border-gray-100 mb-4">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-gray-900">Order Details</h3>
-            <span className="text-sm text-gray-500">
-              Table {currentOrder.tableNumber}
+        <div className="bg-white p-5 border-y border-gray-100 mb-4 shadow-sm">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-2">
+              <div className="bg-gray-100 p-2 rounded-lg">
+                <ClipboardListIcon className="w-5 h-5 text-gray-600" />
+              </div>
+              <h3 className="font-bold text-gray-900">Ordered Items</h3>
+            </div>
+            <span className="bg-gray-100 text-gray-600 text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-widest whitespace-nowrap">
+              {currentOrder.items?.length || 0} { (currentOrder.items?.length === 1) ? 'item' : 'items' }
             </span>
           </div>
 
-          <div className="space-y-3">
-            {currentOrder.items.map((item, idx) => (
-              <div
-                key={`${item.menuItem?.id || item.id}-${idx}`}
-                className="flex justify-between items-start"
-              >
-                <div className="flex gap-3">
-                  <span className="font-medium text-gray-900">
-                    {item.quantity}x
-                  </span>
-                  <div>
-                    <p className="text-gray-900">{item.menuItem?.name || item.name}</p>
-                  </div>
+          <div className="space-y-4">
+            {currentOrder.items && currentOrder.items.length > 0 ? (
+                currentOrder.items.map((item, idx) => {
+                  const itemName = item.menuItem?.name || item.name || 'Unknown Item';
+                  const itemPrice = item.menuItem?.price || item.price || 0;
+                  const itemQty = item.quantity || 1;
+                  
+                  return (
+                    <div
+                        key={`${item.menuItem?.id || item.id || idx}-${idx}`}
+                        className="flex justify-between items-start animate-in fade-in slide-in-from-left-2 duration-300"
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                    >
+                        <div className="flex gap-4">
+                            <span className="font-black text-gray-900 bg-gray-50 border border-gray-100 w-8 h-8 rounded-lg flex items-center justify-center text-xs">
+                                {itemQty}
+                            </span>
+                            <div>
+                                <p className="text-gray-900 font-bold text-sm leading-tight mb-0.5">{itemName}</p>
+                                <p className="text-[10px] text-gray-400 font-medium">Unit Price: Rs. {itemPrice.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                            Rs. {(itemPrice * itemQty).toLocaleString()}
+                        </span>
+                    </div>
+                  );
+                })
+            ) : (
+                <div className="text-center py-4 text-gray-400 text-sm italic">
+                    Loading items...
                 </div>
-                <span className="font-medium text-gray-900">
-                  Rs. {((item.menuItem?.price || item.price || 0) * item.quantity).toLocaleString()}
-                </span>
-              </div>
-            ))}
+            )}
           </div>
           
           <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">

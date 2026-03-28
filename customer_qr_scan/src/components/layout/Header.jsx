@@ -7,7 +7,8 @@ export function Header({
   showBack = false,
   onBack,
   rightAction,
-  onNavigate
+  onNavigate,
+  hideTable = false
 }) {
   const { tableNumber } = useOrder();
 
@@ -23,15 +24,17 @@ export function Header({
             <ChevronLeftIcon className="w-6 h-6" />
           </button>
         )}
-        <div className="flex items-center gap-2 min-w-0">
-           <div className="bg-amber-100 p-2 rounded-xl shrink-0">
-              <MapPinIcon className="w-4 h-4 text-amber-600" />
-           </div>
-           <div className="flex flex-col min-w-0">
-              <span className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Dining at</span>
-              <span className="text-sm font-bold text-gray-900 leading-tight truncate">Table {tableNumber || '--'}</span>
-           </div>
-        </div>
+        {!hideTable && (
+          <div className="flex items-center gap-2 min-w-0">
+             <div className="bg-amber-100 p-2 rounded-xl shrink-0">
+                <MapPinIcon className="w-4 h-4 text-amber-600" />
+             </div>
+             <div className="flex flex-col min-w-0">
+                <span className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Dining at</span>
+                <span className="text-sm font-bold text-gray-900 leading-tight truncate">Table {tableNumber || '--'}</span>
+             </div>
+          </div>
+        )}
       </div>
 
       <h1 className="text-md font-bold text-gray-900 flex-1 text-center truncate px-2">

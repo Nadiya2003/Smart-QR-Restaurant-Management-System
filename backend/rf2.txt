@@ -1,0 +1,12 @@
+CREATE TABLE `restaurant_feedbacks` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `customer_id` int DEFAULT NULL,
+  `order_id` int DEFAULT NULL,
+  `meal_rating` int DEFAULT NULL,
+  `service_rating` int DEFAULT NULL,
+  `comment` text,
+  `is_complaint` tinyint unsigned DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `steward_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci

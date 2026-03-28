@@ -75,6 +75,7 @@ export function LoginPage({ onNavigate }) {
         showBack
         onBack={() => onNavigate('auth-selection')}
         onNavigate={onNavigate}
+        hideTable
       />
 
       <div className="flex-1 p-6 flex flex-col justify-center">
