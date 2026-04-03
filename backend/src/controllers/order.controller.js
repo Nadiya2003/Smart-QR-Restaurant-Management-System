@@ -44,6 +44,18 @@ export const createDeliveryOrder = async (req, res) => {
             }
 
             await connection.commit();
+
+            // Notify all dashboards
+            if (global.io) {
+                global.io.emit('newOrder', {
+                    orderId: result.insertId,
+                    type: 'DELIVERY',
+                    customerName: customer_name,
+                    totalPrice: total_price,
+                    items: items // Adding items to global broadcast
+                });
+            }
+
             res.status(201).json({ 
                 message: '✅ Payment Successful! Your order has been placed successfully.', 
                 orderId: result.insertId 
@@ -102,6 +114,18 @@ export const createTakeawayOrder = async (req, res) => {
             }
 
             await connection.commit();
+
+            // Notify all dashboards
+            if (global.io) {
+                global.io.emit('newOrder', {
+                    orderId: result.insertId,
+                    type: 'TAKEAWAY',
+                    customerName: customer_name,
+                    totalPrice: total_price,
+                    items: items // Adding items for takeaway
+                });
+            }
+
             res.status(201).json({ 
                 message: '✅ Payment Successful! Your order has been placed successfully.', 
                 orderId: result.insertId 
@@ -154,15 +178,19 @@ export const getCustomerOrders = async (req, res) => {
         const [dineInOrders] = await pool.query(
             `SELECT o.*, 
                     os.name as status,
-                    ps.name as payment_status,
+                    o.paid_at,
+                    IF(o.paid_at IS NOT NULL, 'PAID', 'UNPAID') as payment_status,
                     COALESCE(o.total_price, (SELECT SUM(total_price) FROM order_analytics WHERE order_id = o.id AND order_source = 'DINE-IN')) as total_price,
+                    pm.name as payment_method_name,
+                    rt.table_number,
                     (SELECT JSON_ARRAYAGG(
                         JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
                     ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
                     "DINE-IN" as type 
              FROM orders o 
              LEFT JOIN order_statuses os ON o.status_id = os.id
-             LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
+             LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id
+             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
              WHERE o.customer_id = ? 
              ORDER BY o.created_at DESC`,
             [customerId]
@@ -208,7 +236,8 @@ export const cancelDeliveryOrder = async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        if (rows[0].order_status === 'CANCELLED') {
+        // BUG FIX: Use case-insensitive comparison since DB stores lowercase 'pending' but also 'CANCELLED'
+        if ((rows[0].order_status || '').toUpperCase() === 'CANCELLED') {
             await connection.rollback();
             return res.status(400).json({ message: 'Order already cancelled' });
         }
@@ -250,7 +279,8 @@ export const cancelTakeawayOrder = async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        if (rows[0].order_status === 'CANCELLED') {
+        // BUG FIX: Use case-insensitive comparison since DB stores lowercase 'pending' but also 'CANCELLED'
+        if ((rows[0].order_status || '').toUpperCase() === 'CANCELLED') {
             await connection.rollback();
             return res.status(400).json({ message: 'Order already cancelled' });
         }
@@ -343,18 +373,39 @@ export const createDineInOrder = async (req, res) => {
 
         // 4. Create new order if still no target
         if (!targetOrderId) {
+            // Requirement #1: Unified Lifecycle - Start at PENDING
+            const [statusRows] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
+            const startStatusId = statusRows[0]?.id || 1;
+
             const [result] = await connection.query(
-                `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id, order_type, total_price) 
-                 VALUES (?, ?, ?, ?, 1, ?, ?)`,
-                [customer_id, tableId, resolvedStewardId || null, statusId, orderType, inclusiveNewTotal]
+                `INSERT INTO orders (customer_id, table_id, steward_id, status_id, order_type_id, order_type, total_price, kitchen_status, bar_status, main_status) 
+                 VALUES (?, ?, ?, ?, 1, ?, ?, 'pending', 'pending', 'PENDING')`,
+                [customer_id, tableId, resolvedStewardId || null, startStatusId, orderType, inclusiveNewTotal]
             );
             targetOrderId = result.insertId;
         }
 
         // 4. Insert into order_analytics & order_items
+        let fullDetailedItems = [];
+        let hasFood = false;
+        let hasBeverages = false;
+
         if (Array.isArray(items)) {
             for (const item of items) {
                 const menuItem = item.menuItem || item;
+                const catName = (menuItem.category_name || menuItem.category || 'Food').toUpperCase();
+                const isBeverage = catName.includes('BEVERAGE') || catName.includes('DRINK') || catName.includes('BAR');
+
+                if (isBeverage) hasBeverages = true;
+                else hasFood = true;
+
+                fullDetailedItems.push({
+                    name: menuItem.name,
+                    quantity: item.quantity || 1,
+                    price: menuItem.price || 0,
+                    category: catName
+                });
+                
                 // Add to order_analytics (for reports)
                 await connection.query(
                     `INSERT INTO order_analytics 
@@ -364,7 +415,7 @@ export const createDineInOrder = async (req, res) => {
                         targetOrderId, 
                         menuItem.id || 0, 
                         menuItem.name, 
-                        menuItem.category_name || menuItem.category || 'General', 
+                        catName, 
                         item.quantity || 1, 
                         menuItem.price || 0, 
                         (menuItem.price || 0) * (item.quantity || 1)
@@ -377,6 +428,14 @@ export const createDineInOrder = async (req, res) => {
                     [targetOrderId, menuItem.id || 0, item.quantity || 1, menuItem.price || 0]
                 );
             }
+        }
+
+        // 4b. Update split statuses based on item types (Requirement #2)
+        if (!hasFood) {
+            await connection.query('UPDATE orders SET kitchen_status = "ready" WHERE id = ?', [targetOrderId]);
+        }
+        if (!hasBeverages) {
+            await connection.query('UPDATE orders SET bar_status = "ready" WHERE id = ?', [targetOrderId]);
         }
 
         // 5. Update table status to 'not available'
@@ -398,8 +457,30 @@ export const createDineInOrder = async (req, res) => {
 
         await connection.commit();
         
+        // Notify all dashboards of table status change (Requirement #5)
+        if (global.io && tableId) {
+            global.io.emit('tableUpdate', { 
+                tableId, 
+                tableNumber: tableRows && tableRows.length > 0 ? tableRows[0].table_number : table_number,
+                status: 'Occupied',
+                type: 'ORDER_PLACED'
+            });
+        }
+
         // Emit for Real-time update (Requirement 13)
         if (global.io) {
+            global.io.emit('newOrder', { 
+                orderId: targetOrderId, 
+                type: 'DINE-IN',
+                isUpdate,
+                stewardId: resolvedStewardId,
+                staffId: steward_id,
+                tableNumber: table_number,
+                customerName,
+                customerType,
+                totalPrice: inclusiveNewTotal,
+                items: fullDetailedItems
+            });
             global.io.emit('orderUpdate', { 
                 orderId: targetOrderId, 
                 type: 'DINE-IN',
@@ -408,13 +489,15 @@ export const createDineInOrder = async (req, res) => {
                 staffId: steward_id,
                 tableNumber: table_number,
                 customerName,
-                customerType
+                customerType,
+                status: 'PENDING'
             });
         }
 
         res.status(201).json({ 
-            message: '✅ Order placed successfully! Your steward will be with you shortly.', 
-            orderId: targetOrderId 
+            message: isUpdate ? 'Order item(s) added successfully' : 'Dine-in order placed successfully', 
+            orderId: targetOrderId,
+            totalPrice: inclusiveNewTotal 
         });
     } catch (error) {
         await connection.rollback();
@@ -431,8 +514,10 @@ export const getActiveOrderByTable = async (req, res) => {
         const [orders] = await pool.query(
             `SELECT o.*, 
                     UPPER(os.name) as status,
-                    ps.name as payment_status,
+                    o.paid_at,
+                    IF(o.paid_at IS NOT NULL, 'PAID', 'UNPAID') as payment_status,
                     rt.table_number,
+                    pm.name as payment_method_name,
                     (SELECT JSON_ARRAYAGG(
                         JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
                     ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
@@ -440,7 +525,7 @@ export const getActiveOrderByTable = async (req, res) => {
              FROM orders o 
              LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
              LEFT JOIN order_statuses os ON o.status_id = os.id
-             LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
+             LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id
              WHERE rt.table_number = ? AND os.name NOT IN ('COMPLETED', 'CANCELLED')
              ORDER BY o.created_at DESC LIMIT 1`,
             [tableNumber]
@@ -459,20 +544,21 @@ export const requestDineInCancellation = async (req, res) => {
         const { id } = req.params;
         const { reason, itemIds } = req.body;
 
-        const customer_id_val = req.user ? req.user.userId : null;
-        const query = req.user 
-            ? 'SELECT o.id, o.status_id, o.cancellation_status, o.table_id FROM orders o WHERE o.id = ? AND o.customer_id = ?'
-            : 'SELECT o.id, o.status_id, o.cancellation_status, o.table_id FROM orders o WHERE o.id = ? AND o.customer_id IS NULL';
-        const params = req.user ? [id, customer_id_val] : [id];
+        const customer_id = (req.user && (req.user.userId || req.user.id)) || null;
         
-        // 1. Check if order exists and belongs to this customer
-        const [orders] = await pool.query(query, params);
+        // 1. Check if order exists
+        const [orders] = await pool.query('SELECT o.id, o.status_id, o.cancellation_status, o.table_id, o.customer_id FROM orders o WHERE o.id = ?', [id]);
 
         if (orders.length === 0) {
             return res.status(404).json({ message: 'Order not found' });
         }
 
         const order = orders[0];
+
+        // Ensure authorization: must be the owner, or it must be a guest order that hasn't synced yet
+        if (order.customer_id && customer_id && order.customer_id !== customer_id) {
+            return res.status(403).json({ message: 'Unauthorized. This order belongs to another user.' });
+        }
 
         // 2. Check current status
         const [statusRows] = await pool.query('SELECT name FROM order_statuses WHERE id = ?', [order.status_id]);
@@ -491,20 +577,28 @@ export const requestDineInCancellation = async (req, res) => {
                 // Delete selected items
                 await pool.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [id, itemIds]);
                 
-                // Also clean up analytics for these specific items if they existed
-                await pool.query('DELETE FROM order_analytics WHERE order_id = ? AND quantity > 0 LIMIT ?', [id, itemIds.length]);
-
                 // Recalculate Total
                 const [itemRows] = await pool.query('SELECT price, quantity FROM order_items WHERE order_id = ?', [id]);
                 if (itemRows.length === 0) {
                    // If no items left, cancel the entire order instead
-                   const [cancelStatusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
-                   await pool.query('UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [cancelStatusRows[0].id, id]);
-                   if (order.table_id) await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [order.table_id]);
+                   const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
+                   const cancelStatusId = statusRows[0]?.id || 2;
+                   await pool.query('UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED" WHERE id = ?', [cancelStatusId, id]);
+                   if (order.table_id) {
+                       await pool.query('UPDATE restaurant_tables SET status = "cleaning" WHERE id = ?', [order.table_id]);
+                       if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
+                       
+                       setTimeout(async () => {
+                           try {
+                               await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
+                               if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'available' });
+                           } catch (e) {}
+                       }, 5 * 60 * 1000);
+                   }
                 } else {
                    const subtotal = itemRows.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                    const total = subtotal * 1.15; // 10% SC, 5% Tax
-                   await pool.query('UPDATE orders SET total_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [total, id]);
+                   await pool.query('UPDATE orders SET total_price = ? WHERE id = ?', [total, id]);
                 }
                 console.log(`[Cancel] Partial cancellation for Order #${id}: ${itemIds.length} items removed`);
             } else {
@@ -513,12 +607,21 @@ export const requestDineInCancellation = async (req, res) => {
                 const cancelStatusId = cancelStatusRows[0]?.id || 2;
                 
                 await pool.query(
-                    'UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED", cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    'UPDATE orders SET status_id = ?, cancellation_status = "CANCELLED", cancellation_reason = ? WHERE id = ?',
                     [cancelStatusId, reason || 'Customer cancelled via App', id]
                 );
 
                 if (order.table_id) {
-                    await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [order.table_id]);
+                    await pool.query('UPDATE restaurant_tables SET status = "cleaning" WHERE id = ?', [order.table_id]);
+                    if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
+                     
+                    setTimeout(async () => {
+                        try {
+                            await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
+                            if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'available' });
+                            console.log(`[Cancel_Table_Reset] Table #${order.table_id} auto-reset to available after 5m cleaning.`);
+                        } catch (e) {}
+                    }, 5 * 60 * 1000);
                 }
                 console.log(`[Cancel] Full direct cancellation for Order #${id}`);
             }
@@ -538,14 +641,16 @@ export const requestDineInCancellation = async (req, res) => {
 
                 if (global.io && orderDetails.length > 0) {
                     const od = orderDetails[0];
-                    global.io.emit('cancelRequest', {
+                    const isDirect = true;
+                    const eventName = isPartial ? 'orderUpdate' : 'orderCancelled';
+                    global.io.emit(eventName, {
                         orderId: parseInt(id),
                         tableNumber: od.table_number,
                         staffId: od.staff_id,
                         customerName: od.customer_name || 'Guest',
                         customerType: od.customer_type,
                         reason: reason || (isPartial ? 'Partial items removed' : 'Customer Cancelled'),
-                        isDirect: true,
+                        isDirect: isDirect,
                         playSound: true,
                         isPartial: isPartial
                     });
@@ -554,7 +659,7 @@ export const requestDineInCancellation = async (req, res) => {
                 console.error('Notify cancellation error:', notifErr);
             }
 
-            return res.json({ success: true, partial: isPartial, message: isPartial ? '✅ Selected items removed.' : '✅ Order cancelled successfully.' });
+            return res.json({ success: true, isDirect: true, partial: isPartial, message: isPartial ? '✅ Selected items removed.' : '✅ Order cancelled successfully.' });
         }
 
         // --- FALLBACK: REQUEST BASED CANCELLATION FOR LATE ORDERS ---
@@ -570,7 +675,7 @@ export const requestDineInCancellation = async (req, res) => {
 
         await pool.query(
             'UPDATE orders SET cancellation_status = "PENDING", cancellation_reason = ? WHERE id = ?',
-            [reason, id]
+            [reason || 'Not specified', id]
         );
 
         // Notify steward of the request
@@ -604,7 +709,7 @@ export const requestDineInCancellation = async (req, res) => {
             console.error('Cancel request notify error:', notifErr);
         }
 
-        res.json({ success: false, message: '✅ Cancellation request sent. Steward has been notified.' });
+        res.json({ success: true, isDirect: false, message: '✅ Cancellation request sent. Steward has been notified.' });
     } catch (error) {
         console.error('Dine-in cancellation handler error:', error);
         res.status(500).json({ message: 'Failed to process cancellation' });
@@ -654,6 +759,12 @@ export const removeOrderItem = async (req, res) => {
         );
 
         await connection.commit();
+        
+        // Notify dashboards instantly that an item was dropped!
+        if (global.io) {
+            global.io.emit('orderUpdate', { orderId: parseInt(orderId), action: 'ITEM_REMOVED' });
+        }
+
         res.json({ success: true, message: "Item removed and total price updated" });
     } catch (error) {
         if (connection) await connection.rollback();
@@ -806,9 +917,17 @@ export const endDineInSession = async (req, res) => {
 
         await connection.commit();
 
-        // Real-time update emit (Requirement 13)
+        // Real-time update emit (Requirement 13 & 5)
         if (global.io) {
             global.io.emit('orderUpdate', { orderId, type: 'DINE-IN', status: 'SESSION_ENDED' });
+            // Free the table in real-time
+            if (order.table_id) {
+                global.io.emit('tableUpdate', { 
+                    tableId: order.table_id, 
+                    status: 'Available',
+                    type: 'SESSION_ENDED'
+                });
+            }
         }
 
         res.json({ success: true, message: 'Session ended and table freed' });
@@ -878,5 +997,75 @@ export const syncGuestOrder = async (req, res) => {
         res.status(500).json({ message: 'Failed to sync guest order', error: error.message });
     } finally {
         if (connection) connection.release();
+    }
+};
+
+/**
+ * Request payment (Cash/Card/Online)
+ */
+export const requestPayment = async (req, res) => {
+    try {
+        const { orderId, method, total } = req.body;
+        const slip = req.file ? `/uploads/${req.file.filename}` : null;
+
+        if (!orderId) return res.status(400).json({ message: 'Order ID is required' });
+
+        // 1. Get order details for notification
+        const [orderDetails] = await pool.query(`
+            SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
+                   o.customer_name, o.customer_id
+            FROM orders o
+            LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+            LEFT JOIN stewards s ON o.steward_id = s.id
+            WHERE o.id = ?
+        `, [orderId]);
+
+        if (orderDetails.length === 0) return res.status(404).json({ message: 'Order not found' });
+        const od = orderDetails[0];
+
+        // 2. Automatically resolve payment and forcefully close the order (Requirement: steward order closed immediately upon customer payment)
+        let methodId = 1; // Default Cash
+        if (method === 'online') methodId = 3;
+        if (method === 'card') methodId = 2;
+        
+        await pool.query('UPDATE orders SET payment_method_id = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ?', [methodId, orderId]);
+
+        // Instantly flip to COMPLETED
+        const [compStatus] = await pool.query('SELECT id, name FROM order_statuses WHERE name = "COMPLETED"');
+        if (compStatus.length > 0) {
+             await pool.query('UPDATE orders SET status_id = ?, main_status = ? WHERE id = ?', [compStatus[0].id, compStatus[0].name, orderId]);
+        }
+
+        // 3. Notify Steward/Cashier via Socket (Requirement 13)
+        if (global.io) {
+            // Emitting COMPLETED triggers dashboard removals directly
+            global.io.emit('orderUpdate', { orderId: parseInt(orderId), status: 'COMPLETED' });
+            
+            global.io.emit('paymentRequest', {
+                orderId: parseInt(orderId),
+                tableNumber: od.table_number,
+                staffId: od.staff_id, 
+                method: method.toUpperCase(),
+                total: total,
+                slip: slip,
+                customerName: od.customer_name || 'Guest',
+                playSound: true
+            });
+            
+            // Also notify cashier room
+            global.io.to('cashier_room').emit('paymentRequest', {
+                orderId: parseInt(orderId),
+                tableNumber: od.table_number,
+                method: method.toUpperCase(),
+                total: total,
+                slip: slip,
+                playSound: true
+            });
+        }
+
+        res.json({ success: true, message: 'Payment request sent' });
+    } catch (err) {
+        console.error('Request payment error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
 };

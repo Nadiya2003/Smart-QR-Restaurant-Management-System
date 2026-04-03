@@ -88,6 +88,15 @@ export const createReservation = async (req, res) => {
             }
         }
 
+        // Notify all dashboards of table status change (Requirement #5)
+        if (global.io) {
+            global.io.emit('tableUpdate', { 
+                tableId: table_id, 
+                status: 'Reserved',
+                type: 'RESERVATION_CREATED'
+            });
+        }
+
         res.status(201).json({
             message: '✅ Your reservation has been successfully booked. A confirmation email has been sent.',
             reservationId: result.insertId
@@ -179,10 +188,14 @@ export const getTablesWithAvailability = async (req, res) => {
 export const getReservations = async (req, res) => {
     try {
         const { date } = req.query;
+        // BUG FIX: Changed JOIN to LEFT JOIN so guest reservations (customer_id IS NULL) are included
         let query = `
-            SELECT r.*, c.name, c.email, c.phone 
+            SELECT r.*, 
+                   COALESCE(c.name, r.customer_name) as name,
+                   COALESCE(c.email, '') as email,
+                   COALESCE(c.phone, r.mobile_number) as phone
             FROM reservations r
-            JOIN online_customers c ON r.customer_id = c.id
+            LEFT JOIN online_customers c ON r.customer_id = c.id
         `;
         const params = [];
 
@@ -241,6 +254,15 @@ export const cancelReservation = async (req, res) => {
         );
 
         await connection.commit();
+        // Notify all dashboards (Requirement #5)
+        if (global.io) {
+            global.io.emit('tableUpdate', { 
+                tableId: reservation.table_id, 
+                status: 'Available',
+                type: 'RESERVATION_CANCELLED'
+            });
+        }
+
         res.json({ message: '✅ Reservation cancelled successfully' });
     } catch (error) {
         await connection.rollback();

@@ -225,7 +225,7 @@ export function DashboardPage({ onNavigate }) {
       </div>
 
       {/* Floating View Active Order Button (Requirement 13) */}
-      {currentOrder && (
+      {currentOrder && !['COMPLETED', 'FINISHED', 'SERVED', 'CANCELLED', 'REJECTED'].includes(currentOrder.status?.toUpperCase()) && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-sm z-30 animate-in fade-in slide-in-from-bottom-4 duration-500">
            <button 
              onClick={() => onNavigate('tracking')}

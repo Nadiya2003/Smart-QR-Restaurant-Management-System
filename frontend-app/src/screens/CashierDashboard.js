@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, Dimensions, Switch
+    FlatList, Image, Dimensions, Switch, Vibration
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -16,8 +16,10 @@ const CashierDashboard = () => {
     const [activeTab, setActiveTab] = useState('home'); // home, tables, pos, reservations, bookings, stats
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    
-    // Core States
+    const [socketConnected, setSocketConnected] = useState(false);
+    const soundRef = useRef(null);
+    const socketRef = useRef(null);
+    const prevOrderIds = useRef(new Set());
     const [tables, setTables] = useState([]);
     const [menuItems, setMenuItems] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -53,6 +55,35 @@ const CashierDashboard = () => {
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+    };
+
+    // Initialize Bell Sound
+    useEffect(() => {
+        const loadSound = async () => {
+            try {
+                const { Audio } = require('expo-av');
+                const { sound } = await Audio.Sound.createAsync(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+                    { shouldPlay: false }
+                );
+                soundRef.current = sound;
+            } catch (err) {
+                console.log('Failed to load cashier sound:', err);
+            }
+        };
+        loadSound();
+        return () => {
+            if (soundRef.current) soundRef.current.unloadAsync();
+        };
+    }, []);
+
+    const playNotificationSound = async () => {
+        try {
+            if (soundRef.current) {
+                await soundRef.current.replayAsync();
+            }
+            Vibration.vibrate([0, 500, 200, 500]);
+        } catch (err) {}
     };
 
     const fetchData = useCallback(async (isSilent = false) => {
@@ -109,8 +140,32 @@ const CashierDashboard = () => {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => fetchData(true), 15000);
-        return () => clearInterval(interval);
+        
+        const socketIO = require('socket.io-client');
+        const socket = socketIO(apiConfig.API_BASE_URL);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            setSocketConnected(true);
+            socket.emit('join', 'cashier_room');
+        });
+
+        socket.on('newOrder', () => {
+            playNotificationSound();
+            fetchData(true);
+        });
+
+        socket.on('orderUpdate', () => fetchData(true));
+        socket.on('paymentRequested', () => {
+            playNotificationSound();
+            fetchData(true);
+        });
+
+        const interval = setInterval(() => fetchData(true), 25000);
+        return () => {
+            clearInterval(interval);
+            if (socketRef.current) socketRef.current.disconnect();
+        };
     }, [fetchData]);
 
     const onRefresh = () => {

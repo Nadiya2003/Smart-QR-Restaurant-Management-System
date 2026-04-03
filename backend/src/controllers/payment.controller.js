@@ -4,19 +4,21 @@ export const processPayment = async (req, res) => {
     try {
         const { orderId, paymentMethod, amount } = req.body;
 
-        // Update Order Status
-        // Frontend sends: 'ONLINE', 'CARD', 'CASH'
+        let methodId = 1;
+        if (paymentMethod === 'ONLINE') methodId = 3;
+        else if (paymentMethod === 'CARD') methodId = 2;
+
         const [result] = await pool.query(
             `UPDATE orders 
-             SET payment_type = ?, payment_status = IF(?='ONLINE' OR ?='CARD', 'PAID', 'PAY_AT_COUNTER') 
+             SET payment_method_id = ?, paid_at = CURRENT_TIMESTAMP 
              WHERE id = ?`,
-            [paymentMethod, paymentMethod, paymentMethod, orderId]
+            [methodId, orderId]
         );
 
         // Fetch the order to get customer ID and total price for loyalty points
-        const [orders] = await pool.query("SELECT customer_id, total_price, payment_status FROM orders WHERE id = ?", [orderId]);
+        const [orders] = await pool.query("SELECT customer_id, total_price, paid_at FROM orders WHERE id = ?", [orderId]);
 
-        if (orders.length > 0 && orders[0].payment_status === 'PAID') {
+        if (orders.length > 0 && orders[0].paid_at) {
             const pointsToGain = Math.floor(orders[0].total_price / 10);
             if (pointsToGain > 0) {
                 await pool.query(
@@ -39,7 +41,7 @@ export const getPaymentHistory = async (req, res) => {
     try {
         const { customerId } = req.params;
         const [rows] = await pool.query(
-            "SELECT * FROM orders WHERE customer_id = ? AND payment_status = 'PAID' ORDER BY created_at DESC",
+            "SELECT * FROM orders WHERE customer_id = ? AND paid_at IS NOT NULL ORDER BY created_at DESC",
             [customerId]
         );
         res.json({ payments: rows });

@@ -428,7 +428,8 @@ export const resetPassword = async (req, res) => {
 
         // Identify table and user
         let targetTable = null;
-        let passwordField = 'password_hash';
+        // BUG FIX: Correct initial value is 'password', not 'password_hash' - both tables use 'password' column
+        let passwordField = 'password';
 
         let [rows] = await pool.query('SELECT id, reset_otp, reset_otp_expiry FROM online_customers WHERE email = ?', [email]);
         if (rows.length > 0) {

@@ -54,9 +54,9 @@ export function FeedbackPage({ onNavigate, data }) {
         <Button 
             fullWidth 
             className="py-5 rounded-3xl font-black uppercase tracking-widest text-xs" 
-            onClick={() => { clearOrder(true); onNavigate('welcome'); }}
+            onClick={() => { clearOrder(true); onNavigate('menu'); }}
         >
-          Return to Home
+          Return to Menu
         </Button>
       </div>
     );
@@ -69,6 +69,17 @@ export function FeedbackPage({ onNavigate, data }) {
         showBack
         onBack={() => onNavigate('dashboard')}
         onNavigate={onNavigate}
+        rightAction={
+          <button 
+            onClick={async () => {
+              await clearOrder(true);
+              onNavigate('menu');
+            }} 
+            className="text-xs font-black bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-full uppercase transition-all"
+          >
+            Skip
+          </button>
+        }
       />
 
       <div className="flex-1 p-6 overflow-y-auto">
@@ -108,7 +119,7 @@ export function FeedbackPage({ onNavigate, data }) {
         </div>
       </div>
 
-      <div className="p-6 bg-white border-t border-gray-100 pb-safe">
+      <div className="p-6 bg-white border-t border-gray-100 pb-safe space-y-3">
         <Button
           fullWidth
           size="lg"
@@ -117,6 +128,17 @@ export function FeedbackPage({ onNavigate, data }) {
           onClick={handleSubmit}
         >
           {loading ? 'Submitting...' : 'Send Feedback'}
+        </Button>
+        <Button
+          variant="ghost"
+          fullWidth
+          className="text-gray-400 font-bold"
+          onClick={async () => {
+            await clearOrder(true);
+            onNavigate('menu');
+          }}
+        >
+          Skip & View Menu
         </Button>
       </div>
     </div>

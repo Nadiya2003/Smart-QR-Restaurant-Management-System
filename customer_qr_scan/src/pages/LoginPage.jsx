@@ -41,7 +41,7 @@ export function LoginPage({ onNavigate }) {
 
         const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
         const activeOrder = orders.find(o => {
-          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase());
+          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED'].includes(o.status?.toUpperCase());
           const isDineIn = o.type === 'DINE-IN' || o.order_type === 'registered' || o.order_type === 'guest';
           const isRecent = new Date(o.created_at).getTime() > sixHoursAgo;
           return isActive && isDineIn && isRecent;
@@ -52,14 +52,15 @@ export function LoginPage({ onNavigate }) {
           if (activeOrder.table_number) {
             localStorage.setItem('activeTable', activeOrder.table_number.toString());
           }
-          onNavigate('dashboard'); // WelcomePage will redirect to tracking via existing logic
+          onNavigate('tracking'); // Go straight to their food status
           return;
         }
       } catch (_) {
-        // Ignore — fallback to standard flow below
+        // Ignore - fallback to standard flow below
       }
 
-      // No active order: send through normal flow
+      // No active order found: advance to steward selection phase
+      // (StewardSelectionPage correctly routes to table-selection afterwards if no table exists yet)
       onNavigate('steward');
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');

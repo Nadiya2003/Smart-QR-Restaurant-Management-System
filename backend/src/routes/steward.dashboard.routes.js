@@ -12,6 +12,7 @@ import {
     getUpcomingReservations,
     getMyStats
 } from '../controllers/steward.dashboard.controller.js';
+import { getUnifiedTables } from '../controllers/table.controller.js';
 import { protect, isStaff } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -23,7 +24,7 @@ router.use(isStaff);
 router.get('/my-stats', getMyStats);
 
 // Tables
-router.get('/tables', getTableStatus);
+router.get('/tables', getUnifiedTables);
 router.get('/reservations', getUpcomingReservations);
 
 // Duty Status

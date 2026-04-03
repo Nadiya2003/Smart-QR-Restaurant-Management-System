@@ -21,7 +21,10 @@ const pool = mysql.createPool({
         const [[{ dbName }]] = await connection.query('SELECT DATABASE() as dbName');
         console.log(`Database connected successfully to: ${dbName}`);
         
-        // Requirement 11/12: Server Restart Cleanup (Fresh Start)
+        /* 
+           Requirement 11/12: Server Restart Cleanup (Fresh Start)
+           CAUTION: This reset orders every time NODEMON restarts. Disabling for reliability. 
+        
         console.log('[Startup] Resetting system state for fresh start...');
         
         // 1. Mark all active orders as COMPLETED
@@ -40,6 +43,7 @@ const pool = mysql.createPool({
         // 2. Reset ALL tables to 'available'
         await connection.query("UPDATE restaurant_tables SET status = 'available'");
         console.log('[Startup] All tables reset to available.');
+        */
         
         connection.release();
     } catch (err) {

@@ -415,10 +415,24 @@ export const cancelOrder = async (req, res) => {
             const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
             const cancelStatusId = statusRows[0]?.id;
             if (cancelStatusId) {
-                // For DINE-IN, if it's from admin, we might bypass request or use the same flow
-                // But generally admin can direct cancel
                 await pool.query('UPDATE orders SET status_id = ?, cancellation_reason = ?, cancellation_status = "APPROVED" WHERE id = ?', [cancelStatusId, reason, id]);
             }
+        }
+
+        // Notify Dashboards (Kitchen/Steward)
+        if (global.io) {
+            global.io.emit('cancelRequest', {
+                orderId: parseInt(id),
+                type: type,
+                reason: reason || 'Cancelled by Admin',
+                status: 'CANCELLED'
+            });
+            global.io.emit('orderUpdate', {
+                orderId: parseInt(id),
+                id: parseInt(id),
+                status: 'CANCELLED',
+                type: type
+            });
         }
 
         res.json({ message: 'Order cancelled successfully' });
@@ -536,6 +550,27 @@ export const handleCancellationAction = async (req, res) => {
         }
 
         await connection.commit();
+
+        // Notify Dashboards (Kitchen/Steward)
+        if (global.io) {
+            global.io.emit('orderUpdate', {
+                orderId: parseInt(request.order_id),
+                id: parseInt(request.order_id),
+                status: (action === 'approve') ? 'CANCELLED' : 'ACTIVE',
+                cancellationStatus: status,
+                type: (request.order_type || 'DINE-IN').toUpperCase()
+            });
+            
+            if (action === 'approve') {
+                global.io.emit('cancelRequest', {
+                    orderId: parseInt(request.order_id),
+                    status: 'APPROVED',
+                    reason: request.reason,
+                    type: request.order_type
+                });
+            }
+        }
+
         res.json({ message: `Cancellation successfully ${status}` });
     } catch (error) {
         await connection.rollback();
@@ -554,32 +589,111 @@ export const updateOrderStatus = async (req, res) => {
 
         // Reverse map user names to DB names if needed
         const dbStatusMap = {
+            'Confirmed': 'CONFIRMED',
+            'CONFIRMED': 'CONFIRMED',
             'Cooking': 'PREPARING',
+            'PREPARING': 'PREPARING',
             'Ready to Serve': 'READY',
+            'READY TO SERVE': 'READY',
             'Served': 'SERVED',
+            'SERVED': 'SERVED',
             'Finished': 'COMPLETED',
+            'COMPLETED': 'COMPLETED',
             'Cancelled': 'CANCELLED'
         };
+
+        if (status === 'START_PREPARING_ALL') {
+            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "PREPARING"');
+            if (statusRows.length > 0) {
+                await pool.query('UPDATE orders SET status_id = ?, kitchen_status = "preparing", bar_status = "preparing", main_status = "PREPARING" WHERE id = ?', [statusRows[0].id, id]);
+            } else {
+                await pool.query('UPDATE orders SET kitchen_status = "preparing", bar_status = "preparing", main_status = "PREPARING" WHERE id = ?', [id]);
+            }
+            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: 'PREPARING' });
+            return res.json({ message: 'Order preparation started for all stations.' });
+        }
+
+        if (status === 'READY_ALL') {
+            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "READY_TO_SERVE" OR name = "READY" ORDER BY id DESC LIMIT 1');
+            if (statusRows.length > 0) {
+                await pool.query('UPDATE orders SET status_id = ?, kitchen_status = "ready", bar_status = "ready", main_status = "READY_TO_SERVE" WHERE id = ?', [statusRows[0].id, id]);
+            } else {
+                await pool.query('UPDATE orders SET kitchen_status = "ready", bar_status = "ready", main_status = "READY_TO_SERVE" WHERE id = ?', [id]);
+            }
+            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: 'READY_TO_SERVE' });
+            return res.json({ message: 'Order marked as ready for all stations.' });
+        }
 
         const dbStatus = dbStatusMap[status] || status.toUpperCase();
 
         if (type === 'DELIVERY') {
-            await pool.query('UPDATE delivery_orders SET order_status = ? WHERE id = ?', [status, id]);
+            await pool.query('UPDATE delivery_orders SET order_status = ? WHERE id = ?', [dbStatus, id]);
         } else if (type === 'TAKEAWAY') {
-            await pool.query('UPDATE takeaway_orders SET order_status = ? WHERE id = ?', [status, id]);
+            await pool.query('UPDATE takeaway_orders SET order_status = ? WHERE id = ?', [dbStatus, id]);
         } else {
             const [statusRows] = await pool.query('SELECT id, name FROM order_statuses WHERE name = ?', [dbStatus]);
             if (statusRows.length > 0) {
                 const statusId = statusRows[0].id;
                 const statusName = statusRows[0].name;
+                // PAYMENT CHECK: If Steward clicks COMPLETED, verify payment first!
+                if (['COMPLETED', 'FINISHED'].includes(statusName)) {
+                    const [pymtRows] = await pool.query('SELECT paid_at, table_id FROM orders WHERE id = ?', [id]);
+                    if (pymtRows.length > 0) {
+                        const orderPymt = pymtRows[0];
+                        if (!orderPymt.paid_at) {
+                            // Order is UNPAID! Do not complete it yet. Trigger customer payment screen via WebSockets!
+                            if (global.io) {
+                                global.io.emit('orderUpdate', { orderId: id, status: 'PAYMENT_REQUIRED', tableId: orderPymt.table_id });
+                            }
+                            return res.status(402).json({ 
+                                message: 'Payment pending. The customer has been prompted to complete their payment. You can close this order once they settle the bill.' 
+                            });
+                        }
+                    }
+                }
+
                 await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusId, id]);
+                await pool.query('UPDATE orders SET main_status = ? WHERE id = ?', [statusName, id]);
+                
+                // If it's a DINE-IN ready state, also ensure station statuses match (UI Requirement #5)
+                if (statusName === 'PREPARING') {
+                    await pool.query('UPDATE orders SET kitchen_status = "preparing", bar_status = "preparing" WHERE id = ?', [id]);
+                }
+                if (statusName === 'READY_TO_SERVE' || statusName === 'READY') {
+                    await pool.query('UPDATE orders SET kitchen_status = "ready", bar_status = "ready" WHERE id = ?', [id]);
+                }
 
                 // If completed/finished/cancelled, free the table (Requirement 11)
+                // Requirement #7: Start 5-minute timer for Table Reset
                 if (['COMPLETED', 'FINISHED', 'CANCELLED'].includes(statusName)) {
                     const [orderRows] = await pool.query('SELECT table_id FROM orders WHERE id = ?', [id]);
                     if (orderRows.length > 0 && orderRows[0].table_id) {
-                        await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
-                        console.log(`[StatusUpdate] Table ${orderRows[0].table_id} freed due to order ${id} status: ${statusName}`);
+                        const tableId = orderRows[0].table_id;
+                        // 1. Set to cleaning immediately
+                        await pool.query('UPDATE restaurant_tables SET status = "cleaning" WHERE id = ?', [tableId]);
+                        if (global.io) global.io.emit('tableUpdate', { tableId, status: 'cleaning' });
+                        
+                        // 2. Set to available after 5 minutes
+                        setTimeout(async () => {
+                            try {
+                                await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [tableId]);
+                                if (global.io) global.io.emit('tableUpdate', { tableId, status: 'available' });
+                                console.log(`[AutoTableReset] Table ${tableId} is now AVAILABLE after 5m cleaning.`);
+                            } catch (timerErr) {
+                                console.error('AutoTableReset Error:', timerErr);
+                            }
+                        }, 5 * 60 * 1000);
+
+                        console.log(`[StatusUpdate] Table ${tableId} set to cleaning due to order ${id} status: ${statusName}`);
+                        
+                        // Notify Kitchen/Bar to STOP preparing (Requirement)
+                        if (statusName === 'CANCELLED' && global.io) {
+                            global.io.emit('orderCancelled', { 
+                                orderId: id, 
+                                tableNumber: tableId, 
+                                reason: 'Staff Cancelled' 
+                            });
+                        }
                     }
                 }
             }
@@ -587,7 +701,41 @@ export const updateOrderStatus = async (req, res) => {
         
         // Real-time update emit (Requirement 13)
         if (global.io) {
-            global.io.emit('orderUpdate', { id, type: type || 'DINE-IN', status: dbStatus });
+            let staffId = null;
+            let tableNum = 'Counter';
+            try {
+                const [orderInfo] = await pool.query(`
+                    SELECT su.id as staff_id, COALESCE(rt.table_number, 'Counter') as table_number 
+                    FROM orders o 
+                    LEFT JOIN restaurant_tables rt ON o.table_id = rt.id 
+                    LEFT JOIN stewards s ON o.steward_id = s.id
+                    LEFT JOIN staff_users su ON s.staff_id = su.id
+                    WHERE o.id = ?
+                `, [id]);
+                if (orderInfo.length > 0) {
+                    staffId = orderInfo[0].staff_id;
+                    tableNum = orderInfo[0].table_number;
+                }
+            } catch (err) {}
+
+            global.io.emit('orderUpdate', { 
+                id, 
+                orderId: id,
+                type: type || 'DINE-IN', 
+                status: dbStatus,
+                staffId: staffId,
+                tableNumber: tableNum
+            });
+
+            // Specific notification for READY status
+            if (dbStatus === 'READY' || dbStatus === 'READY TO SERVE') {
+                global.io.emit('orderReadyNotify', { 
+                    orderId: id, 
+                    tableNumber: tableNum,
+                    staffId: staffId,
+                    message: `Order #${id} for Table ${tableNum} is ready!` 
+                });
+            }
         }
 
         res.json({ message: 'Order status updated' });
@@ -891,6 +1039,11 @@ export const updateTableStatus = async (req, res) => {
         const { id } = req.params;
         const { status } = req.body; // 'available', 'occupied', 'reserved'
         await pool.query('UPDATE restaurant_tables SET status = ? WHERE id = ?', [status, id]);
+
+        if (global.io) {
+            global.io.emit('tableUpdate', { tableId: id, status });
+        }
+
         res.json({ message: `Table status updated to ${status}` });
     } catch (err) {
         console.error('Update table status error:', err);
@@ -971,5 +1124,33 @@ export const getFeedbacks = async (req, res) => {
     } catch (err) {
         console.error('getFeedbacks error:', err);
         res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+};
+
+export const cleanupOrders = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        
+        // delete all order-related data
+        await connection.query("DELETE FROM order_items");
+        await connection.query("DELETE FROM orders");
+        await connection.query("DELETE FROM order_status_logs");
+        await connection.query("DELETE FROM order_items_status_logs");
+
+        // reset tables to available
+        await connection.query("UPDATE tables SET status = 'available', is_occupied = 0, is_reserved = 0, active_order_id = NULL, active_order_status = NULL");
+
+        // clear steward allocations
+        await connection.query("UPDATE stewards SET current_orders_count = 0");
+
+        await connection.commit();
+        res.json({ message: "System cleaned successfully. All orders cleared." });
+    } catch (err) {
+        await connection.rollback();
+        console.error('cleanupOrders error:', err);
+        res.status(500).json({ message: "Failed to clean system" });
+    } finally {
+        connection.release();
     }
 };

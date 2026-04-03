@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput, Switch } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, Image, Platform, Linking, TextInput, Switch, Vibration } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -116,12 +116,47 @@ const ManagerDashboard = () => {
     const [inventoryForm, setInventoryForm] = useState({ item_name: '', quantity: '', unit: '', supplier_id: '', category: 'General', min_level: '5' });
 
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+    
+    // Real-time states
+    const [socketConnected, setSocketConnected] = useState(false);
+    const soundRef = useRef(null);
+    const socketRef = useRef(null);
+    const prevOrderIds = useRef(new Set());
 
 
 
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+    };
+
+    // Initialize Bell Sound
+    useEffect(() => {
+        const loadSound = async () => {
+            try {
+                const { Audio } = require('expo-av');
+                const { sound } = await Audio.Sound.createAsync(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+                    { shouldPlay: false }
+                );
+                soundRef.current = sound;
+            } catch (err) {
+                console.log('Failed to load manager sound:', err);
+            }
+        };
+        loadSound();
+        return () => {
+            if (soundRef.current) soundRef.current.unloadAsync();
+        };
+    }, []);
+
+    const playNotificationSound = async () => {
+        try {
+            if (soundRef.current) {
+                await soundRef.current.replayAsync();
+            }
+            Vibration.vibrate([0, 500, 200, 500]);
+        } catch (err) {}
     };
 
     const [showOrderModal, setShowOrderModal] = useState(false);
@@ -251,8 +286,29 @@ const ManagerDashboard = () => {
         fetchData();
     }, [activeTab, fetchData]);
 
-    // Separate light polling for stats only (no full reload)
     useEffect(() => {
+        fetchData();
+        
+        const socketIO = require('socket.io-client');
+        const socket = socketIO(apiConfig.API_BASE_URL);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            setSocketConnected(true);
+            socket.emit('join', 'manager_room');
+        });
+
+        socket.on('newOrder', () => {
+            playNotificationSound();
+            fetchData(true);
+        });
+
+        socket.on('orderUpdate', () => fetchData(true));
+        socket.on('cancelRequest', () => {
+            playNotificationSound();
+            fetchData(true);
+        });
+
         const interval = setInterval(async () => {
             try {
                 const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -300,9 +356,12 @@ const ManagerDashboard = () => {
                     }
                 }
             } catch (e) { /* silent */ }
-        }, 10000); // Poll every 10s for better synchronization
-        return () => clearInterval(interval);
-    }, [token, activeTab, filterResDate]);
+        }, 120000); // Polling reduced as we have Socket.io
+        return () => {
+            clearInterval(interval);
+            if (socketRef.current) socketRef.current.disconnect();
+        };
+    }, [token, activeTab, filterResDate, fetchData]);
 
     const onRefresh = () => {
         setRefreshing(true);

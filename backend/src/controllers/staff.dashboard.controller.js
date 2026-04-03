@@ -14,8 +14,7 @@ export const getDashboardStats = async (req, res) => {
                 `SELECT COALESCE(SUM(oi.price * oi.quantity), 0) as revenue
                  FROM orders o
                  JOIN order_items oi ON o.id = oi.order_id
-                 JOIN payment_statuses ps ON o.payment_status_id = ps.id
-                 WHERE DATE(o.created_at) = CURDATE() AND ps.name = 'PAID'`
+                 WHERE DATE(o.created_at) = CURDATE() AND o.paid_at IS NOT NULL`
             );
             const [activeStaff] = await pool.query(
                 'SELECT COUNT(*) as count FROM staff_users WHERE is_active = 1'
@@ -40,8 +39,7 @@ export const getDashboardStats = async (req, res) => {
                 `SELECT COALESCE(SUM(oi.price * oi.quantity), 0) as revenue
                  FROM orders o
                  JOIN order_items oi ON o.id = oi.order_id
-                 JOIN payment_statuses ps ON o.payment_status_id = ps.id
-                 WHERE ps.name = 'PAID' AND DATE(o.created_at) = CURDATE()`
+                 WHERE o.paid_at IS NOT NULL AND DATE(o.created_at) = CURDATE()`
             );
 
             stats = {

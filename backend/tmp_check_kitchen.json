@@ -1,0 +1,110 @@
+{
+  "cols": [
+    "id",
+    "customer_id",
+    "steward_id",
+    "order_type_id",
+    "status_id",
+    "payment_method_id",
+    "payment_status_id",
+    "table_id",
+    "total_price",
+    "created_at",
+    "updated_at",
+    "cancellation_reason",
+    "cancellation_status",
+    "order_type",
+    "cashier_id",
+    "customer_name",
+    "phone",
+    "address",
+    "paid_at"
+  ],
+  "statuses": [
+    {
+      "id": 1,
+      "name": "PENDING"
+    },
+    {
+      "id": 2,
+      "name": "CONFIRMED"
+    },
+    {
+      "id": 3,
+      "name": "PREPARING"
+    },
+    {
+      "id": 4,
+      "name": "READY"
+    },
+    {
+      "id": 5,
+      "name": "SERVED"
+    },
+    {
+      "id": 6,
+      "name": "COMPLETED"
+    },
+    {
+      "id": 7,
+      "name": "CANCELLED"
+    },
+    {
+      "id": 8,
+      "name": "ORDER PLACED"
+    },
+    {
+      "id": 11,
+      "name": "OUT FOR DELIVERY"
+    }
+  ],
+  "categories": [
+    {
+      "name": "Beverages"
+    },
+    {
+      "name": "Chinese"
+    },
+    {
+      "name": "Desserts"
+    },
+    {
+      "name": "Fast Food"
+    },
+    {
+      "name": "Indian"
+    },
+    {
+      "name": "Italian"
+    },
+    {
+      "name": "Seafood"
+    },
+    {
+      "name": "Special Items"
+    },
+    {
+      "name": "Sri Lankan"
+    },
+    {
+      "name": "Vegetarian"
+    }
+  ],
+  "sample_items": [
+    {
+      "id": 1,
+      "name": "Chicken Kottu",
+      "cat": "Sri Lankan"
+    },
+    {
+      "id": 2,
+      "name": "Chicken Fried Rice",
+      "cat": "Sri Lankan"
+    },
+    {
+      "id": 3,
+      "name": "Chicken Kottu",
+      "cat": "Sri Lankan"
+    }
+  ]
+}

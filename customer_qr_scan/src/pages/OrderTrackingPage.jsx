@@ -18,6 +18,8 @@ export function OrderTrackingPage({ onNavigate }) {
   const [cancelType, setCancelType] = useState('full'); // 'full' or 'partial'
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [isPartialSuccess, setIsPartialSuccess] = useState(false);
+  const [statusAlertVisible, setStatusAlertVisible] = useState(false);
+  const [prevStatus, setPrevStatus] = useState(currentOrder?.status);
 
 
   // Cancellation reasons
@@ -28,18 +30,46 @@ export function OrderTrackingPage({ onNavigate }) {
     "Other"
   ];
 
-  // Automatically redirect to feedback when completed
+  // Automatically redirect to feedback when completed or served
   React.useEffect(() => {
-    if (currentOrder?.status?.toUpperCase() === 'COMPLETED' || currentOrder?.status?.toUpperCase() === 'FINISHED') {
+    const status = currentOrder?.status?.toUpperCase();
+    
+    // Status Change Feedback (Sync with socket events)
+    if (status && status !== prevStatus) {
+        setPrevStatus(status);
+        if (status !== 'PENDING') setStatusAlertVisible(true);
+    }
+
+    if (status === 'PAYMENT_REQUIRED') {
         const timer = setTimeout(() => {
-            onNavigate('feedback', { 
+            onNavigate('payment', { 
                 orderId: currentOrder.id, 
                 stewardId: currentOrder.steward_id 
             });
         }, 1500); 
         return () => clearTimeout(timer);
     }
-  }, [currentOrder?.status, onNavigate, currentOrder?.id, currentOrder?.steward_id]);
+
+    if (['COMPLETED', 'FINISHED'].includes(status)) {
+        const isPaid = !!currentOrder?.paid_at;
+        const timer = setTimeout(() => {
+            onNavigate(isPaid ? 'feedback' : 'payment', { 
+                orderId: currentOrder.id, 
+                stewardId: currentOrder.steward_id 
+            });
+        }, 3000); 
+        return () => clearTimeout(timer);
+    }
+    
+    // REDIRECT IF CANCELLED (Requirement)
+    if (status === 'CANCELLED' || status === 'REJECTED') {
+        const timer = setTimeout(async () => {
+            await clearOrder(false);
+            onNavigate('menu');
+        }, 3000);
+        return () => clearTimeout(timer);
+    }
+  }, [currentOrder?.status, onNavigate, currentOrder?.id, currentOrder?.steward_id, clearOrder]);
 
   if (!currentOrder && !cancelSuccess) {
     return (
@@ -81,15 +111,22 @@ export function OrderTrackingPage({ onNavigate }) {
           itemIds: cancelType === 'partial' ? selectedItemIds : null 
       });
       
-      setCancelModalOpen(false);
-      setCancelReason('');
-      setCancelComment('');
-      
-      if (response.success) {
-        setIsDirectCancel(true);
-        if (cancelType === 'partial') setIsPartialSuccess(true);
-      }
       setCancelSuccess(true); 
+
+      // AUTOMATIC REDIRECTION for DIRECT Cancellations (Requirement)
+      if (response.success && response.isDirect) {
+          setIsDirectCancel(true);
+          setTimeout(async () => {
+              if (cancelType === 'partial') {
+                  setCancelSuccess(false);
+                  setIsPartialSuccess(false);
+                  // Item was already removed on backend, refreshing UI will show new total
+              } else {
+                  await clearOrder(false); // Full cancel clear session
+                  onNavigate('menu');
+              }
+          }, 3000); // 3 seconds to see the success message
+      }
     } catch (err) {
       alert('Failed to submit cancellation: ' + err.message);
     } finally {
@@ -98,7 +135,10 @@ export function OrderTrackingPage({ onNavigate }) {
   };
 
   // Check if cancellation is allowed (Requirement 9: ONLY BEFORE Preparing)
-  const canCancel = ['PENDING', 'ORDER PLACED', 'RECEIVED', 'CONFIRMED', 'ACCEPTED'].includes(currentOrder.status?.toUpperCase());
+  const canCancel = [
+    'PENDING', 'NEW', 'ORDER PLACED', 'PLACED', 
+    'RECEIVED', 'CONFIRMED', 'ACCEPTED'
+  ].includes((currentOrder?.status || '').toUpperCase());
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
@@ -111,7 +151,7 @@ export function OrderTrackingPage({ onNavigate }) {
 
       <div className="flex-1 overflow-y-auto">
         <div className="bg-white mb-2">
-          <OrderStatusTracker currentStatus={currentOrder.status} />
+          <OrderStatusTracker currentOrder={currentOrder} />
 
           {/* ---- Cancellation SUCCESS banner ---- */}
           {cancelSuccess && (
@@ -133,17 +173,22 @@ export function OrderTrackingPage({ onNavigate }) {
               </p>
               <button
                 onClick={async () => {
-                   if (isDirectCancel && !isPartialSuccess) await clearOrder(false); // Only exit if full cancel
+                   if (isDirectCancel && !isPartialSuccess) {
+                       await clearOrder(false); // Only exit if full cancel
+                       onNavigate('menu');
+                   }
                    if (isPartialSuccess) {
                        setCancelSuccess(false);
                        setIsPartialSuccess(false);
-                   } else {
-                       onNavigate('welcome');
+                   } else if (!isDirectCancel) {
+                       setCancelSuccess(false);
                    }
                 }}
-                className="bg-green-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-green-600 transition-colors"
+                className={`py-3 px-8 rounded-xl font-black text-xs uppercase tracking-widest ${
+                  isDirectCancel ? 'bg-green-600 text-white shadow-lg' : 'bg-green-100 text-green-700'
+                }`}
               >
-                {isPartialSuccess ? 'Return to Order' : 'Return to Welcome'}
+                {isDirectCancel ? 'Return to Menu' : 'Got it'}
               </button>
             </div>
           )}
@@ -151,6 +196,33 @@ export function OrderTrackingPage({ onNavigate }) {
           {!cancelSuccess && currentOrder.cancellation_status === 'PENDING' && (
             <div className="bg-orange-50 p-3 text-orange-700 text-sm border-y border-orange-100 text-center animate-pulse">
               ⏳ Cancellation request is pending approval by manager.
+            </div>
+          )}
+
+          {/* STATUS CHANGE ALERT POPUP */}
+          {statusAlertVisible && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-[32px] w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+                    <div className="bg-amber-500 p-8 text-center">
+                        <span className="text-5xl">🎉</span>
+                        <h3 className="text-white font-black text-xl mt-4 uppercase tracking-tighter">Status Update</h3>
+                    </div>
+                    <div className="p-8 text-center">
+                        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-2">Order #{currentOrder.id}</p>
+                        <p className="text-gray-900 font-black text-2xl uppercase tracking-tighter leading-none mb-4 italic">
+                            {currentOrder.status}
+                        </p>
+                        <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                            Our team has updated your order status. Prepare for deliciousness!
+                        </p>
+                        <button 
+                            onClick={() => setStatusAlertVisible(false)}
+                            className="w-full bg-gray-900 text-white rounded-2xl py-4 font-black uppercase text-xs tracking-widest hover:bg-black transition-colors"
+                        >
+                            Got it!
+                        </button>
+                    </div>
+                </div>
             </div>
           )}
         </div>
@@ -188,6 +260,19 @@ export function OrderTrackingPage({ onNavigate }) {
                             <div>
                                 <p className="text-gray-900 font-bold text-sm leading-tight mb-0.5">{itemName}</p>
                                 <p className="text-[10px] text-gray-400 font-medium">Unit Price: Rs. {itemPrice.toLocaleString()}</p>
+                                
+                                {canCancel && (
+                                    <button 
+                                        onClick={() => {
+                                            setCancelType('partial');
+                                            setSelectedItemIds([item.id]);
+                                            setCancelModalOpen(true);
+                                        }}
+                                        className="text-[10px] text-red-500 font-bold uppercase tracking-tighter mt-1 hover:underline"
+                                    >
+                                        Remove Item
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <span className="font-bold text-gray-900 text-sm whitespace-nowrap">

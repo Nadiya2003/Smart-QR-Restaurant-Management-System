@@ -1,0 +1,1 @@
+["id","customer_id","steward_id","order_type_id","status_id","payment_method_id","payment_status_id","table_id","total_price","created_at","updated_at","cancellation_reason","cancellation_status","order_type","cashier_id","customer_name","phone","address","paid_at","kitchen_status","bar_status","main_status"]

@@ -11,6 +11,11 @@ const fetchWithAuth = async (endpoint, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  if (!options.cache) {
+    // Avoid caching GET requests specifically for real-time app
+    options.cache = 'no-store';
+  }
+
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,

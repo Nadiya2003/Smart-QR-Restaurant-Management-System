@@ -10,7 +10,7 @@ export const getOrders = async (req, res) => {
                    ot.name as type, 
                    os.name as status,
                    pm.name as payment_method,
-                   ps.name as payment_status,
+                   IF(o.paid_at IS NOT NULL, 'PAID', 'UNPAID') as payment_status,
                    (SELECT COALESCE(SUM(param_oi.price * param_oi.quantity), 0) FROM order_items param_oi WHERE param_oi.order_id = o.id) as total,
                    c.name as customer_name,
                    c.email as customer_email,
@@ -19,7 +19,6 @@ export const getOrders = async (req, res) => {
             JOIN order_types ot ON o.order_type_id = ot.id
             JOIN order_statuses os ON o.status_id = os.id
             LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id
-            LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
             LEFT JOIN customers c ON o.customer_id = c.id
             LEFT JOIN staff_users su ON o.steward_id = su.id
             WHERE 1=1
@@ -106,7 +105,7 @@ export const getOrderDetails = async (req, res) => {
                     ot.name as type, 
                     os.name as status,
                     pm.name as payment_method,
-                    ps.name as payment_status,
+                    IF(o.paid_at IS NOT NULL, 'PAID', 'UNPAID') as payment_status,
                     (SELECT COALESCE(SUM(param_oi.price * param_oi.quantity), 0) FROM order_items param_oi WHERE param_oi.order_id = o.id) as total,
                     c.name as customer_name,
                     c.email as customer_email,
@@ -116,7 +115,6 @@ export const getOrderDetails = async (req, res) => {
              JOIN order_types ot ON o.order_type_id = ot.id
              JOIN order_statuses os ON o.status_id = os.id
              LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id
-             LEFT JOIN payment_statuses ps ON o.payment_status_id = ps.id
              LEFT JOIN customers c ON o.customer_id = c.id
              LEFT JOIN staff_users su ON o.steward_id = su.id
              WHERE o.id = ?`,

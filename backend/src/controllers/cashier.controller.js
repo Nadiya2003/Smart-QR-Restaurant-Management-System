@@ -313,9 +313,23 @@ export const settleOrder = async (req, res) => {
         if (orderRows.length === 0) throw new Error("Order data missing during settlement");
         const order = orderRows[0];
 
-        // 3. Clear table status if it was a dine-in order
+        // 3. Set table status to 'cleaning' with a 5-minute delay (Requirement #3)
         if (order.table_id) {
-            await connection.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
+            await connection.query("UPDATE restaurant_tables SET status = 'cleaning' WHERE id = ?", [order.table_id]);
+            
+            // Broadcast the 'cleaning' status immediately
+            if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
+
+            // Auto-reset to 'available' after 5 minutes
+            setTimeout(async () => {
+                try {
+                    await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
+                    if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'available' });
+                    console.log(`[Table] Table #${order.table_id} auto-reset to available after 5m cleaning.`);
+                } catch (e) {
+                    console.error("Delayed table reset failed:", e);
+                }
+            }, 5 * 60 * 1000); 
         }
 
         // 4. Grant Loyalty Points if registered customer

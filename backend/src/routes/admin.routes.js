@@ -23,11 +23,13 @@ import {
     getAllTables,
     addTable,
     updateTable,
-    updateTableStatus,
+    updateTableStatus, // Keep this if it's the one in admin controller, but we might override
     getCancellationRequests,
     handleCancellationAction,
-    getFeedbacks
+    getFeedbacks,
+    cleanupOrders
 } from '../controllers/admin.controller.js';
+import { getUnifiedTables } from '../controllers/table.controller.js';
 import {
     getAttendance,
     getAllPermissions,
@@ -106,7 +108,7 @@ router.get('/areas', isStaff, getAllAreas);
 router.post('/areas', isStaff, addArea);
 router.put('/areas/:id', isStaff, updateArea);
 
-router.get('/tables', isStaff, getAllTables);
+router.get('/tables', isStaff, getUnifiedTables);
 router.post('/tables', isStaff, addTable);
 router.put('/tables/:id', isStaff, updateTable);
 router.put('/tables/:id/status', isStaff, updateTableStatus);
@@ -134,5 +136,8 @@ router.put('/roles/:roleId/permissions', adminOnly, updateRolePermissions);
 
 // Feedback
 router.get('/feedbacks', isStaff, getFeedbacks);
+
+// Cleanup
+router.delete('/orders/cleanup', adminOnly, cleanupOrders);
 
 export default router;

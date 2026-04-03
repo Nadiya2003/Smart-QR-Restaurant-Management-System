@@ -130,11 +130,13 @@ export const getAccountData = async (req, res) => {
             );
 
             const [dineOrders] = await pool.query(
+                // BUG FIX: Removed o.phone - the orders table does not have a phone column.
+                // DINE-IN guest orders are identified by customer_id only; no phone-based fallback.
                 `SELECT o.id, 'DINE-IN' as type, os.name as order_status, o.created_at, o.total_price 
                  FROM orders o
                  LEFT JOIN order_statuses os ON o.status_id = os.id
-                 WHERE o.customer_id = ? OR (o.customer_id IS NULL AND o.phone = ?)`,
-                [currentUserId, phone]
+                 WHERE o.customer_id = ?`,
+                [currentUserId]
             );
 
             allOrders = [...dOrders, ...tOrders, ...dineOrders]

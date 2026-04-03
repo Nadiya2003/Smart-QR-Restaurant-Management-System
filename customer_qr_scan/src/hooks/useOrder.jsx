@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
 import { useAuth } from './useAuth';
+import { io } from 'socket.io-client';
 
 const OrderContext = createContext(undefined);
 
@@ -9,6 +10,15 @@ export function OrderProvider({ children }) {
   const [orderHistory, setOrderHistory] = useState([]);
   const [selectedStewardId, setSelectedStewardId] = useState(null);
   const { user } = useAuth();
+  const socketRef = useRef(null);
+  const lastStatus = useRef(null);
+
+  // Status Change Sound
+  const playStatusSound = () => {
+    // Standard chime for status updates
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+    audio.play().catch(e => console.warn('Audio feedback inhibited by browser:', e.message));
+  };
   
   const getTableNumber = () => {
     const params = new URLSearchParams(window.location.search);
@@ -48,17 +58,63 @@ export function OrderProvider({ children }) {
     };
     initFetch();
 
-    // Poll for status updates
-    const interval = setInterval(() => {
-      if (user) {
-        fetchOrderHistory();
-      } else if (currentOrder?.id || getTableNumber()) {
-        fetchGuestOrder();
-      }
-    }, 5000); // Improved polling: 5s for real-time feel
-    
-    return () => clearInterval(interval);
-  }, [user, currentOrder?.id]);
+    // Init Sockets for Real-Time synchronization (Requirement #5)
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const socket = io(API_URL);
+    socketRef.current = socket;
+
+    socket.on('orderStatusUpdated', (data) => {
+        const activeId = localStorage.getItem('activeOrderId');
+        const isForThisOrder = data.orderId?.toString() === activeId || data.id?.toString() === activeId;
+        
+        if (isForThisOrder) {
+            playStatusSound();
+            setCurrentOrder(prev => prev ? { 
+                ...prev, 
+                status: data.mainStatus,
+                main_status: data.mainStatus,
+                kitchen_status: data.kitchenStatus,
+                bar_status: data.barStatus
+            } : prev);
+        }
+    });
+
+    socket.on('orderUpdate', (data) => {
+        const activeId = localStorage.getItem('activeOrderId');
+        const isForThisOrder = data.orderId?.toString() === activeId || data.id?.toString() === activeId;
+        
+        if (isForThisOrder) {
+            playStatusSound();
+            
+            // PAYMENT_REQUIRED: Steward clicked COMPLETED but order is unpaid
+            // Immediately set local status so OrderTrackingPage redirects to payment
+            if (data.status === 'PAYMENT_REQUIRED') {
+                setCurrentOrder(prev => prev ? { ...prev, status: 'PAYMENT_REQUIRED' } : prev);
+                return; // Don't refetch — the DB status hasn't changed, keep virtual status
+            }
+            
+            // COMPLETED: Order was paid and closed — update local status then refetch
+            if (data.status === 'COMPLETED') {
+                setCurrentOrder(prev => prev ? { ...prev, status: 'COMPLETED' } : prev);
+            }
+            
+            if (user) fetchOrderHistory();
+            else fetchGuestOrder();
+        }
+    });
+
+    return () => {
+        if (socketRef.current) socketRef.current.disconnect();
+    };
+  }, [user]);
+
+  // Track status changes for sound/alert feedback
+  useEffect(() => {
+    if (currentOrder?.status && currentOrder.status !== lastStatus.current) {
+        if (lastStatus.current) playStatusSound(); // Sound on change
+        lastStatus.current = currentOrder.status;
+    }
+  }, [currentOrder?.status]);
 
   const fetchOrderHistory = async () => {
     try {
@@ -66,55 +122,54 @@ export function OrderProvider({ children }) {
       const orders = data.orders || [];
       setOrderHistory(orders);
       
-      // Check if we have a current session order tracked locally
       const storedOrderId = localStorage.getItem('activeOrderId');
+      let sessionOrder = null;
       
       if (storedOrderId) {
-        // Case 1: We have a locally tracked order — try to sync its status
-        const matchingOrder = orders.find(o => o.id.toString() === storedOrderId);
-        // Allow COMPLETED/FINISHED orders to stay in state so they can trigger the Feedback redirect in OrderTrackingPage
-        if (matchingOrder && !['CANCELLED'].includes(matchingOrder.status?.toUpperCase())) {
-          setCurrentOrder(prev => ({
-            ...(prev || {}),
-            ...matchingOrder,
-            id: matchingOrder.id,
-            status: matchingOrder.status?.toUpperCase(),
-            total: matchingOrder.total_price || prev?.total || 0,
-            items: matchingOrder.items || prev?.items || []
-          }));
-        } else if (matchingOrder && matchingOrder.status?.toUpperCase() === 'CANCELLED') {
-          // Cancelled: clear local focus immediately
+        // Find the specific order we were watching
+        sessionOrder = orders.find(o => o.id.toString() === storedOrderId);
+        
+        // If it was cancelled or completed, it's no longer the "current session order"
+        if (sessionOrder && ['COMPLETED', 'FINISHED', 'CANCELLED', 'REJECTED'].includes(sessionOrder.status?.toUpperCase())) {
           localStorage.removeItem('activeOrderId');
           localStorage.removeItem('activeTable');
-          setCurrentOrder(null);
+          sessionOrder = null;
         }
-      } else {
-        // Case 2: No local order ID (e.g. user logged out and back in)
-        // Look for any recent active DINE-IN order placed within the last 6 hours
+      }
+      
+      // If no valid stored session order, look for the most recent ACTIVE dining session
+      if (!sessionOrder) {
         const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
-        const recentActiveOrder = orders.find(o => {
-          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED'].includes(o.status?.toUpperCase());
+        sessionOrder = orders.find(o => {
+          const isActive = !['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED'].includes(o.status?.toUpperCase());
           const isDineIn = o.type === 'DINE-IN' || o.order_type === 'registered' || o.order_type === 'guest';
           const isRecent = new Date(o.created_at).getTime() > sixHoursAgo;
           return isActive && isDineIn && isRecent;
         });
-        
-        if (recentActiveOrder) {
-          // Restore the session
-          localStorage.setItem('activeOrderId', recentActiveOrder.id.toString());
-          if (recentActiveOrder.table_number) {
-            localStorage.setItem('activeTable', recentActiveOrder.table_number.toString());
-            setTableNumber(recentActiveOrder.table_number.toString());
+
+        if (sessionOrder) {
+          localStorage.setItem('activeOrderId', sessionOrder.id.toString());
+          if (sessionOrder.table_number) {
+            localStorage.setItem('activeTable', sessionOrder.table_number.toString());
+            setTableNumber(sessionOrder.table_number.toString());
           }
-          setCurrentOrder({
-            ...recentActiveOrder,
-            id: recentActiveOrder.id,
-            status: recentActiveOrder.status?.toUpperCase(),
-            total: recentActiveOrder.total_price || 0,
-            items: recentActiveOrder.items || [],
-            tableNumber: recentActiveOrder.table_number
-          });
         }
+      }
+
+      if (sessionOrder) {
+        setCurrentOrder({
+          ...sessionOrder,
+          id: sessionOrder.id,
+          status: sessionOrder.status?.toUpperCase(),
+          total: sessionOrder.total_price || 0,
+          items: sessionOrder.items || [],
+          tableNumber: sessionOrder.table_number,
+          kitchen_status: sessionOrder.kitchen_status,
+          bar_status: sessionOrder.bar_status,
+          main_status: sessionOrder.main_status
+        });
+      } else {
+        setCurrentOrder(null);
       }
     } catch (error) {
       console.error('Failed to fetch order history:', error);
@@ -261,7 +316,7 @@ export function OrderProvider({ children }) {
       
       // Update local state: If it was direct (response.success), we'll eventually clear it, 
       // but if not, we show pending.
-      if (!response.success) {
+      if (response.isDirect === false) {
         setCurrentOrder(prev => ({
           ...prev,
           cancellation_status: 'PENDING'

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, ScrollView, 
     ActivityIndicator, RefreshControl, Alert, Modal, TextInput,
-    FlatList, Image, Dimensions, Switch, Vibration, Platform
+    FlatList, Image, Dimensions, Switch, Vibration, Platform, StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -11,9 +11,9 @@ import AccountSection from './AccountSection';
 
 const { width } = Dimensions.get('window');
 
-// Timer Component for individual orders
+// ─── Timer Component for Kitchen ──────────────────────────────────────────────
 const OrderTimer = ({ createdAt }) => {
-    const [timeLeft, setTimeLeft] = useState(20 * 60);
+    const [timeLeft, setTimeLeft] = useState(30 * 60); // 30 mins for kitchen
     const timerRef = useRef(null);
 
     useEffect(() => {
@@ -21,7 +21,7 @@ const OrderTimer = ({ createdAt }) => {
             const start = new Date(createdAt).getTime();
             const now = new Date().getTime();
             const elapsed = Math.floor((now - start) / 1000);
-            const remaining = Math.max(0, (20 * 60) - elapsed);
+            const remaining = Math.max(0, (30 * 60) - elapsed);
             setTimeLeft(remaining);
         };
         calculateTime();
@@ -40,7 +40,7 @@ const OrderTimer = ({ createdAt }) => {
     return (
         <View style={[styles.timerBox, isUrgent && styles.timerUrgent]}>
             <Text style={[styles.timerText, isUrgent && styles.timerTextUrgent]}>
-                {timeLeft > 0 ? formatTime(timeLeft) : '⚠️ OVR'}
+                {timeLeft > 0 ? formatTime(timeLeft) : '⚠️ LATE'}
             </Text>
         </View>
     );
@@ -48,22 +48,65 @@ const OrderTimer = ({ createdAt }) => {
 
 const KitchenDashboard = () => {
     const { user, token, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState('home');
+    const [activeTab, setActiveTab] = useState('orders');
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     
+    // Notification Popup State
+    const [alertPopupVisible, setAlertPopupVisible] = useState(false);
+    const [activeAlert, setActiveAlert] = useState(null);
+
+    // Detailed Modal State
+    const [selectedOrder, setSelectedOrder] = useState(null);
+    const [detailsVisible, setDetailsVisible] = useState(false);
+    
+    // Data States
     const [orders, setOrders] = useState([]);
     const [history, setHistory] = useState([]);
     const [inventory, setInventory] = useState([]);
     const [notifications, setNotifications] = useState([]);
     const [isOnDuty, setIsOnDuty] = useState(false);
     const [updatingId, setUpdatingId] = useState(null);
+    const [socketConnected, setSocketConnected] = useState(false);
     
+    // Sound & Notification refs
     const prevOrderIds = useRef(new Set());
+    const prevItemCount = useRef(0);
+    const soundRef = useRef(null);
+    const socketRef = useRef(null);
 
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+    };
+
+    // Initialize Notification Sound
+    useEffect(() => {
+        const loadSound = async () => {
+            try {
+                const { Audio } = require('expo-av');
+                const { sound } = await Audio.Sound.createAsync(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+                    { shouldPlay: false }
+                );
+                soundRef.current = sound;
+            } catch (err) {
+                console.log('Failed to load kitchen sound:', err);
+            }
+        };
+        loadSound();
+        return () => {
+            if (soundRef.current) soundRef.current.unloadAsync();
+        };
+    }, []);
+
+    const playNotificationSound = async () => {
+        try {
+            if (soundRef.current) {
+                await soundRef.current.replayAsync();
+            }
+            Vibration.vibrate([0, 500, 200, 500]);
+        } catch (err) {}
     };
 
     const fetchData = useCallback(async (isSilent = false) => {
@@ -72,7 +115,7 @@ const KitchenDashboard = () => {
             const [orderRes, historyRes, invRes, statusRes, notifRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/orders`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=Kitchen`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=MainKitchen`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/status`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers })
             ]);
@@ -81,11 +124,31 @@ const KitchenDashboard = () => {
                 const data = await orderRes.json();
                 const newOrders = data.orders || [];
                 const currentIds = new Set(newOrders.map(o => o.id));
-                const hasNewOrder = [...currentIds].some(id => !prevOrderIds.current.has(id));
-                if (hasNewOrder && isSilent) {
-                    Vibration.vibrate([0, 500, 200, 500]);
+                const currentItemSum = newOrders.reduce((sum, o) => (sum + (o.items?.length || 0)), 0);
+                
+                const hasNewOrder = Array.from(currentIds).some(id => !prevOrderIds.current.has(id));
+                const itemsAdded = currentItemSum > prevItemCount.current && !hasNewOrder;
+
+                if ((hasNewOrder || itemsAdded) && isSilent) {
+                    playNotificationSound();
+                    if (hasNewOrder) {
+                        const newOrder = newOrders.find(o => !prevOrderIds.current.has(o.id));
+                        if (newOrder) {
+                            setActiveAlert({
+                                title: "NEW FOOD TICKET! 👨‍🍳",
+                                type: "NEW_ORDER",
+                                orderId: newOrder.id,
+                                table: newOrder.table_number || 'Counter',
+                                customer: newOrder.customer_name || 'Guest',
+                                items: newOrder.items || []
+                            });
+                            setAlertPopupVisible(true);
+                        }
+                    }
                 }
+                
                 prevOrderIds.current = currentIds;
+                prevItemCount.current = currentItemSum;
                 setOrders(newOrders);
             }
             if (historyRes.ok) setHistory((await historyRes.json()).history || []);
@@ -100,19 +163,108 @@ const KitchenDashboard = () => {
         }
     }, [token]);
 
+    // Setup Socket.io
     useEffect(() => {
         fetchData();
+        
+        const socketIO = require('socket.io-client');
+        const socket = socketIO(apiConfig.API_BASE_URL, {
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            setSocketConnected(true);
+            socket.emit('join', 'kitchen_room');
+            console.log('[Kitchen] Socket connected & joined kitchen_room');
+        });
+
+        socket.on('connect_error', (err) => {
+            console.log('[Kitchen] Socket connect_error:', err.message);
+            setSocketConnected(false);
+        });
+
+        socket.on('disconnect', () => {
+            setSocketConnected(false);
+        });
+
+        // Handler for new order placed by customer (from customer_qr_scan or other portals)
+        socket.on('newOrder', (data) => {
+            console.log('[Kitchen] newOrder received:', data);
+            fetchData(true);
+            const orderItems = data.items || [];
+            setActiveAlert({
+                title: data.isUpdate ? '🍽️ ORDER UPDATED!' : '🔥 NEW ORDER TICKET!',
+                type: 'NEW_ORDER',
+                orderId: data.orderId || 'NEW',
+                table: data.tableNumber || data.table_number || 'Counter',
+                customer: data.customerName || data.customer_name || 'Guest',
+                items: orderItems
+            });
+            setAlertPopupVisible(true);
+            playNotificationSound();
+        });
+
+        socket.on('orderUpdate', (data) => {
+            console.log('[Kitchen] orderUpdate received:', data);
+            fetchData(true);
+            if (data.updatedBy !== 'KITCHEN') {
+                setActiveAlert({
+                    title: '📋 ORDER UPDATED',
+                    type: 'UPDATE',
+                    orderId: data.orderId || data.id,
+                    status: data.status,
+                    table: data.tableNumber || 'N/A'
+                });
+                setAlertPopupVisible(true);
+                playNotificationSound();
+            }
+        });
+        
+        socket.on('cancelRequest', (data) => {
+            console.log('[Kitchen] cancelRequest received:', data);
+            fetchData(true);
+            setActiveAlert({
+                title: '⚠️ CANCELLATION REQUEST',
+                type: 'CANCEL',
+                orderId: data.orderId,
+                table: data.tableNumber || 'N/A',
+                reason: data.reason || 'Customer request'
+            });
+            setAlertPopupVisible(true);
+            playNotificationSound();
+        });
+
+        socket.on('orderCancelled', (data) => {
+            console.log('[Kitchen] orderCancelled received:', data);
+            fetchData(true);
+            setActiveAlert({
+                title: '🛑 ORDER CANCELLED! STOP!',
+                type: 'CANCEL',
+                orderId: data.orderId || data.id,
+                table: data.tableNumber || 'N/A',
+                reason: data.reason || 'Order terminated'
+            });
+            setAlertPopupVisible(true);
+            playNotificationSound();
+        });
+
         const autoCheckIn = async () => {
             try {
-                const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, {
-                    method: 'POST', headers
-                });
-                if (res.ok) setIsOnDuty(true);
+                await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, { method: 'POST', headers });
+                setIsOnDuty(true);
             } catch (err) {}
         };
         autoCheckIn();
-        const interval = setInterval(() => fetchData(true), 5000);
-        return () => clearInterval(interval);
+        
+        const interval = setInterval(() => fetchData(true), 15000);
+        return () => {
+            clearInterval(interval);
+            if (socketRef.current) socketRef.current.disconnect();
+        };
     }, [fetchData]);
 
     const onRefresh = () => { setRefreshing(true); fetchData(); };
@@ -125,8 +277,8 @@ const KitchenDashboard = () => {
             });
             if (res.ok) {
                 setIsOnDuty(!isOnDuty);
-                Alert.alert('Attendance', `Shift ${!isOnDuty ? 'Started ✅' : 'Ended 🔴'}`);
-                fetchData();
+                Alert.alert('Attendance', `Kitchen Station ${!isOnDuty ? 'Activated ✅' : 'Deactivated 🔴'}`);
+                fetchData(true);
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to update attendance');
@@ -136,10 +288,10 @@ const KitchenDashboard = () => {
     const updateStatus = async (orderId, newStatus, orderTypeName) => {
         setUpdatingId(orderId);
         try {
-            const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/${orderId}/status`, {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers,
-                body: JSON.stringify({ status: newStatus, type: orderTypeName })
+                body: JSON.stringify({ status: newStatus, type: orderTypeName, isBar: false })
             });
             if (res.ok) {
                 fetchData(true);
@@ -154,63 +306,72 @@ const KitchenDashboard = () => {
     };
 
     const getStatusColor = (status) => {
-        switch ((status || '').toUpperCase()) {
-            case 'PENDING': return '#F59E0B';
-            case 'CONFIRMED': return '#3B82F6';
-            case 'PREPARING': return '#8B5CF6';
-            case 'READY': return '#10B981';
-            default: return '#6B7280';
-        }
+        const s = (status || '').toUpperCase();
+        if (s === 'PLACED') return '#94A3B8'; // Gray
+        if (s === 'CONFIRMED') return '#6366F1'; // Indigo/Deep Blue
+        if (s === 'PREPARING') return '#F59E0B'; // Orange
+        if (s === 'READY_TO_SERVE') return '#3B82F6'; // Blue
+        if (s === 'SERVED') return '#8B5CF6'; // Purple
+        if (s === 'COMPLETED') return '#10B981'; // Green
+        return '#6B7280';
     };
 
     const getTypeColor = (typeName) => {
         if (!typeName) return '#3B82F6';
-        if (typeName.includes('DINE')) return '#3B82F6';
-        if (typeName.includes('TAKEAWAY')) return '#F59E0B';
-        if (typeName.includes('DELIVERY')) return '#10B981';
-        return '#6B7280';
+        const t = typeName.toUpperCase();
+        if (t.includes('DINE')) return '#3B82F6';
+        if (t.includes('TAKEAWAY')) return '#F59E0B';
+        if (t.includes('DELIVERY')) return '#10B981';
+        return '#64748B';
     };
 
-    // ====================================================
-    // RENDER: ORDER CARD (used in both Home and Live tabs)
-    // ====================================================
-    const renderOrderCard = (order, compact = false) => {
+    // UI RENDER: ORDER TICKET CARD
+    const renderOrderCard = (order) => {
         const typeColor = getTypeColor(order.order_type_name);
         const statusColor = getStatusColor(order.status);
-        const isPreparing = (order.status || '').toUpperCase() === 'PREPARING';
-        const isReady = (order.status || '').toUpperCase() === 'READY';
-        const isPending = !isPreparing && !isReady;
+        const stationStatus = (order.kitchen_status || '').toUpperCase();
+        const isPreparing = stationStatus === 'PREPARING';
+        const isReady = stationStatus === 'READY';
+        const isTerminal = ['CANCELLED', 'COMPLETED', 'SERVED', 'FINISHED', 'REJECTED'].includes(s);
+        const isPending = !isPreparing && !isReady && !isTerminal;
         const isVeryRecent = (Date.now() - new Date(order.created_at).getTime()) < 120000;
         const isUpdating = updatingId === order.id;
 
         return (
-            <View key={`${order.order_type_name}-${order.id}`}
+            <TouchableOpacity 
+                key={`${order.order_type_name}-${order.id}`} 
                 style={[styles.orderCard, { borderLeftColor: typeColor }, isVeryRecent && styles.newOrderBorder]}
+                onPress={() => { setSelectedOrder(order); setDetailsVisible(true); }}
             >
-                {/* NEW Badge */}
                 {isVeryRecent && (
                     <View style={styles.newBadge}>
                         <View style={styles.pulseDot} />
-                        <Text style={styles.newBadgeText}>NEW</Text>
+                        <Text style={styles.newBadgeText}>NEW FOOD TICKET</Text>
                     </View>
                 )}
 
-                {/* Header Row */}
                 <View style={styles.cardHeader}>
                     <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <Text style={styles.orderId}>#{order.id}</Text>
                             <View style={[styles.typePill, { backgroundColor: typeColor }]}>
-                                <Text style={styles.typePillText}>
-                                    {(order.order_type_name || 'DINE-IN').replace('_', ' ')}
-                                </Text>
+                                <Text style={styles.typePillText}>{(order.order_type_name || 'DINE-IN').replace('_', ' ')}</Text>
                             </View>
                             <View style={[styles.statusPill, { backgroundColor: statusColor + '20', borderColor: statusColor }]}>
-                                <Text style={[styles.statusPillText, { color: statusColor }]}>
-                                    {order.status || 'PENDING'}
-                                </Text>
+                                <Text style={[styles.statusPillText, { color: statusColor }]}>{order.main_status || order.status || 'PLACED'}</Text>
                             </View>
                         </View>
+                        
+                        {/* Requirement #6: Split Status Display */}
+                        <View style={styles.splitStatusBox}>
+                             <Text style={[styles.splitLabel, order.kitchen_status === 'ready' && { color: '#10B981' }]}>
+                                🍛 Food: {order.kitchen_status?.toUpperCase()} {order.kitchen_status === 'ready' ? '✓' : '⏳'}
+                             </Text>
+                             <Text style={[styles.splitLabel, order.bar_status === 'ready' && { color: '#10B981' }]}>
+                                🍹 Drinks: {order.bar_status?.toUpperCase()} {order.bar_status === 'ready' ? '✓' : '⏳'}
+                             </Text>
+                        </View>
+
                         <Text style={styles.cardSubInfo}>
                             {order.table_number ? `📍 Table ${order.table_number}` : '📍 Counter'}
                             {'   '}👤 {order.customer_name || 'Guest'}
@@ -220,379 +381,311 @@ const KitchenDashboard = () => {
                     <OrderTimer createdAt={order.created_at} />
                 </View>
 
-                {/* Items */}
                 <View style={styles.itemsBox}>
-                    <Text style={styles.itemsLabel}>ORDER ITEMS</Text>
+                    <Text style={styles.itemsLabel}>CHEF'S TICKET</Text>
                     {order.items?.map((item, idx) => (
                         <View key={idx} style={styles.itemRow}>
                             <View style={[styles.qtyBadge, { backgroundColor: typeColor + '18' }]}>
                                 <Text style={[styles.qtyText, { color: typeColor }]}>{item.quantity}x</Text>
                             </View>
-                            <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                            {item.notes ? <Text style={styles.itemNote}>({item.notes})</Text> : null}
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.itemName}>{item.name}</Text>
+                                {item.category && <Text style={styles.itemCategory}>{item.category}</Text>}
+                                {item.notes ? (
+                                    <View style={styles.noteBox}>
+                                        <Text style={styles.itemNote}>📝 {item.notes}</Text>
+                                    </View>
+                                ) : null}
+                            </View>
                         </View>
                     ))}
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.actionRow}>
-                    {/* START PREPARING — shown when PENDING/CONFIRMED */}
                     {isPending && (
-                        <TouchableOpacity
-                            style={[styles.actionBtn, { backgroundColor: '#8B5CF6', flex: 1 }]}
+                        <TouchableOpacity 
+                            style={[styles.actionBtn, { backgroundColor: '#3B82F6', flex: 1 }]} 
                             onPress={() => updateStatus(order.id, 'PREPARING', order.order_type_name)}
                             disabled={isUpdating}
                         >
-                            {isUpdating ? (
-                                <ActivityIndicator color="white" size="small" />
-                            ) : (
-                                <>
-                                    <Text style={styles.actionBtnIcon}>👨‍🍳</Text>
-                                    <Text style={styles.actionBtnText}>START PREPARING</Text>
-                                </>
+                            {isUpdating ? <ActivityIndicator color="white" size="small" /> : (
+                                <><Text style={styles.actionBtnIcon}>👨‍🍳</Text><Text style={styles.actionBtnText}>START PREPARING</Text></>
                             )}
                         </TouchableOpacity>
                     )}
-
-                    {/* MARK READY — shown when PREPARING */}
                     {isPreparing && (
-                        <TouchableOpacity
-                            style={[styles.actionBtn, { backgroundColor: '#10B981', flex: 1 }]}
-                            onPress={() => updateStatus(order.id, 'READY', order.order_type_name)}
+                        <TouchableOpacity 
+                            style={[styles.actionBtn, { backgroundColor: '#10B981', flex: 1 }]} 
+                            onPress={() => updateStatus(order.id, 'READY TO SERVE', order.order_type_name)}
                             disabled={isUpdating}
                         >
-                            {isUpdating ? (
-                                <ActivityIndicator color="white" size="small" />
-                            ) : (
-                                <>
-                                    <Text style={styles.actionBtnIcon}>✅</Text>
-                                    <Text style={styles.actionBtnText}>READY TO SERVE</Text>
-                                </>
+                            {isUpdating ? <ActivityIndicator color="white" size="small" /> : (
+                                <><Text style={styles.actionBtnIcon}>✅</Text><Text style={styles.actionBtnText}>READY TO SERVE</Text></>
                             )}
                         </TouchableOpacity>
                     )}
-
-                    {/* READY State Info */}
                     {isReady && (
-                        <View style={[styles.actionBtn, { backgroundColor: '#D1FAE5', flex: 1 }]}>
-                            <Text style={styles.actionBtnIcon}>🚀</Text>
-                            <Text style={[styles.actionBtnText, { color: '#065F46' }]}>WAITING FOR STEWARD</Text>
+                        <View style={[styles.actionBtn, { backgroundColor: '#F0FDF4', flex: 1, borderWidth: 1, borderColor: '#10B981' }]}>
+                            <Text style={styles.actionBtnIcon}>✅</Text>
+                            <Text style={[styles.actionBtnText, { color: '#065F46' }]}>STATION READY</Text>
                         </View>
                     )}
                 </View>
-            </View>
+            </TouchableOpacity>
         );
     };
 
-    // ====================================================
-    // RENDER: HOME TAB — Summary + Live Orders
-    // ====================================================
-    const renderHome = () => {
-        const pendingOrders = orders.filter(o => !['PREPARING', 'READY'].includes((o.status || '').toUpperCase()));
-        const preparingOrders = orders.filter(o => (o.status || '').toUpperCase() === 'PREPARING');
-        const readyOrders = orders.filter(o => (o.status || '').toUpperCase() === 'READY');
+    const renderOrders = () => {
+        // Active statuses recognized as 'pending/new'
+        const NEW_STATUSES = ['PENDING', 'CONFIRMED', 'ORDER PLACED', 'PLACED', 'ACCEPTED', 'RECEIVED'];
+        const preparing = orders.filter(o => ['PREPARING', 'COOKING'].includes((o.status || '').toUpperCase()));
+        const ready = orders.filter(o => ['READY', 'READY TO SERVE'].includes((o.status || '').toUpperCase()));
+        const pending = orders.filter(o => {
+            const s = (o.status || '').toUpperCase();
+            return !['PREPARING', 'COOKING', 'READY', 'READY TO SERVE'].includes(s);
+        });
         const lowStock = inventory.filter(i => i.quantity <= i.min_level);
 
         return (
-            <ScrollView
-                style={styles.content}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            >
-                {/* Duty Card */}
+            <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 <View style={[styles.dutyCard, isOnDuty ? styles.onDutyBg : styles.offDutyBg]}>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.dutyTitle}>{isOnDuty ? '🟢 Kitchen is ONLINE' : '🔴 Kitchen is OFFLINE'}</Text>
-                        <Text style={styles.dutySub}>Toggle to start/stop receiving live tickets</Text>
+                        <Text style={styles.dutyTitle}>{isOnDuty ? '🟢 Kitchen Station Active' : '🔴 Kitchen Station Offline'}</Text>
+                        <Text style={styles.dutySub}>Handle and track food preparation tickets</Text>
                     </View>
-                    <Switch
-                        value={isOnDuty}
-                        onValueChange={handleDutyToggle}
-                        trackColor={{ false: '#9CA3AF', true: '#10B981' }}
-                        thumbColor={isOnDuty ? '#fff' : '#f4f3f4'}
-                    />
+                    <Switch value={isOnDuty} onValueChange={handleDutyToggle} trackColor={{ false: '#9CA3AF', true: '#10B981' }} thumbColor={isOnDuty ? '#fff' : '#f4f3f4'} />
                 </View>
 
-                {/* Stats Row */}
                 <View style={styles.statsRow}>
                     <View style={[styles.statBox, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
-                        <Text style={[styles.statVal, { color: '#C2410C' }]}>{pendingOrders.length}</Text>
-                        <Text style={styles.statLabel}>⏳ Pending</Text>
+                        <Text style={[styles.statVal, { color: '#C2410C' }]}>{pending.length}</Text>
+                        <Text style={styles.statLabel}>⏳ Queue</Text>
                     </View>
-                    <View style={[styles.statBox, { backgroundColor: '#F5F3FF', borderColor: '#C4B5FD' }]}>
-                        <Text style={[styles.statVal, { color: '#6D28D9' }]}>{preparingOrders.length}</Text>
-                        <Text style={styles.statLabel}>👨‍🍳 Preparing</Text>
+                    <View style={[styles.statBox, { backgroundColor: '#F0F9FF', borderColor: '#7DD3FC' }]}>
+                        <Text style={[styles.statVal, { color: '#0369A1' }]}>{preparing.length}</Text>
+                        <Text style={styles.statLabel}>👨‍🍳 Cooking</Text>
                     </View>
                     <View style={[styles.statBox, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
-                        <Text style={[styles.statVal, { color: '#065F46' }]}>{readyOrders.length}</Text>
+                        <Text style={[styles.statVal, { color: '#065F46' }]}>{ready.length}</Text>
                         <Text style={styles.statLabel}>✅ Ready</Text>
                     </View>
                     <View style={[styles.statBox, { backgroundColor: lowStock.length > 0 ? '#FEF2F2' : '#F9FAFB', borderColor: lowStock.length > 0 ? '#FCA5A5' : '#E5E7EB' }]}>
                         <Text style={[styles.statVal, { color: lowStock.length > 0 ? '#DC2626' : '#9CA3AF' }]}>{lowStock.length}</Text>
-                        <Text style={styles.statLabel}>📦 Low Stock</Text>
+                        <Text style={styles.statLabel}>📦 stocks</Text>
                     </View>
                 </View>
 
-                {/* ── LIVE ORDERS SECTION ── */}
                 <View style={styles.sectionHeader}>
                     <View>
-                        <Text style={styles.sectionTitle}>🔥 Live Kitchen Orders</Text>
-                        <Text style={styles.sectionSub}>
-                            {orders.length === 0 ? 'No pending orders' : `${orders.length} order${orders.length !== 1 ? 's' : ''} to process`}
-                        </Text>
+                        <Text style={styles.sectionTitle}>👨‍🍳 Active Kitchen Tickets</Text>
+                        <Text style={styles.sectionSub}>Waiting for preparation</Text>
                     </View>
-                    <TouchableOpacity onPress={() => fetchData(true)} style={styles.refreshBtn}>
+                    <TouchableOpacity onPress={() => fetchData()} style={styles.refreshBtn}>
                         <Text style={styles.refreshBtnText}>↻ Refresh</Text>
                     </TouchableOpacity>
                 </View>
 
                 {orders.length === 0 ? (
                     <View style={styles.emptyCard}>
-                        <Text style={{ fontSize: 52, marginBottom: 10 }}>👨‍🍳</Text>
-                        <Text style={styles.emptyTitle}>All caught up!</Text>
-                        <Text style={styles.emptyText}>No active food orders right now.</Text>
+                        <View style={styles.emptyIcon}><Text style={{ fontSize: 40 }}>🍳</Text></View>
+                        <Text style={styles.emptyTitle}>No Active Food Tickets</Text>
+                        <Text style={styles.emptyText}>New orders will appear here automatically.</Text>
                     </View>
                 ) : (
                     <>
-                        {/* PENDING orders first */}
-                        {pendingOrders.length > 0 && (
-                            <>
-                                <View style={styles.groupLabel}>
-                                    <View style={[styles.groupDot, { backgroundColor: '#F59E0B' }]} />
-                                    <Text style={styles.groupText}>PENDING — Needs Attention</Text>
-                                </View>
-                                {pendingOrders.map(order => renderOrderCard(order))}
-                            </>
-                        )}
-
-                        {/* PREPARING orders */}
-                        {preparingOrders.length > 0 && (
-                            <>
-                                <View style={styles.groupLabel}>
-                                    <View style={[styles.groupDot, { backgroundColor: '#8B5CF6' }]} />
-                                    <Text style={styles.groupText}>PREPARING — In Progress</Text>
-                                </View>
-                                {preparingOrders.map(order => renderOrderCard(order))}
-                            </>
-                        )}
-
-                        {/* READY orders */}
-                        {readyOrders.length > 0 && (
-                            <>
-                                <View style={styles.groupLabel}>
-                                    <View style={[styles.groupDot, { backgroundColor: '#10B981' }]} />
-                                    <Text style={styles.groupText}>READY — Awaiting Steward</Text>
-                                </View>
-                                {readyOrders.map(order => renderOrderCard(order))}
-                            </>
-                        )}
+                        {pending.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#F59E0B' }]} /><Text style={styles.groupText}>NEW ORDERS ({pending.length})</Text></View>{pending.map(renderOrderCard)}</>}
+                        {preparing.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#3B82F6' }]} /><Text style={styles.groupText}>IN PREPARATION ({preparing.length})</Text></View>{preparing.map(renderOrderCard)}</>}
+                        {ready.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#10B981' }]} /><Text style={styles.groupText}>READY FOR SERVICE ({ready.length})</Text></View>{ready.map(renderOrderCard)}</>}
                     </>
                 )}
-
-                {/* Today's Completion */}
-                {history.length > 0 && (
-                    <View style={styles.completedSummary}>
-                        <Text style={styles.completedTitle}>✅ Completed Today: {history.length} orders</Text>
-                        <Text style={styles.completedSub}>Great work! Keep it up 🎉</Text>
-                    </View>
-                )}
-
-                <View style={{ height: 20 }} />
             </ScrollView>
         );
     };
 
-    // ====================================================
-    // RENDER: LIVE ORDERS TAB (full detail view)
-    // ====================================================
-    const renderLiveOrders = () => (
-        <ScrollView
-            style={styles.content}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>🔥 Processing Tickets</Text>
-                <TouchableOpacity onPress={() => fetchData(true)} style={styles.refreshBtn}>
-                    <Text style={styles.refreshBtnText}>↻ Refresh</Text>
-                </TouchableOpacity>
-            </View>
-
-            {orders.length === 0 ? (
+    const renderHistory = () => {
+        if (!history || history.length === 0) {
+            return (
                 <View style={styles.emptyCard}>
-                    <Text style={{ fontSize: 64, marginBottom: 12 }}>👨‍🍳</Text>
-                    <Text style={styles.emptyTitle}>All caught up!</Text>
-                    <Text style={styles.emptyText}>No active food orders to prepare right now.</Text>
+                    <Text style={styles.emptyTitle}>No History 📜</Text>
+                    <Text style={styles.emptyText}>You haven't completed any orders yet today.</Text>
                 </View>
-            ) : (
-                orders.map(order => renderOrderCard(order))
-            )}
-        </ScrollView>
-    );
+            );
+        }
 
-    // ====================================================
-    // RENDER: INVENTORY TAB
-    // ====================================================
-    const renderInventory = () => (
-        <ScrollView style={styles.content}>
-            <Text style={styles.sectionTitle}>📦 Kitchen Inventory</Text>
-            <View style={styles.invGrid}>
-                {inventory.map(item => {
-                    const isLow = item.quantity <= item.min_level;
-                    return (
-                        <View key={item.id} style={[styles.invCard, isLow && styles.invCardLow]}>
-                            <Text style={styles.invName}>{item.item_name}</Text>
-                            <Text style={[styles.invQty, { color: isLow ? '#EF4444' : '#111827' }]}>
-                                {item.quantity} {item.unit}
-                            </Text>
-                            {isLow && <Text style={styles.lowTag}>⚠️ LOW STOCK</Text>}
-                        </View>
-                    );
-                })}
-            </View>
-        </ScrollView>
-    );
-
-    // ====================================================
-    // RENDER: HISTORY TAB
-    // ====================================================
-    const renderHistory = () => (
-        <ScrollView
-            style={styles.content}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-            <Text style={styles.sectionTitle}>📜 Completed Today</Text>
-            {history.length === 0 ? (
-                <View style={styles.emptyCard}>
-                    <Text style={styles.emptyText}>No orders completed yet today.</Text>
-                </View>
-            ) : (
-                history.map(order => (
-                    <View key={order.id} style={[styles.historyCard]}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <Text style={styles.historyId}>#{order.id} — {order.order_type_name}</Text>
-                            <View style={[styles.statusPill, { backgroundColor: '#D1FAE5', borderColor: '#10B981' }]}>
-                                <Text style={[styles.statusPillText, { color: '#065F46' }]}>{order.status}</Text>
-                            </View>
-                        </View>
-                        {order.items?.map((item, idx) => (
-                            <Text key={idx} style={styles.historyItem}>• {item.quantity}x {item.name}</Text>
-                        ))}
-                        <Text style={styles.historyTime}>
-                            🕒 {new Date(order.updated_at || order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                    </View>
-                ))
-            )}
-        </ScrollView>
-    );
-
-    // ====================================================
-    // RENDER: NOTIFICATIONS TAB
-    // ====================================================
-    const renderNotifications = () => (
-        <ScrollView style={styles.content}>
-            <Text style={styles.sectionTitle}>🔔 Notifications</Text>
-            {notifications.length === 0 ? (
-                <View style={styles.emptyCard}><Text style={styles.emptyText}>No notifications.</Text></View>
-            ) : (
-                notifications.map(n => (
-                    <View key={n.id} style={[styles.notifCard, n.status === 'unread' && styles.unreadNotif]}>
-                        <Text style={styles.notifTitle}>{n.title}</Text>
-                        <Text style={styles.notifMsg}>{n.message}</Text>
-                        <Text style={styles.notifTime}>{new Date(n.created_at).toLocaleTimeString()}</Text>
-                    </View>
-                ))
-            )}
-        </ScrollView>
-    );
-
-    if (loading) {
         return (
-            <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color="#3B82F6" />
-                <Text style={{ marginTop: 12, color: '#6B7280' }}>Loading kitchen data...</Text>
-            </SafeAreaView>
+            <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+                <View style={styles.sectionHeader}>
+                    <View><Text style={styles.sectionTitle}>📜 Past Kitchen Tickets</Text></View>
+                    <TouchableOpacity onPress={() => fetchData()} style={styles.refreshBtn}><Text style={styles.refreshBtnText}>↻ Refresh</Text></TouchableOpacity>
+                </View>
+                {history.map(renderOrderCard)}
+                <View style={{ height: 40 }} />
+            </ScrollView>
         );
-    }
+    };
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
+            <StatusBar barStyle="dark-content" />
             <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => setActiveTab('account')}
-                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
-                >
+                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#10B981' }]}>
                     {user?.profile_image ? (
-                        <Image
-                            source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }}
-                            style={styles.profileImg}
-                        />
+                        <Image source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} style={styles.profileImg} />
                     ) : (
                         <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
                     )}
                 </TouchableOpacity>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.greeting}>Hello, {user?.name}</Text>
-                    <Text style={styles.roleTitle}>Kitchen Dashboard</Text>
+                    <Text style={styles.greeting}>Hello Chef, {user?.name}</Text>
+                    <Text style={styles.roleTitle}>Kitchen Manager Dashboard</Text>
                 </View>
                 <View style={styles.headerRight}>
-                    {orders.length > 0 && (
-                        <View style={styles.liveOrdersBadge}>
-                            <Text style={styles.liveOrdersText}>{orders.length} Live</Text>
-                        </View>
-                    )}
+                    {!socketConnected && <View style={styles.offlineDot} />}
                     <TouchableOpacity onPress={() => setActiveTab('notifications')} style={styles.notifBtn}>
                         <Text style={{ fontSize: 22 }}>🔔</Text>
-                        {notifications.filter(n => n.status === 'unread').length > 0 && (
-                            <View style={styles.badge} />
-                        )}
+                        {notifications.filter(n => n.status === 'unread').length > 0 && <View style={styles.badge} />}
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-                        <Text style={{ fontSize: 18 }}>🚪</Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Text style={{ fontSize: 18 }}>🚪</Text></TouchableOpacity>
                 </View>
             </View>
 
-            {/* Content */}
-            <View style={styles.mainContainer}>
-                {activeTab === 'home'          && renderHome()}
-                {activeTab === 'live'          && renderLiveOrders()}
-                {activeTab === 'history'       && renderHistory()}
-                {activeTab === 'inventory'     && renderInventory()}
-                {activeTab === 'notifications' && renderNotifications()}
-                {activeTab === 'account'       && (
-                    <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>
-                )}
-            </View>
-
-            {/* Bottom Nav */}
-            <View style={styles.bottomNav}>
-                {[
-                    { key: 'home',          icon: '🏠', label: 'Home' },
-                    { key: 'live',          icon: '🔥', label: 'Live', badge: orders.length },
-                    { key: 'history',       icon: '📜', label: 'History' },
-                    { key: 'inventory',     icon: '📦', label: 'Stock' },
-                    { key: 'notifications', icon: '🔔', label: 'Alerts', badge: notifications.filter(n => n.status === 'unread').length },
-                    { key: 'account',       icon: '👤', label: 'Profile' },
-                ].map(item => (
-                    <TouchableOpacity
-                        key={item.key}
-                        onPress={() => setActiveTab(item.key)}
-                        style={[styles.navItem, activeTab === item.key && styles.activeNav]}
-                    >
-                        <View style={{ position: 'relative' }}>
-                            <Text style={[styles.navIcon, activeTab === item.key && styles.activeNavIcon]}>
-                                {item.icon}
+            {/* Notification ALERT POPUP */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={alertPopupVisible}
+                onRequestClose={() => setAlertPopupVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.alertPopup}>
+                        <View style={[styles.alertHeader, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]}>
+                            <Text style={styles.alertEmoji}>
+                                {activeAlert?.type === 'CANCEL' ? '🚨' : '🔥'}
                             </Text>
-                            {item.badge > 0 && (
-                                <View style={styles.navBadge}>
-                                    <Text style={styles.navBadgeText}>{item.badge > 9 ? '9+' : item.badge}</Text>
+                            <Text style={styles.alertTitle}>{activeAlert?.title}</Text>
+                        </View>
+                        
+                        <View style={styles.alertBody}>
+                            <View style={styles.alertRow}>
+                                <Text style={styles.alertLabel}>ORDER ID:</Text>
+                                <Text style={styles.alertVal}>#{activeAlert?.orderId}</Text>
+                            </View>
+                            <View style={styles.alertRow}>
+                                <Text style={styles.alertLabel}>LOCATION:</Text>
+                                <Text style={styles.alertVal}>{activeAlert?.table ? `Table ${activeAlert.table}` : 'Counter'}</Text>
+                            </View>
+                            
+                            {activeAlert?.items && activeAlert.items.length > 0 && (
+                                <View style={styles.alertItemsList}>
+                                    <Text style={styles.alertItemsLabel}>ORDER ITEMS:</Text>
+                                    {activeAlert.items.slice(0, 3).map((it, idx) => (
+                                        <Text key={idx} style={styles.alertItemTxt}>• {it.quantity}x {it.name}</Text>
+                                    ))}
+                                    {activeAlert.items.length > 3 && <Text style={styles.alertItemMore}>+ {activeAlert.items.length - 3} more items...</Text>}
                                 </View>
                             )}
                         </View>
-                        <Text style={[styles.navLabel, activeTab === item.key && styles.activeNavLabel]}>
-                            {item.label}
-                        </Text>
+
+                        <TouchableOpacity 
+                            style={[styles.alertCloseBtn, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]} 
+                            onPress={() => {
+                                setAlertPopupVisible(false);
+                                setActiveTab('orders');
+                                fetchData();
+                            }}
+                        >
+                            <Text style={styles.alertCloseText}>VIEW ORDER 📑</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* DETAILED ORDER TICKET MODAL */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={detailsVisible}
+                onRequestClose={() => setDetailsVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.detailsModal}>
+                        <View style={styles.detailsHeader}>
+                            <View>
+                                <Text style={styles.detailsTitle}>Order Details</Text>
+                                <Text style={styles.detailsId}>#{selectedOrder?.id}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setDetailsVisible(false)} style={styles.closeBtn}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.detailsScroll}>
+                            <View style={styles.detailsInfoRow}>
+                                <View style={styles.infoCol}>
+                                    <Text style={styles.infoLabel}>LOCATION</Text>
+                                    <Text style={styles.infoVal}>{selectedOrder?.table_number ? `Table ${selectedOrder.table_number}` : 'Counter'}</Text>
+                                </View>
+                                <View style={styles.infoCol}>
+                                    <Text style={styles.infoLabel}>STEWARD</Text>
+                                    <Text style={styles.infoVal}>{selectedOrder?.steward_name || 'System'}</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.foodList}>
+                                <Text style={styles.foodListTitle}>KITCHEN ITEMS</Text>
+                                {selectedOrder?.items?.map((item, idx) => (
+                                    <View key={idx} style={styles.detailItemRow}>
+                                        <View style={styles.detailQty}><Text style={styles.detailQtyText}>{item.quantity}x</Text></View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.detailItemName}>{item.name}</Text>
+                                            <Text style={styles.detailItemCat}>{item.category || 'Food'}</Text>
+                                            {item.notes ? (
+                                                <View style={styles.detailNoteBox}>
+                                                    <Text style={styles.detailNoteText}>Note: {item.notes}</Text>
+                                                </View>
+                                            ) : null}
+                                        </View>
+                                    </View>
+                                ))}
+                            </View>
+                        </ScrollView>
+
+                        <View style={styles.detailsFooter}>
+                            <TouchableOpacity 
+                                style={styles.footerActionBtn} 
+                                onPress={() => {
+                                    if (['PREPARING', 'COOKING'].includes((selectedOrder?.status || '').toUpperCase())) {
+                                        updateStatus(selectedOrder.id, 'READY TO SERVE', selectedOrder.order_type_name);
+                                    } else {
+                                        updateStatus(selectedOrder.id, 'PREPARING', selectedOrder.order_type_name);
+                                    }
+                                    setDetailsVisible(false);
+                                }}
+                            >
+                                <Text style={styles.footerActionText}>
+                                    {['PREPARING', 'COOKING'].includes((selectedOrder?.status || '').toUpperCase()) ? 'MARK AS READY ✅' : 'START PREPARING 🔥'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <View style={styles.mainContainer}>
+                {activeTab === 'orders'    && renderOrders()}
+                {activeTab === 'history' && renderHistory()}
+                {activeTab === 'account' && <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>}
+            </View>
+
+            <View style={styles.bottomNav}>
+                {[
+                    { key: 'orders', icon: '🍳', label: 'Orders' },
+                    { key: 'history', icon: '📜', label: 'History' },
+                    { key: 'account', icon: '👤', label: 'Profile' }
+                ].map(item => (
+                    <TouchableOpacity key={item.key} onPress={() => setActiveTab(item.key)} style={[styles.navItem, activeTab === item.key && styles.activeNav]}>
+                        <Text style={[styles.navIcon, activeTab === item.key && styles.activeNavIcon]}>{item.icon}</Text>
+                        <Text style={[styles.navLabel, activeTab === item.key && styles.activeNavLabel]}>{item.label}</Text>
                     </TouchableOpacity>
                 ))}
             </View>
@@ -601,206 +694,121 @@ const KitchenDashboard = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F1F5F9' },
-
-    // Header
-    header: {
-        padding: 14, backgroundColor: 'white',
-        flexDirection: 'row', alignItems: 'center',
-        borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, elevation: 3,
-    },
-    profileBox: {
-        width: 44, height: 44, borderRadius: 22,
-        backgroundColor: '#1D4ED8', justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
-    },
-    profileImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-    profileInitial: { fontSize: 18, fontWeight: 'bold', color: 'white' },
-    greeting: { fontSize: 11, color: '#6B7280' },
-    roleTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    liveOrdersBadge: {
-        backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 4,
-        borderRadius: 20, marginRight: 4,
-    },
-    liveOrdersText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    header: { padding: 14, backgroundColor: 'white', flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', elevation: 2 },
+    profileBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    profileImg: { width: '100%', height: '100%' },
+    profileInitial: { fontSize: 20, fontWeight: 'bold', color: 'white' },
+    greeting: { fontSize: 11, color: '#64748B' },
+    roleTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    offlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', marginRight: 4 },
     notifBtn: { position: 'relative', padding: 4 },
-    badge: {
-        position: 'absolute', top: 4, right: 4, width: 8, height: 8,
-        borderRadius: 4, backgroundColor: '#EF4444',
-    },
+    badge: { position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
     logoutBtn: { padding: 4 },
-
     mainContainer: { flex: 1 },
-    content: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
-
-    // Duty card
-    dutyCard: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        padding: 18, borderRadius: 20, marginBottom: 16, borderLeftWidth: 6,
-    },
-    onDutyBg: { backgroundColor: '#D1FAE5', borderLeftColor: '#10B981' },
-    offDutyBg: { backgroundColor: '#F3F4F6', borderLeftColor: '#9CA3AF' },
-    dutyTitle: { fontSize: 15, fontWeight: 'bold', color: '#111827' },
-    dutySub: { fontSize: 11, color: '#6B7280', marginTop: 2 },
-
-    // Stats
+    content: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
+    dutyCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderRadius: 24, marginBottom: 16, borderLeftWidth: 8 },
+    onDutyBg: { backgroundColor: '#ECFDF5', borderLeftColor: '#10B981' },
+    offDutyBg: { backgroundColor: '#F1F5F9', borderLeftColor: '#94A3B8' },
+    dutyTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E293B' },
+    dutySub: { fontSize: 11, color: '#64748B', marginTop: 2 },
     statsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-    statBox: {
-        flex: 1, padding: 12, borderRadius: 16, alignItems: 'center',
-        borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, elevation: 2,
-    },
-    statVal: { fontSize: 22, fontWeight: '900' },
-    statLabel: { fontSize: 10, color: '#6B7280', marginTop: 3, textAlign: 'center' },
-
-    // Section header
-    sectionHeader: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14,
-    },
-    sectionTitle: { fontSize: 17, fontWeight: 'bold', color: '#111827' },
-    sectionSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-    refreshBtn: {
-        backgroundColor: '#EFF6FF', paddingHorizontal: 14, paddingVertical: 7,
-        borderRadius: 20, borderWidth: 1, borderColor: '#BFDBFE',
-    },
-    refreshBtnText: { color: '#1D4ED8', fontWeight: '700', fontSize: 13 },
-
-    // Group labels
-    groupLabel: {
-        flexDirection: 'row', alignItems: 'center', gap: 8,
-        marginBottom: 10, marginTop: 4,
-    },
-    groupDot: { width: 10, height: 10, borderRadius: 5 },
-    groupText: { fontSize: 11, fontWeight: '900', color: '#6B7280', letterSpacing: 0.5 },
-
-    // Order Card
-    orderCard: {
-        backgroundColor: 'white', borderRadius: 24,
-        padding: 18, marginBottom: 16, borderLeftWidth: 8,
-        shadowColor: '#1E3A5F', shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1, shadowRadius: 10, elevation: 5,
-    },
+    statBox: { flex: 1, padding: 12, borderRadius: 20, alignItems: 'center', borderWidth: 1 },
+    statVal: { fontSize: 24, fontWeight: '900' },
+    statLabel: { fontSize: 10, color: '#64748B', marginTop: 3 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    refreshBtn: { backgroundColor: '#F0FDF4', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#6EE7B7' },
+    refreshBtnText: { color: '#059669', fontWeight: '700', fontSize: 13 },
+    groupLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 4 },
+    groupDot: { width: 8, height: 8, borderRadius: 4 },
+    groupText: { fontSize: 11, fontWeight: '900', color: '#64748B', letterSpacing: 1 },
+    orderCard: { backgroundColor: 'white', borderRadius: 28, padding: 20, marginBottom: 20, borderLeftWidth: 10, shadowColor: '#1E293B', shadowOpacity: 0.1, shadowRadius: 15, elevation: 6 },
     newOrderBorder: { borderWidth: 2, borderColor: '#EF4444' },
-    newBadge: {
-        position: 'absolute', top: -10, right: 16,
-        backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 4,
-        borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 5,
-        zIndex: 10, elevation: 4,
-    },
-    pulseDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'white' },
+    newBadge: { position: 'absolute', top: -12, right: 20, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 10 },
+    pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'white' },
     newBadgeText: { color: 'white', fontSize: 10, fontWeight: '900' },
-
-    cardHeader: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14,
-    },
-    orderId: { fontSize: 22, fontWeight: '900', color: '#111827' },
-    typePill: {
-        paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8,
-    },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 },
+    orderId: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
+    typePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
     typePillText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-    statusPill: {
-        paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, borderWidth: 1,
-    },
+    statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1 },
     statusPillText: { fontSize: 10, fontWeight: 'bold' },
-    cardSubInfo: { fontSize: 12, color: '#6B7280', marginTop: 6, lineHeight: 18 },
-
-    // Timer
-    timerBox: {
-        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
-        backgroundColor: '#F3F4F6', alignItems: 'center',
-    },
+    cardSubInfo: { fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 18 },
+    stewardInfo: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+    timerBox: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 15, backgroundColor: '#F8FAFC', alignItems: 'center' },
     timerUrgent: { backgroundColor: '#FEE2E2' },
-    timerText: {
-        fontSize: 16, fontWeight: '800', color: '#4B5563',
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    },
+    timerText: { fontSize: 18, fontWeight: '800', color: '#475569', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
     timerTextUrgent: { color: '#EF4444' },
+    itemsBox: { backgroundColor: '#F1F5F9', borderRadius: 20, padding: 16, marginBottom: 18 },
+    itemsLabel: { fontSize: 10, fontWeight: '900', color: '#94A3B8', letterSpacing: 1.5, marginBottom: 12 },
+    itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+    itemCategory: { fontSize: 10, color: '#94A3B8', marginTop: 2 },
+    qtyBadge: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    qtyText: { fontSize: 16, fontWeight: '900' },
+    itemName: { fontSize: 17, fontWeight: 'bold', color: '#1E293B' },
+    noteBox: { backgroundColor: 'white', borderRadius: 10, padding: 8, marginTop: 6, borderLeftWidth: 3, borderLeftColor: '#F59E0B' },
+    itemNote: { fontSize: 12, color: '#64748B', fontStyle: 'italic', },
+    actionRow: { flexDirection: 'row', gap: 12 },
+    actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 18, gap: 10, elevation: 4 },
+    actionBtnIcon: { fontSize: 20 },
+    actionBtnText: { color: 'white', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 },
 
-    // Items
-    itemsBox: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 14, marginBottom: 14 },
-    itemsLabel: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1, marginBottom: 10 },
-    itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    qtyBadge: {
-        width: 40, height: 40, borderRadius: 10,
-        justifyContent: 'center', alignItems: 'center', marginRight: 12,
-    },
-    qtyText: { fontSize: 15, fontWeight: '900' },
-    itemName: { fontSize: 16, fontWeight: 'bold', color: '#111827', flex: 1 },
-    itemNote: { fontSize: 12, color: '#6B7280', fontStyle: 'italic', marginLeft: 6 },
+    // ALERT POPUP
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    alertPopup: { width: '100%', maxWidth: 400, backgroundColor: 'white', borderRadius: 32, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+    alertHeader: { backgroundColor: '#10B981', padding: 30, alignItems: 'center' },
+    alertEmoji: { fontSize: 50, marginBottom: 10 },
+    alertTitle: { color: 'white', fontSize: 22, fontWeight: '900', textAlign: 'center', letterSpacing: 1 },
+    alertBody: { padding: 30 },
+    alertRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 10 },
+    alertLabel: { fontSize: 13, color: '#94A3B8', fontWeight: 'bold' },
+    alertVal: { fontSize: 16, color: '#1E293B', fontWeight: '900' },
+    alertCloseBtn: { backgroundColor: '#10B981', paddingVertical: 22, alignItems: 'center' },
+    alertCloseText: { color: 'white', fontWeight: '900', fontSize: 15, letterSpacing: 1 },
 
-    // Action Buttons
-    actionRow: { flexDirection: 'row', gap: 10 },
-    actionBtn: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-        height: 52, borderRadius: 16, gap: 8, elevation: 2,
-    },
-    actionBtnIcon: { fontSize: 18 },
-    actionBtnText: { color: 'white', fontWeight: '900', fontSize: 13, letterSpacing: 0.5 },
-
-    // Empty
-    emptyCard: {
-        backgroundColor: 'white', borderRadius: 24, padding: 40,
-        alignItems: 'center', marginBottom: 20,
-    },
-    emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827', marginBottom: 6 },
-    emptyText: { color: '#6B7280', fontSize: 14, textAlign: 'center' },
-
-    // Today's completed summary banner
-    completedSummary: {
-        backgroundColor: '#D1FAE5', borderRadius: 16, padding: 16,
-        marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#10B981',
-    },
-    completedTitle: { fontSize: 14, fontWeight: 'bold', color: '#065F46' },
-    completedSub: { fontSize: 12, color: '#059669', marginTop: 2 },
-
-    // History
-    historyCard: {
-        backgroundColor: 'white', borderRadius: 16, padding: 16,
-        marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#9CA3AF',
-    },
-    historyId: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
-    historyItem: { fontSize: 13, color: '#6B7280', marginTop: 3 },
-    historyTime: { fontSize: 11, color: '#9CA3AF', marginTop: 8 },
-
-    // Inventory
-    invGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 },
-    invCard: {
-        width: (width - 44) / 2, backgroundColor: 'white', padding: 14,
-        borderRadius: 16, borderLeftWidth: 4, borderLeftColor: '#10B981', elevation: 2,
-    },
-    invCardLow: { borderLeftColor: '#EF4444', backgroundColor: '#FEF2F2' },
-    invName: { fontSize: 13, fontWeight: 'bold', color: '#4B5563' },
-    invQty: { fontSize: 18, fontWeight: 'bold', marginTop: 4 },
-    lowTag: { fontSize: 10, color: '#EF4444', fontWeight: 'bold', marginTop: 4 },
-
-    // Notifications
-    notifCard: {
-        backgroundColor: 'white', padding: 14, borderRadius: 14,
-        marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#D1D5DB',
-    },
-    unreadNotif: { backgroundColor: '#EFF6FF', borderLeftColor: '#3B82F6' },
-    notifTitle: { fontWeight: 'bold', fontSize: 15 },
-    notifMsg: { color: '#4B5563', marginTop: 4, fontSize: 13 },
-    notifTime: { fontSize: 10, color: '#9CA3AF', marginTop: 8 },
-
-    // Bottom Nav
-    bottomNav: {
-        height: 72, backgroundColor: 'white',
-        borderTopWidth: 1, borderTopColor: '#E5E7EB',
-        flexDirection: 'row', paddingBottom: 10, paddingTop: 6,
-    },
+    emptyCard: { backgroundColor: 'white', borderRadius: 32, padding: 40, alignItems: 'center', marginBottom: 20 },
+    emptyTitle: { fontSize: 22, fontWeight: 'bold', color: '#1E293B', marginBottom: 8 },
+    emptyText: { color: '#64748B', fontSize: 15, textAlign: 'center' },
+    bottomNav: { height: 80, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#E2E8F0', flexDirection: 'row', paddingBottom: 25, paddingTop: 10 },
     navItem: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    navIcon: { fontSize: 20, opacity: 0.5 },
-    navLabel: { fontSize: 9, color: '#6B7280', marginTop: 3, fontWeight: '600' },
-    activeNav: { borderTopWidth: 3, borderTopColor: '#3B82F6' },
-    activeNavIcon: { fontSize: 24, opacity: 1 },
-    activeNavLabel: { fontWeight: 'bold', color: '#3B82F6' },
-    navBadge: {
-        position: 'absolute', top: -4, right: -8,
-        backgroundColor: '#EF4444', borderRadius: 8,
-        minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
-    },
-    navBadgeText: { color: 'white', fontSize: 9, fontWeight: 'bold' },
+    navIcon: { fontSize: 22, opacity: 0.4 },
+    navLabel: { fontSize: 10, color: '#64748B', marginTop: 4, fontWeight: '600' },
+    activeNav: { borderTopWidth: 3, borderTopColor: '#10B981' },
+    activeNavIcon: { fontSize: 26, opacity: 1 },
+    activeNavLabel: { fontWeight: 'bold', color: '#10B981' },
+
+    // Alert Details
+    alertItemsList: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    alertItemsLabel: { fontSize: 11, color: '#94A3B8', fontWeight: 'bold', marginBottom: 8 },
+    alertItemTxt: { fontSize: 13, color: '#475569', fontWeight: '600', marginBottom: 4 },
+    alertItemMore: { fontSize: 12, color: '#10B981', fontWeight: 'bold', fontStyle: 'italic', marginTop: 4 },
+
+    // Details Modal
+    detailsModal: { width: '90%', maxWidth: 500, maxHeight: '80%', backgroundColor: 'white', borderRadius: 32, overflow: 'hidden' },
+    detailsHeader: { padding: 25, backgroundColor: '#F8FAFC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    detailsTitle: { fontSize: 12, fontWeight: '900', color: '#94A3B8', letterSpacing: 1.5, textTransform: 'uppercase' },
+    detailsId: { fontSize: 32, fontWeight: '900', color: '#1E293B' },
+    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+    detailsScroll: { padding: 25 },
+    detailsInfoRow: { flexDirection: 'row', gap: 15, marginBottom: 30 },
+    infoCol: { flex: 1, backgroundColor: '#F8FAFC', padding: 15, borderRadius: 20 },
+    infoLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '900', marginBottom: 5 },
+    infoVal: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+    foodListTitle: { fontSize: 12, fontWeight: '900', color: '#94A3B8', letterSpacing: 1.5, marginBottom: 15 },
+    detailItemRow: { flexDirection: 'row', gap: 15, marginBottom: 20 },
+    detailQty: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F0F9FF', justifyContent: 'center', alignItems: 'center' },
+    detailQtyText: { color: '#3B82F6', fontWeight: '900', fontSize: 16 },
+    detailItemName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    detailItemCat: { fontSize: 12, color: '#64748B', marginTop: 2 },
+    detailNoteBox: { backgroundColor: '#FFFBEB', padding: 10, borderRadius: 12, marginTop: 8 },
+    detailNoteText: { fontSize: 13, color: '#92400E', fontStyle: 'italic' },
+    detailsFooter: { padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    footerActionBtn: { backgroundColor: '#10B981', height: 64, borderRadius: 22, justifyContent: 'center', alignItems: 'center', elevation: 4 },
+    footerActionText: { color: 'white', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
+    splitStatusBox: { flexDirection: 'row', gap: 12, marginTop: 10, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 12 },
+    splitLabel: { fontSize: 11, fontWeight: 'bold', color: '#64748B' },
 });
 
 export default KitchenDashboard;
