@@ -199,6 +199,12 @@ export function OrderTrackingPage({ onNavigate }) {
             </div>
           )}
 
+          {!cancelSuccess && currentOrder.cancellation_status === 'REJECTED' && (
+            <div className="bg-red-50 p-3 text-red-700 text-sm border-y border-red-100 text-center">
+              ❌ Cancellation request declined. Preparation is already in progress.
+            </div>
+          )}
+
           {/* STATUS CHANGE ALERT POPUP */}
           {statusAlertVisible && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">

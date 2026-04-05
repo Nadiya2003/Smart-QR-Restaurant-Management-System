@@ -11,7 +11,7 @@ export function LoginPage({ onNavigate }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const { currentOrder, tableNumber } = useOrder();
+  const { currentOrder, tableNumber, fetchOrderHistory } = useOrder();
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -23,6 +23,7 @@ export function LoginPage({ onNavigate }) {
       if (tableNumber) {
         try {
           await api.post('/orders/sync-guest', { tableNumber });
+          await fetchOrderHistory(); // Refresh the context to load the synced order
         } catch (syncErr) {
           console.error('Failed to sync guest order:', syncErr);
         }
@@ -31,12 +32,7 @@ export function LoginPage({ onNavigate }) {
       // Immediately check the server for any active order within the last 6 hours
       // (handles case where user logged out mid-session and returns)
       try {
-        const token = loggedInUser?.token || localStorage.getItem('token');
-        const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-        const res = await fetch(`${API_URL}/api/orders/customer`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await api.get('/orders/customer');
         const orders = data.orders || [];
 
         const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
@@ -63,7 +59,13 @@ export function LoginPage({ onNavigate }) {
       // (StewardSelectionPage correctly routes to table-selection afterwards if no table exists yet)
       onNavigate('steward');
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.');
+      console.error('Login error:', err);
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('failed to fetch')) {
+        setError('Network Error: Cannot connect to the server. Please check your internet or backend IP in .env');
+      } else {
+        setError(msg || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

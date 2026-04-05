@@ -47,8 +47,9 @@ function TableSelection({ areaId, date, time, selectedTableId, onSelectTable }) 
     const getStatusColor = (status) => {
         switch (status) {
             case 'available': return 'bg-[#28A745] hover:bg-[#218838]';
-            case 'reserved': return 'bg-[#DC3545]'; // RED highlight for Reserved as requested
-            case 'occupied': return 'bg-[#DC3545]'; // RED highlight for Occupied/Active
+            case 'cleaning': return 'bg-[#D97706]'; // AMBER/BROWN for Cleaning
+            case 'reserved': return 'bg-[#DC3545]'; 
+            case 'occupied': return 'bg-[#DC3545]'; 
             default: return 'bg-gray-500';
         }
     };
@@ -56,6 +57,7 @@ function TableSelection({ areaId, date, time, selectedTableId, onSelectTable }) 
     const getStatusLabel = (status) => {
         if (status === 'occupied') return 'Active';
         if (status === 'reserved') return 'Reserved';
+        if (status === 'cleaning') return 'Cleaning';
         if (status === 'available') return 'Available';
         return status;
     };
@@ -116,6 +118,10 @@ return (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                     <span className="w-3 h-3 rounded bg-[#28a745]"></span>
                     <span className="text-gray-300 font-medium">Available</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+                    <span className="w-3 h-3 rounded bg-[#D97706]"></span>
+                    <span className="text-gray-300 font-medium">Cleaning</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                     <span className="w-3 h-3 rounded bg-[#DC3545]"></span>

@@ -8,7 +8,8 @@ import {
     getDutyStatus,
     getKitchenHistory,
     getBarHistory,
-    updateKitchenOrderStatus
+    updateKitchenOrderStatus,
+    updateOrderItemStatus
 } from '../controllers/kitchen.bar.controller.js';
 import { protect, isStaff } from '../middleware/authMiddleware.js';
 
@@ -26,6 +27,7 @@ router.post('/duty/check-out', checkOut);
 router.get('/kitchen/orders', getKitchenOrders);
 router.get('/kitchen/history', getKitchenHistory);
 router.put('/kitchen/orders/:id/status', updateKitchenOrderStatus);
+router.put('/orders/items/:itemId/status', updateOrderItemStatus);
 router.get('/bar/orders', getBarOrders);
 router.get('/bar/history', getBarHistory);
 

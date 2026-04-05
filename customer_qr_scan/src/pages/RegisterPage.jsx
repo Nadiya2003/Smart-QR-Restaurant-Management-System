@@ -10,7 +10,7 @@ export function RegisterPage({ onNavigate }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { register } = useAuth();
-  const { currentOrder, tableNumber } = useOrder();
+  const { currentOrder, tableNumber, fetchOrderHistory } = useOrder();
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +26,7 @@ export function RegisterPage({ onNavigate }) {
       if (tableNumber) {
         try {
           await api.post('/orders/sync-guest', { tableNumber });
+          await fetchOrderHistory(); // Refresh the context to load the synced order
         } catch (syncErr) {
           console.error('Failed to sync guest order:', syncErr);
         }

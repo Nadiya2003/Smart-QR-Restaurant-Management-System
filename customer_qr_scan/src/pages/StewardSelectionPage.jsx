@@ -14,6 +14,7 @@ export function StewardSelectionPage({
   );
   const [stewards, setStewards] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchStewards();
@@ -22,10 +23,12 @@ export function StewardSelectionPage({
   const fetchStewards = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await api.get('/stewards');
       setStewards(data.stewards || data);
-    } catch (error) {
-      console.error('Failed to fetch stewards:', error);
+    } catch (err) {
+      console.error('Failed to fetch stewards:', err);
+      setError(err.message || 'Failed to connect to server');
     } finally {
       setLoading(false);
     }
@@ -39,23 +42,29 @@ export function StewardSelectionPage({
   };
 
   const handleRandom = () => {
-    const available = stewards.filter((s) => s.is_available || s.isAvailable);
-    if (available.length > 0) {
+    let pool = stewards.filter((s) => s.status !== 'offline');
+    if (pool.length === 0) pool = stewards;
+    
+    if (pool.length > 0) {
       const randomSteward =
-        available[Math.floor(Math.random() * available.length)];
+        pool[Math.floor(Math.random() * pool.length)];
       setLocalSelectedId(randomSteward.id);
       setSteward(randomSteward.id);
       onNavigate(tableNumber ? 'menu' : 'table-selection');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+  const StewardSkeleton = () => (
+    <div className="w-full h-24 bg-white/50 rounded-xl border border-gray-100 p-4 animate-pulse mb-3">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-full bg-gray-200" />
+        <div className="flex-1">
+          <div className="h-4 bg-gray-200 rounded w-1/3 mb-2" />
+          <div className="h-3 bg-gray-100 rounded w-1/4" />
+        </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
@@ -76,14 +85,35 @@ export function StewardSelectionPage({
           </div>
         </div>
 
-        <p className="text-gray-600 mb-6 text-center text-sm">
-          Choose a steward to assist you during your meal, or let us pick one for you.
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Choose a Steward</h2>
+          <button 
+            onClick={fetchStewards}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            title="Refresh"
+            disabled={loading}
+          >
+            <svg className={`w-5 h-5 text-gray-500 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
 
         <div className="space-y-3 mb-8">
-          {stewards.length === 0 ? (
+          {loading ? (
+            Array(5).fill(0).map((_, i) => <StewardSkeleton key={i} />)
+          ) : error ? (
+            <div className="bg-red-50 text-red-600 p-6 rounded-2xl text-center border border-dashed border-red-200">
+               <svg className="w-8 h-8 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+               </svg>
+               <p className="font-medium">Failed to load stewards</p>
+               <p className="text-sm mt-1 opacity-80">{error}</p>
+               <p className="text-xs mt-3 text-red-500 font-semibold">Check backend IP in .env</p>
+            </div>
+          ) : stewards.length === 0 ? (
             <div className="bg-white p-8 rounded-2xl text-center border border-dashed border-gray-200">
-              <p className="text-gray-500">No stewards are currently on duty. You can still order and our team will assist you!</p>
+              <p className="text-gray-500">No stewards are currently available. Our team will assist you!</p>
             </div>
           ) : (
             stewards.map((steward) => (
@@ -97,8 +127,13 @@ export function StewardSelectionPage({
           )}
         </div>
 
-        <Button variant="secondary" fullWidth onClick={handleRandom}>
-          Choose Random Steward
+        <Button 
+          variant="secondary" 
+          fullWidth 
+          onClick={handleRandom}
+          disabled={loading || stewards.length === 0}
+        >
+          Pick a Random Steward
         </Button>
       </div>
 

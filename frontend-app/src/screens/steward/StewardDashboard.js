@@ -6,7 +6,7 @@ import {
     Animated
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { useAuth } from '../../context/AuthContext';
 import apiConfig from '../../config/api';
@@ -90,15 +90,12 @@ const StewardDashboard = () => {
     const playNotificationSound = async () => {
         try {
             // Short notification buzzer
-            const { sound } = await Audio.Sound.createAsync(
-                { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
-                { shouldPlay: true }
+            const sound = createAudioPlayer(
+                { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
             );
-            await sound.playAsync();
-            // Automatically unload from memory after playing to prevent memory leaks
-            sound.setOnPlaybackStatusUpdate((status) => {
-                if (status.didJustFinish) sound.unloadAsync();
-            });
+            sound.play();
+            // In expo-audio, we don't need to manually unload for brief sounds usually, 
+            // but we can manage instances if needed.
         } catch (error) {
             console.warn('Sound play error:', error);
         }
@@ -261,7 +258,13 @@ const StewardDashboard = () => {
             Vibration && Vibration.vibrate([100, 50, 400]);
             playNotificationSound();
             fetchData(true);
-            appendNotification('Order Cancelled 🛒', `Order #${data.orderId} for Table ${data.tableNumber} cancelled officially. Table is now cleaning.`);
+            appendNotification('Order Cancelled 🛑', `Order #${data.orderId} for Table ${data.tableNumber} cancelled officially.`);
+            pushToQueue('CANCEL', {
+                ...data,
+                title: '🛑 ORDER CANCELLED!',
+                message: `Table ${data.tableNumber} order #${data.orderId} has been cancelled. STOP preparation and clear table if needed.`,
+                color: '#EF4444'
+            });
         });
 
         // VOICE NOTIFICATION (Requirement: Voice sound for ready orders)
@@ -889,16 +892,56 @@ const renderOrders = () => (
                         </View>
 
                         <View style={styles.orderItems}>
-                            {order.items?.map((item, idx) => (
-                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                    <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
-                                    {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
-                                        <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
-                                            <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                            ))}
+                            {/* Group items by category */}
+                            {(() => {
+                                const foodItems = (order.items || []).filter(i => !(i.category || '').toLowerCase().includes('beverage'));
+                                const bevItems = (order.items || []).filter(i => (i.category || '').toLowerCase().includes('beverage'));
+                                
+                                return (
+                                    <>
+                                        {foodItems.length > 0 && (
+                                            <View style={{ marginBottom: 10 }}>
+                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>KITCHEN (FOODS)</Text>
+                                                    <Text style={{ fontSize: 9, color: order.kitchen_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
+                                                        {order.kitchen_status === 'ready' ? '✓ READY' : '● PREPARING'}
+                                                    </Text>
+                                                </View>
+                                                {foodItems.map((item, idx) => (
+                                                    <View key={`f-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                        <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                                        {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
+                                                            <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
+                                                                <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        )}
+                                        {bevItems.length > 0 && (
+                                            <View style={{ marginBottom: 5 }}>
+                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>BAR (BEVERAGES)</Text>
+                                                    <Text style={{ fontSize: 9, color: order.bar_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
+                                                        {order.bar_status === 'ready' ? '✓ READY' : '● PREPARING'}
+                                                    </Text>
+                                                </View>
+                                                {bevItems.map((item, idx) => (
+                                                    <View key={`b-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                        <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                                        {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
+                                                            <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
+                                                                <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </View>
 
                         <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -1117,47 +1160,61 @@ return (
                                     {activeModal?.type === 'CANCEL' ? '🚫' : (activeModal?.type === 'NEW_ORDER' ? '🥗' : (activeModal?.type === 'PAYMENT' ? '💰' : '🔔'))}
                                 </Text>
                             </View>
-                            <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 4, textAlign: 'center' }}>
-                                {activeModal?.type === 'PAYMENT' ? 'Payment Requested' : (activeModal?.type === 'NEW_ORDER' ? 'New Order!' : (activeModal?.type === 'CANCEL' ? 'Cancel Request!' : 'System Update'))}
+                            <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4, textAlign: 'center' }}>
+                                {activeModal?.type === 'PAYMENT' ? 'Payment Requested' : (activeModal?.type === 'NEW_ORDER' ? 'New Order Received!' : (activeModal?.type === 'CANCEL' ? 'Cancel Request!' : 'Order Status Update'))}
                             </Text>
-                            <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 20, textAlign: 'center' }}>
-                                {activeModal?.type === 'PAYMENT' ? `Table ${activeModal.data.tableNumber} is ready to settle.` : activeModal?.data?.message || 'New update received.'}
-                            </Text>
-                            <View style={{ width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, gap: 10, marginBottom: 24 }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            
+                            {/* STATUS HIGHLIGHT - Requested as the main part */}
+                            <View style={{ backgroundColor: activeModal?.type === 'CANCEL' ? '#EF4444' : '#3B82F6', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12, marginBottom: 15 }}>
+                                <Text style={{ color: 'white', fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>
+                                    {activeModal?.type === 'NEW_ORDER' ? 'PLACED' : (activeModal?.data?.status || 'Active')}
+                                </Text>
+                            </View>
+
+                            <View style={{ width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 20, gap: 10, marginBottom: 24 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>TABLE</Text>
-                                    <Text style={{ fontWeight: 'bold', fontSize: 16 }}>T-{activeModal?.data?.tableNumber}</Text>
+                                    <View style={{ backgroundColor: '#111827', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: 'white' }}>T-{activeModal?.data?.tableNumber}</Text>
+                                    </View>
                                 </View>
+
                                 {activeModal?.data?.orderId && (
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                        <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>ORDER</Text>
-                                        <Text style={{ fontWeight: 'bold' }}>#{activeModal?.data?.orderId}</Text>
+                                    <View style={{ marginTop: 10, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', pb: 15, mb: 10 }}>
+                                        <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: 'bold', marginBottom: 4 }}>BILL / ORDER NUMBER</Text>
+                                        <Text style={{ fontWeight: '900', fontSize: 42, color: '#111827', letterSpacing: -1 }}>
+                                            #{activeModal?.data?.orderId}
+                                        </Text>
                                     </View>
                                 )}
-                                {(activeModal?.type === 'NEW_ORDER' || activeModal?.type === 'PAYMENT') && activeModal?.data?.items && (
-                                    <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10, marginTop: 5 }}>
-                                        <Text style={{ fontSize: 10, color: '#9CA3AF', fontWeight: '900', marginBottom: 6, letterSpacing: 1 }}>ORDER ITEMS</Text>
+
+                                {(activeModal?.type === 'NEW_ORDER' || activeModal?.type === 'PAYMENT' || activeModal?.type === 'UPDATE') && activeModal?.data?.items && (
+                                    <View style={{ marginTop: 5 }}>
+                                        <Text style={{ fontSize: 10, color: '#9CA3AF', fontWeight: '900', marginBottom: 8, letterSpacing: 1 }}>FOOD ITEMS</Text>
                                         {activeModal.data.items.map((item, idx) => (
-                                            <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                                <Text style={{ fontSize: 13, color: '#374151' }}>• {item.name}</Text>
-                                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>x{item.quantity}</Text>
+                                            <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                <Text style={{ fontSize: 14, color: '#374151', fontWeight: '600' }}>• {item.name}</Text>
+                                                <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>x{item.quantity}</Text>
                                             </View>
                                         ))}
                                     </View>
                                 )}
-                                <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10, marginTop: 5 }}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>TOTAL BILL</Text>
-                                        <Text style={{ fontWeight: '900', color: '#10B981', fontSize: 18 }}>Rs. {activeModal?.data?.total || activeModal?.data?.totalPrice || '0.00'}</Text>
-                                    </View>
-                                    {activeModal?.type === 'PAYMENT' && (
+
+                                {/* Bill total removed for NEW_ORDER/UPDATE as requested. Only show for PAYMENT type. */}
+                                {activeModal?.type === 'PAYMENT' && (
+                                    <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10, marginTop: 5 }}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>TOTAL BILL</Text>
+                                            <Text style={{ fontWeight: '900', color: '#10B981', fontSize: 18 }}>Rs. {activeModal?.data?.total || activeModal?.data?.totalPrice || '0.00'}</Text>
+                                        </View>
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
                                             <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>METHOD</Text>
                                             <Text style={{ fontWeight: 'bold', textTransform: 'uppercase', color: '#4F46E5' }}>{activeModal.data.method}</Text>
                                         </View>
-                                    )}
-                                </View>
+                                    </View>
+                                )}
                             </View>
+                            
                             <View style={{ width: '100%', gap: 10 }}>
                                 {activeModal?.type === 'PAYMENT' ? (
                                     <TouchableOpacity 
@@ -1168,15 +1225,12 @@ return (
                                     </TouchableOpacity>
                                 ) : (
                                     <TouchableOpacity 
-                                        style={{ backgroundColor: '#4F46E5', paddingVertical: 16, borderRadius: 20, alignItems: 'center' }}
+                                        style={{ backgroundColor: '#111827', paddingVertical: 18, borderRadius: 20, alignItems: 'center' }}
                                         onPress={() => { nextModal(); if(activeModal?.type === 'NEW_ORDER') setActiveTab('orders'); }}
                                     >
-                                        <Text style={{ color: 'white', fontWeight: '900' }}>Understood</Text>
+                                        <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>OKAY</Text>
                                     </TouchableOpacity>
                                 )}
-                                <TouchableOpacity onPress={nextModal} style={{ alignItems: 'center', padding: 5 }}>
-                                    <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Dismiss</Text>
-                                </TouchableOpacity>
                             </View>
                         </View>
                     </View>

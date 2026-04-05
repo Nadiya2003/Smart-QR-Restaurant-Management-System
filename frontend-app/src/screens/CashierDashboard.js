@@ -5,6 +5,7 @@ import {
     FlatList, Image, Dimensions, Switch, Vibration
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { createAudioPlayer } from 'expo-audio';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
@@ -61,10 +62,8 @@ const CashierDashboard = () => {
     useEffect(() => {
         const loadSound = async () => {
             try {
-                const { Audio } = require('expo-av');
-                const { sound } = await Audio.Sound.createAsync(
-                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
-                    { shouldPlay: false }
+                const sound = createAudioPlayer(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
                 );
                 soundRef.current = sound;
             } catch (err) {
@@ -73,14 +72,13 @@ const CashierDashboard = () => {
         };
         loadSound();
         return () => {
-            if (soundRef.current) soundRef.current.unloadAsync();
         };
     }, []);
 
     const playNotificationSound = async () => {
         try {
             if (soundRef.current) {
-                await soundRef.current.replayAsync();
+                soundRef.current.play();
             }
             Vibration.vibrate([0, 500, 200, 500]);
         } catch (err) {}
@@ -386,15 +384,16 @@ const CashierDashboard = () => {
     );
 
     const renderTableItem = (table) => {
-        const isReserved = table.current_status === 'reserved';
-        const isOccupied = table.status === 'occupied' || table.status === 'not available';
+        const isReserved = table.status === 'Reserved' || table.is_reserved;
+        const isOccupied = table.status === 'Occupied' || table.is_occupied;
+        const isCleaning = table.status === 'Cleaning';
         
         return (
             <TouchableOpacity 
                 key={table.id} 
                 style={[
                     styles.tableBox, 
-                    (isReserved || isOccupied) ? styles.tableBoxOccupied : styles.tableBoxAvailable
+                    isOccupied ? styles.tableBoxOccupied : (isReserved ? styles.tableBoxReserved : (isCleaning ? styles.tableBoxCleaning : styles.tableBoxAvailable))
                 ]}
                 onPress={() => {
                     if (isReserved) {
@@ -406,6 +405,9 @@ const CashierDashboard = () => {
                         );
                         return;
                     }
+                    if (isCleaning) {
+                        return Alert.alert('Attention', 'Table is currently being cleaned.');
+                    }
                     if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
                     setSelectedPosTable(table);
                     setPosType('DINE_IN');
@@ -414,7 +416,7 @@ const CashierDashboard = () => {
             >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={styles.tableNum}>T-{table.table_number}</Text>
-                    <Text style={{ fontSize: 12 }}>{(isReserved || isOccupied) ? '🔴' : '🟢'}</Text>
+                    <Text style={{ fontSize: 12 }}>{isOccupied ? '🔴' : (isReserved ? '🟡' : (isCleaning ? '🧹' : '🟢'))}</Text>
                 </View>
                 <Text style={styles.tableCap}>👥 {table.capacity} Seats</Text>
                 {isReserved ? (
@@ -422,8 +424,8 @@ const CashierDashboard = () => {
                         <Text style={{ fontSize: 8, color: '#DC2626', fontWeight: 'bold', textAlign: 'center' }}>📅 {table.reservation_details?.customer_name || 'Guest'}</Text>
                     </View>
                 ) : (
-                    <Text style={[styles.tableStatus, { color: isOccupied ? '#EF4444' : '#11B911' }]}>
-                        {isOccupied ? 'SEATED' : 'AVAILABLE'}
+                    <Text style={[styles.tableStatus, { color: isOccupied ? '#EF4444' : (isCleaning ? '#854D0E' : '#11B911') }]}>
+                        {isOccupied ? 'SEATED' : (isCleaning ? 'CLEANING' : 'AVAILABLE')}
                     </Text>
                 )}
             </TouchableOpacity>
@@ -1012,6 +1014,8 @@ const styles = StyleSheet.create({
         elevation: 2
     },
     tableBoxOccupied: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+    tableBoxReserved: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+    tableBoxCleaning: { backgroundColor: '#FEFCE8', borderColor: '#FEF08A', borderStyle: 'dashed' },
     tableBoxAvailable: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
     tableNum: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
     tableCap: { fontSize: 12, color: '#6B7280' },

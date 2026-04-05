@@ -511,3 +511,15 @@ INSERT INTO menu_items (category_id, name, description, price, image, is_active)
 -- Verify
 SELECT 'Database setup complete!' AS status;
 SHOW TABLES;
+
+USE smart_qr_restaurant;
+
+SELECT * FROM staff_users;
+SELECT * FROM customers;
+SELECT * FROM reservations;
+SELECT * FROM online_customers;
+SELECT * FROM inventory;
+SELECT * FROM cancel_reservations;
+SELECT * FROM staff_roles;
+
+delete from orders where id=10;

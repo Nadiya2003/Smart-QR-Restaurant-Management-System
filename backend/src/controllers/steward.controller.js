@@ -11,21 +11,25 @@ export const getAllStewards = async (req, res) => {
                 u.profile_image as avatar,
                 COALESCE(s.is_available, 0) as is_available,
                 COALESCE(s.rating, 0.0) as rating,
-                (SELECT COUNT(*) FROM staff_attendance sa 
-                 WHERE sa.staff_id = u.id 
-                 AND sa.date = CURDATE() 
-                 AND sa.check_out_time IS NULL) as attendance_count,
-                (
-                    SELECT COUNT(*) 
-                    FROM orders o 
-                    JOIN order_statuses os ON o.status_id = os.id
-                    LEFT JOIN stewards s2 ON o.steward_id = s2.id
-                    WHERE s2.staff_id = u.id 
-                    AND os.name NOT IN ('COMPLETED', 'CANCELLED')
-                ) as activeOrders
+                COALESCE(att.attendance_count, 0) as attendance_count,
+                att.check_in_time,
+                COALESCE(ord.active_orders, 0) as activeOrders
             FROM staff_users u
             JOIN staff_roles sr ON u.role_id = sr.id
             LEFT JOIN stewards s ON u.id = s.staff_id
+            LEFT JOIN (
+                SELECT staff_id, COUNT(*) as attendance_count, MAX(check_in_time) as check_in_time
+                FROM staff_attendance 
+                WHERE date = CURDATE() AND check_out_time IS NULL
+                GROUP BY staff_id
+            ) att ON u.id = att.staff_id
+            LEFT JOIN (
+                SELECT o.steward_id as staff_id, COUNT(*) as active_orders
+                FROM orders o 
+                JOIN order_statuses os ON o.status_id = os.id
+                WHERE os.name NOT IN ('COMPLETED', 'CANCELLED', 'REJECTED')
+                GROUP BY o.steward_id
+            ) ord ON u.id = ord.staff_id
             WHERE LOWER(sr.role_name) = 'steward' 
             AND u.is_active = 1
         `;
@@ -63,6 +67,7 @@ export const getAllStewards = async (req, res) => {
                 rating: ratingVal,
                 activeOrders: activeOrderCount,
                 isAvailable: onDuty,
+                checkInTime: row.check_in_time,
                 status: onDuty ? (activeOrderCount < 5 ? 'active' : 'busy') : 'offline'
             };
         });

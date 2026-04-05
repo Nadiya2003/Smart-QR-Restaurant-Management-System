@@ -1,66 +1,32 @@
 import pool from './src/config/db.js';
 
-async function migrate() {
+async function updateSchema() {
     try {
-        console.log('--- Starting Database Migration: Status Enhancement ---');
-
-        // 1. Update delivery_orders
-        try {
-            await pool.query('ALTER TABLE delivery_orders ADD COLUMN status_notes TEXT AFTER order_status');
-            console.log('✅ Added status_notes to delivery_orders');
-        } catch (e) {
-            if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ status_notes already exists in delivery_orders');
-            else throw e;
+        // Check if item_status column exists in order_items
+        const [columns] = await pool.query('DESCRIBE order_items');
+        const hasItemStatus = columns.some(c => c.Field === 'item_status');
+        
+        if (!hasItemStatus) {
+            console.log('Adding item_status column to order_items...');
+            await pool.query("ALTER TABLE order_items ADD COLUMN item_status VARCHAR(20) DEFAULT 'pending'");
+        } else {
+            console.log('item_status column already exists in order_items.');
         }
 
-        try {
-            await pool.query('ALTER TABLE delivery_orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-            console.log('✅ Added updated_at to delivery_orders');
-        } catch (e) {
-            if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ updated_at already exists in delivery_orders');
-            else throw e;
+        // Also check main_status in orders table
+        const [orderCols] = await pool.query('DESCRIBE orders');
+        const hasMainStatus = orderCols.some(c => c.Field === 'main_status');
+        if (!hasMainStatus) {
+            console.log('Adding main_status column to orders...');
+            await pool.query("ALTER TABLE orders ADD COLUMN main_status VARCHAR(50) DEFAULT 'PLACED'");
         }
 
-        // 2. Update takeaway_orders
-        try {
-            await pool.query('ALTER TABLE takeaway_orders ADD COLUMN status_notes TEXT AFTER order_status');
-            console.log('✅ Added status_notes to takeaway_orders');
-        } catch (e) {
-            if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ status_notes already exists in takeaway_orders');
-            else throw e;
-        }
-
-        try {
-            await pool.query('ALTER TABLE takeaway_orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-            console.log('✅ Added updated_at to takeaway_orders');
-        } catch (e) {
-            if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ updated_at already exists in takeaway_orders');
-            else throw e;
-        }
-
-        // 3. Update reservations
-        try {
-            await pool.query('ALTER TABLE reservations ADD COLUMN status_notes TEXT AFTER status');
-            console.log('✅ Added status_notes to reservations');
-        } catch (e) {
-             if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ status_notes already exists in reservations');
-            else throw e;
-        }
-
-         try {
-            await pool.query('ALTER TABLE reservations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-            console.log('✅ Added updated_at to reservations');
-        } catch (e) {
-            if (e.code === 'ER_DUP_COLUMN_NAMES') console.log('ℹ️ updated_at already exists in reservations');
-            else throw e;
-        }
-
-        console.log('--- Migration Finished Successfully ---');
+        console.log('Schema updated successfully.');
+        process.exit(0);
     } catch (err) {
-        console.error('❌ Migration failed:', err);
-    } finally {
-        process.exit();
+        console.error('Schema Update Error:', err);
+        process.exit(1);
     }
 }
 
-migrate();
+updateSchema();

@@ -5,6 +5,7 @@ import {
     FlatList, Image, Dimensions, Switch, Vibration, Platform, StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { createAudioPlayer } from 'expo-audio';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
@@ -84,10 +85,8 @@ const KitchenDashboard = () => {
     useEffect(() => {
         const loadSound = async () => {
             try {
-                const { Audio } = require('expo-av');
-                const { sound } = await Audio.Sound.createAsync(
-                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
-                    { shouldPlay: false }
+                const sound = createAudioPlayer(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
                 );
                 soundRef.current = sound;
             } catch (err) {
@@ -96,14 +95,13 @@ const KitchenDashboard = () => {
         };
         loadSound();
         return () => {
-            if (soundRef.current) soundRef.current.unloadAsync();
         };
     }, []);
 
     const playNotificationSound = async () => {
         try {
             if (soundRef.current) {
-                await soundRef.current.replayAsync();
+                soundRef.current.play();
             }
             Vibration.vibrate([0, 500, 200, 500]);
         } catch (err) {}
@@ -305,6 +303,23 @@ const KitchenDashboard = () => {
         }
     };
 
+    const handleItemStatusUpdate = async (itemId, newStatus) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/orders/items/${itemId}/status`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ status: newStatus })
+            });
+            if (res.ok) {
+                fetchData(true);
+                // Subtle vibration for feedback
+                Vibration.vibrate(50);
+            }
+        } catch (error) {
+            console.error('Item update failed:', error);
+        }
+    };
+
     const getStatusColor = (status) => {
         const s = (status || '').toUpperCase();
         if (s === 'PLACED') return '#94A3B8'; // Gray
@@ -332,7 +347,7 @@ const KitchenDashboard = () => {
         const stationStatus = (order.kitchen_status || '').toUpperCase();
         const isPreparing = stationStatus === 'PREPARING';
         const isReady = stationStatus === 'READY';
-        const isTerminal = ['CANCELLED', 'COMPLETED', 'SERVED', 'FINISHED', 'REJECTED'].includes(s);
+        const isTerminal = ['CANCELLED', 'COMPLETED', 'SERVED', 'FINISHED', 'REJECTED'].includes((order.status || '').toUpperCase());
         const isPending = !isPreparing && !isReady && !isTerminal;
         const isVeryRecent = (Date.now() - new Date(order.created_at).getTime()) < 120000;
         const isUpdating = updatingId === order.id;
@@ -382,23 +397,44 @@ const KitchenDashboard = () => {
                 </View>
 
                 <View style={styles.itemsBox}>
-                    <Text style={styles.itemsLabel}>CHEF'S TICKET</Text>
-                    {order.items?.map((item, idx) => (
-                        <View key={idx} style={styles.itemRow}>
-                            <View style={[styles.qtyBadge, { backgroundColor: typeColor + '18' }]}>
-                                <Text style={[styles.qtyText, { color: typeColor }]}>{item.quantity}x</Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.itemName}>{item.name}</Text>
-                                {item.category && <Text style={styles.itemCategory}>{item.category}</Text>}
-                                {item.notes ? (
-                                    <View style={styles.noteBox}>
-                                        <Text style={styles.itemNote}>📝 {item.notes}</Text>
+                    <Text style={styles.itemsLabel}>CHEF'S TICKET (TAP ITEM TO UPDATE STATUS)</Text>
+                    {order.items?.map((item, idx) => {
+                        const itemStatus = (item.item_status || 'pending').toUpperCase();
+                        let statusColor = '#94A3B8';
+                        if (itemStatus === 'PREPARING') statusColor = '#F59E0B';
+                        if (itemStatus === 'READY') statusColor = '#10B981';
+
+                        return (
+                            <TouchableOpacity 
+                                key={idx} 
+                                style={[styles.itemRow, itemStatus === 'READY' && { opacity: 0.6 }]}
+                                onPress={() => {
+                                    const nextStatus = itemStatus === 'PENDING' ? 'PREPARING' : (itemStatus === 'PREPARING' ? 'READY' : 'PENDING');
+                                    handleItemStatusUpdate(item.id, nextStatus);
+                                }}
+                            >
+                                <View style={[styles.qtyBadge, { backgroundColor: typeColor + '18' }]}>
+                                    <Text style={[styles.qtyText, { color: typeColor }]}>{item.quantity}x</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Text style={[styles.itemName, itemStatus === 'READY' && { textDecorationLine: 'line-through' }]}>
+                                            {item.name}
+                                        </Text>
+                                        <View style={{ backgroundColor: statusColor + '20', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: statusColor }}>
+                                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: statusColor }}>{itemStatus}</Text>
+                                        </View>
                                     </View>
-                                ) : null}
-                            </View>
-                        </View>
-                    ))}
+                                    {item.category && <Text style={styles.itemCategory}>{item.category}</Text>}
+                                    {item.notes ? (
+                                        <View style={styles.noteBox}>
+                                            <Text style={styles.itemNote}>📝 {item.notes}</Text>
+                                        </View>
+                                    ) : null}
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
 
                 <View style={styles.actionRow}>
@@ -409,25 +445,25 @@ const KitchenDashboard = () => {
                             disabled={isUpdating}
                         >
                             {isUpdating ? <ActivityIndicator color="white" size="small" /> : (
-                                <><Text style={styles.actionBtnIcon}>👨‍🍳</Text><Text style={styles.actionBtnText}>START PREPARING</Text></>
+                                <><Text style={styles.actionBtnIcon}>👨‍🍳</Text><Text style={styles.actionBtnText}>START ALL</Text></>
                             )}
                         </TouchableOpacity>
                     )}
                     {isPreparing && (
                         <TouchableOpacity 
                             style={[styles.actionBtn, { backgroundColor: '#10B981', flex: 1 }]} 
-                            onPress={() => updateStatus(order.id, 'READY TO SERVE', order.order_type_name)}
+                            onPress={() => updateStatus(order.id, 'READY', order.order_type_name)}
                             disabled={isUpdating}
                         >
                             {isUpdating ? <ActivityIndicator color="white" size="small" /> : (
-                                <><Text style={styles.actionBtnIcon}>✅</Text><Text style={styles.actionBtnText}>READY TO SERVE</Text></>
+                                <><Text style={styles.actionBtnIcon}>✅</Text><Text style={styles.actionBtnText}>FINISH ALL</Text></>
                             )}
                         </TouchableOpacity>
                     )}
                     {isReady && (
                         <View style={[styles.actionBtn, { backgroundColor: '#F0FDF4', flex: 1, borderWidth: 1, borderColor: '#10B981' }]}>
                             <Text style={styles.actionBtnIcon}>✅</Text>
-                            <Text style={[styles.actionBtnText, { color: '#065F46' }]}>STATION READY</Text>
+                            <Text style={[styles.actionBtnText, { color: '#065F46' }]}>FOOD READY</Text>
                         </View>
                     )}
                 </View>

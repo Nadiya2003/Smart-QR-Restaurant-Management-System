@@ -551,22 +551,46 @@ export const handleCancellationAction = async (req, res) => {
 
         await connection.commit();
 
+        // 2b. Fetch Table Number for better notification clarity
+        let tableNumber = 'N/A';
+        try {
+            const [tRows] = await connection.query('SELECT rt.table_number FROM restaurant_tables rt JOIN orders o ON o.table_id = rt.id WHERE o.id = ?', [request.order_id]);
+            if (tRows.length > 0) tableNumber = tRows[0].table_number;
+        } catch (e) {}
+
         // Notify Dashboards (Kitchen/Steward)
         if (global.io) {
             global.io.emit('orderUpdate', {
                 orderId: parseInt(request.order_id),
                 id: parseInt(request.order_id),
                 status: (action === 'approve') ? 'CANCELLED' : 'ACTIVE',
-                cancellationStatus: status,
+                cancellationStatus: status.toUpperCase(),
+                tableNumber: tableNumber,
                 type: (request.order_type || 'DINE-IN').toUpperCase()
             });
             
             if (action === 'approve') {
+                global.io.emit('orderCancelled', {
+                    orderId: parseInt(request.order_id),
+                    tableNumber: tableNumber,
+                    reason: request.reason || 'Admin Approved Cancellation',
+                    type: request.order_type || 'DINE-IN'
+                });
+                
                 global.io.emit('cancelRequest', {
                     orderId: parseInt(request.order_id),
+                    tableNumber: tableNumber,
                     status: 'APPROVED',
                     reason: request.reason,
-                    type: request.order_type
+                    type: (request.order_type || 'DINE-IN').toUpperCase()
+                });
+            } else {
+                global.io.emit('cancelRequest', {
+                    orderId: parseInt(request.order_id),
+                    tableNumber: tableNumber,
+                    status: 'REJECTED',
+                    reason: admin_notes || 'Manager declined',
+                    type: (request.order_type || 'DINE-IN').toUpperCase()
                 });
             }
         }
@@ -708,8 +732,7 @@ export const updateOrderStatus = async (req, res) => {
                     SELECT su.id as staff_id, COALESCE(rt.table_number, 'Counter') as table_number 
                     FROM orders o 
                     LEFT JOIN restaurant_tables rt ON o.table_id = rt.id 
-                    LEFT JOIN stewards s ON o.steward_id = s.id
-                    LEFT JOIN staff_users su ON s.staff_id = su.id
+                    LEFT JOIN staff_users su ON o.steward_id = su.id
                     WHERE o.id = ?
                 `, [id]);
                 if (orderInfo.length > 0) {

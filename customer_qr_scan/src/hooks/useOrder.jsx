@@ -103,6 +103,18 @@ export function OrderProvider({ children }) {
         }
     });
 
+    socket.on('orderCancelled', (data) => {
+        const activeId = localStorage.getItem('activeOrderId');
+        const isForThisOrder = data.orderId?.toString() === activeId || data.id?.toString() === activeId;
+        
+        if (isForThisOrder) {
+            playStatusSound();
+            setCurrentOrder(prev => prev ? { ...prev, status: 'CANCELLED' } : prev);
+            if (user) fetchOrderHistory();
+            else fetchGuestOrder();
+        }
+    });
+
     return () => {
         if (socketRef.current) socketRef.current.disconnect();
     };
@@ -376,7 +388,8 @@ export function OrderProvider({ children }) {
             setTable,
             changeTable,
             isGuest,
-            isInitialLoading
+            isInitialLoading,
+            fetchOrderHistory
         }}>
             {children}
         </OrderContext.Provider>
