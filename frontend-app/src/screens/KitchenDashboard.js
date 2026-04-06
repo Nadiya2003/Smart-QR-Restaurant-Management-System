@@ -64,11 +64,11 @@ const KitchenDashboard = () => {
     // Data States
     const [orders, setOrders] = useState([]);
     const [history, setHistory] = useState([]);
-    const [inventory, setInventory] = useState([]);
     const [notifications, setNotifications] = useState([]);
-    const [isOnDuty, setIsOnDuty] = useState(false);
     const [updatingId, setUpdatingId] = useState(null);
     const [socketConnected, setSocketConnected] = useState(false);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
     
     // Sound & Notification refs
     const prevOrderIds = useRef(new Set());
@@ -110,17 +110,20 @@ const KitchenDashboard = () => {
     const fetchData = useCallback(async (isSilent = false) => {
         if (!isSilent) setLoading(true);
         try {
-            const [orderRes, historyRes, invRes, statusRes, notifRes] = await Promise.all([
+            const [orderRes, historyRes, notifRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/orders`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/kitchen/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=MainKitchen`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/status`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers })
             ]);
 
-            if (orderRes.ok) {
+                if (orderRes.ok) {
                 const data = await orderRes.json();
-                const newOrders = data.orders || [];
+                const newOrders = (data.orders || []).map(o => ({
+                    ...o,
+                    // Normalize items for all order types (Dine-in uses items, others might use foodItems)
+                    items: o.items || o.foodItems || []
+                }));
+
                 const currentIds = new Set(newOrders.map(o => o.id));
                 const currentItemSum = newOrders.reduce((sum, o) => (sum + (o.items?.length || 0)), 0);
                 
@@ -129,29 +132,13 @@ const KitchenDashboard = () => {
 
                 if ((hasNewOrder || itemsAdded) && isSilent) {
                     playNotificationSound();
-                    if (hasNewOrder) {
-                        const newOrder = newOrders.find(o => !prevOrderIds.current.has(o.id));
-                        if (newOrder) {
-                            setActiveAlert({
-                                title: "NEW FOOD TICKET! 👨‍🍳",
-                                type: "NEW_ORDER",
-                                orderId: newOrder.id,
-                                table: newOrder.table_number || 'Counter',
-                                customer: newOrder.customer_name || 'Guest',
-                                items: newOrder.items || []
-                            });
-                            setAlertPopupVisible(true);
-                        }
-                    }
                 }
-                
+
                 prevOrderIds.current = currentIds;
                 prevItemCount.current = currentItemSum;
                 setOrders(newOrders);
             }
             if (historyRes.ok) setHistory((await historyRes.json()).history || []);
-            if (invRes.ok) setInventory((await invRes.json()).inventory || []);
-            if (statusRes.ok) setIsOnDuty((await statusRes.json()).onDuty);
             if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
         } catch (error) {
             console.error('Kitchen fetch error:', error);
@@ -192,18 +179,32 @@ const KitchenDashboard = () => {
         // Handler for new order placed by customer (from customer_qr_scan or other portals)
         socket.on('newOrder', (data) => {
             console.log('[Kitchen] newOrder received:', data);
-            fetchData(true);
-            const orderItems = data.items || [];
-            setActiveAlert({
-                title: data.isUpdate ? '🍽️ ORDER UPDATED!' : '🔥 NEW ORDER TICKET!',
-                type: 'NEW_ORDER',
-                orderId: data.orderId || 'NEW',
-                table: data.tableNumber || data.table_number || 'Counter',
-                customer: data.customerName || data.customer_name || 'Guest',
-                items: orderItems
+            
+            // Extract items based on data structure
+            let orderItems = [];
+            if (data.items) {
+                orderItems = Array.isArray(data.items) ? data.items : [];
+            }
+            
+            // Filter food items if category information is available
+            const foodItems = orderItems.filter(i => {
+                const cat = (i.category || i.category_name || i.categoryName || 'Food').toLowerCase();
+                return !cat.includes('beverage');
             });
-            setAlertPopupVisible(true);
-            playNotificationSound();
+            
+            if (foodItems.length > 0 || !data.items) {
+                fetchData(true);
+                setActiveAlert({
+                    title: data.isUpdate ? '🍽️ ORDER UPDATED!' : '🔥 NEW ORDER TICKET!',
+                    type: 'NEW_ORDER',
+                    orderId: data.orderId || 'NEW',
+                    table: data.tableNumber || data.table_number || 'Counter',
+                    customer: data.customerName || data.customer_name || 'Guest',
+                    items: foodItems
+                });
+                setAlertPopupVisible(true);
+                playNotificationSound();
+            }
         });
 
         socket.on('orderUpdate', (data) => {
@@ -268,19 +269,7 @@ const KitchenDashboard = () => {
     const onRefresh = () => { setRefreshing(true); fetchData(); };
 
     const handleDutyToggle = async () => {
-        const endpoint = isOnDuty ? 'check-out' : 'check-in';
-        try {
-            const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/${endpoint}`, {
-                method: 'POST', headers
-            });
-            if (res.ok) {
-                setIsOnDuty(!isOnDuty);
-                Alert.alert('Attendance', `Kitchen Station ${!isOnDuty ? 'Activated ✅' : 'Deactivated 🔴'}`);
-                fetchData(true);
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to update attendance');
-        }
+        // Auto check-in only — kitchen staff don't manually toggle
     };
 
     const updateStatus = async (orderId, newStatus, orderTypeName) => {
@@ -379,11 +368,11 @@ const KitchenDashboard = () => {
                         
                         {/* Requirement #6: Split Status Display */}
                         <View style={styles.splitStatusBox}>
-                             <Text style={[styles.splitLabel, order.kitchen_status === 'ready' && { color: '#10B981' }]}>
-                                🍛 Food: {order.kitchen_status?.toUpperCase()} {order.kitchen_status === 'ready' ? '✓' : '⏳'}
+                             <Text style={[styles.splitLabel, (order.kitchen_status || '').toLowerCase() === 'ready' && { color: '#10B981' }]}>
+                                🍛 Food: {(order.kitchen_status || 'PENDING').toUpperCase()} { (order.kitchen_status || '').toLowerCase() === 'ready' ? '✓' : '⏳'}
                              </Text>
-                             <Text style={[styles.splitLabel, order.bar_status === 'ready' && { color: '#10B981' }]}>
-                                🍹 Drinks: {order.bar_status?.toUpperCase()} {order.bar_status === 'ready' ? '✓' : '⏳'}
+                             <Text style={[styles.splitLabel, (order.bar_status || '').toLowerCase() === 'ready' && { color: '#10B981' }]}>
+                                🍹 Drinks: {(order.bar_status || 'PENDING').toUpperCase()} { (order.bar_status || '').toLowerCase() === 'ready' ? '✓' : '⏳'}
                              </Text>
                         </View>
 
@@ -472,7 +461,6 @@ const KitchenDashboard = () => {
     };
 
     const renderOrders = () => {
-        // Active statuses recognized as 'pending/new'
         const NEW_STATUSES = ['PENDING', 'CONFIRMED', 'ORDER PLACED', 'PLACED', 'ACCEPTED', 'RECEIVED'];
         const preparing = orders.filter(o => ['PREPARING', 'COOKING'].includes((o.status || '').toUpperCase()));
         const ready = orders.filter(o => ['READY', 'READY TO SERVE'].includes((o.status || '').toUpperCase()));
@@ -480,18 +468,10 @@ const KitchenDashboard = () => {
             const s = (o.status || '').toUpperCase();
             return !['PREPARING', 'COOKING', 'READY', 'READY TO SERVE'].includes(s);
         });
-        const lowStock = inventory.filter(i => i.quantity <= i.min_level);
 
         return (
             <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-                <View style={[styles.dutyCard, isOnDuty ? styles.onDutyBg : styles.offDutyBg]}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.dutyTitle}>{isOnDuty ? '🟢 Kitchen Station Active' : '🔴 Kitchen Station Offline'}</Text>
-                        <Text style={styles.dutySub}>Handle and track food preparation tickets</Text>
-                    </View>
-                    <Switch value={isOnDuty} onValueChange={handleDutyToggle} trackColor={{ false: '#9CA3AF', true: '#10B981' }} thumbColor={isOnDuty ? '#fff' : '#f4f3f4'} />
-                </View>
-
+                {/* Stats — no duty card, no stock box */}
                 <View style={styles.statsRow}>
                     <View style={[styles.statBox, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
                         <Text style={[styles.statVal, { color: '#C2410C' }]}>{pending.length}</Text>
@@ -504,10 +484,6 @@ const KitchenDashboard = () => {
                     <View style={[styles.statBox, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
                         <Text style={[styles.statVal, { color: '#065F46' }]}>{ready.length}</Text>
                         <Text style={styles.statLabel}>✅ Ready</Text>
-                    </View>
-                    <View style={[styles.statBox, { backgroundColor: lowStock.length > 0 ? '#FEF2F2' : '#F9FAFB', borderColor: lowStock.length > 0 ? '#FCA5A5' : '#E5E7EB' }]}>
-                        <Text style={[styles.statVal, { color: lowStock.length > 0 ? '#DC2626' : '#9CA3AF' }]}>{lowStock.length}</Text>
-                        <Text style={styles.statLabel}>📦 stocks</Text>
                     </View>
                 </View>
 
@@ -534,6 +510,7 @@ const KitchenDashboard = () => {
                         {ready.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#10B981' }]} /><Text style={styles.groupText}>READY FOR SERVICE ({ready.length})</Text></View>{ready.map(renderOrderCard)}</>}
                     </>
                 )}
+                <View style={{ height: 40 }} />
             </ScrollView>
         );
     };
@@ -543,7 +520,7 @@ const KitchenDashboard = () => {
             return (
                 <View style={styles.emptyCard}>
                     <Text style={styles.emptyTitle}>No History 📜</Text>
-                    <Text style={styles.emptyText}>You haven't completed any orders yet today.</Text>
+                    <Text style={styles.emptyText}>Completed food orders will appear here.</Text>
                 </View>
             );
         }
@@ -551,10 +528,24 @@ const KitchenDashboard = () => {
         return (
             <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 <View style={styles.sectionHeader}>
-                    <View><Text style={styles.sectionTitle}>📜 Past Kitchen Tickets</Text></View>
+                    <View><Text style={styles.sectionTitle}>📜 Kitchen Order History</Text></View>
                     <TouchableOpacity onPress={() => fetchData()} style={styles.refreshBtn}><Text style={styles.refreshBtnText}>↻ Refresh</Text></TouchableOpacity>
                 </View>
-                {history.map(renderOrderCard)}
+                {history.map(order => (
+                    <TouchableOpacity
+                        key={order.id}
+                        style={styles.historyCard}
+                        onPress={() => { setSelectedHistoryOrder(order); setShowHistoryModal(true); }}
+                    >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={styles.historyId}>#{order.id} — Table {order.table_number || 'Counter'}</Text>
+                            <Text style={{ fontSize: 18 }}>👁️</Text>
+                        </View>
+                        <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleString()}</Text>
+                        <Text style={styles.historyStatus}>{order.status}</Text>
+                        <Text style={styles.historyItems}>{(order.items || []).length} food item(s)</Text>
+                    </TouchableOpacity>
+                ))}
                 <View style={{ height: 40 }} />
             </ScrollView>
         );
@@ -573,7 +564,7 @@ const KitchenDashboard = () => {
                 </TouchableOpacity>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello Chef, {user?.name}</Text>
-                    <Text style={styles.roleTitle}>Kitchen Manager Dashboard</Text>
+                    <Text style={styles.roleTitle}>Kitchen Dashboard</Text>
                 </View>
                 <View style={styles.headerRight}>
                     {!socketConnected && <View style={styles.offlineDot} />}
@@ -586,21 +577,13 @@ const KitchenDashboard = () => {
             </View>
 
             {/* Notification ALERT POPUP */}
-            <Modal
-                animationType="fade"
-                transparent={true}
-                visible={alertPopupVisible}
-                onRequestClose={() => setAlertPopupVisible(false)}
-            >
+            <Modal animationType="fade" transparent={true} visible={alertPopupVisible} onRequestClose={() => setAlertPopupVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.alertPopup}>
                         <View style={[styles.alertHeader, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]}>
-                            <Text style={styles.alertEmoji}>
-                                {activeAlert?.type === 'CANCEL' ? '🚨' : '🔥'}
-                            </Text>
+                            <Text style={styles.alertEmoji}>{activeAlert?.type === 'CANCEL' ? '🚨' : '🔥'}</Text>
                             <Text style={styles.alertTitle}>{activeAlert?.title}</Text>
                         </View>
-                        
                         <View style={styles.alertBody}>
                             <View style={styles.alertRow}>
                                 <Text style={styles.alertLabel}>ORDER ID:</Text>
@@ -610,39 +593,34 @@ const KitchenDashboard = () => {
                                 <Text style={styles.alertLabel}>LOCATION:</Text>
                                 <Text style={styles.alertVal}>{activeAlert?.table ? `Table ${activeAlert.table}` : 'Counter'}</Text>
                             </View>
-                            
+                            {activeAlert?.reason && (
+                                <View style={[styles.alertRow, { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, borderBottomWidth: 0 }]}>
+                                    <Text style={[styles.alertLabel, { color: '#EF4444' }]}>REASON:</Text>
+                                    <Text style={[styles.alertVal, { color: '#991B1B', flex: 1, textAlign: 'right' }]}>{activeAlert.reason}</Text>
+                                </View>
+                            )}
                             {activeAlert?.items && activeAlert.items.length > 0 && (
                                 <View style={styles.alertItemsList}>
-                                    <Text style={styles.alertItemsLabel}>ORDER ITEMS:</Text>
-                                    {activeAlert.items.slice(0, 3).map((it, idx) => (
+                                    <Text style={styles.alertItemsLabel}>FOOD ITEMS:</Text>
+                                    {activeAlert.items.slice(0, 5).map((it, idx) => (
                                         <Text key={idx} style={styles.alertItemTxt}>• {it.quantity}x {it.name}</Text>
                                     ))}
-                                    {activeAlert.items.length > 3 && <Text style={styles.alertItemMore}>+ {activeAlert.items.length - 3} more items...</Text>}
+                                    {activeAlert.items.length > 5 && <Text style={styles.alertItemMore}>+ {activeAlert.items.length - 5} more...</Text>}
                                 </View>
                             )}
                         </View>
-
-                        <TouchableOpacity 
-                            style={[styles.alertCloseBtn, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]} 
-                            onPress={() => {
-                                setAlertPopupVisible(false);
-                                setActiveTab('orders');
-                                fetchData();
-                            }}
+                        <TouchableOpacity
+                            style={[styles.alertCloseBtn, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]}
+                            onPress={() => { setAlertPopupVisible(false); setActiveTab('orders'); fetchData(); }}
                         >
-                            <Text style={styles.alertCloseText}>VIEW ORDER 📑</Text>
+                            <Text style={styles.alertCloseText}>VIEW ORDERS 📑</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
 
             {/* DETAILED ORDER TICKET MODAL */}
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={detailsVisible}
-                onRequestClose={() => setDetailsVisible(false)}
-            >
+            <Modal animationType="slide" transparent={true} visible={detailsVisible} onRequestClose={() => setDetailsVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.detailsModal}>
                         <View style={styles.detailsHeader}>
@@ -654,7 +632,6 @@ const KitchenDashboard = () => {
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
                         </View>
-
                         <ScrollView style={styles.detailsScroll}>
                             <View style={styles.detailsInfoRow}>
                                 <View style={styles.infoCol}>
@@ -666,29 +643,22 @@ const KitchenDashboard = () => {
                                     <Text style={styles.infoVal}>{selectedOrder?.steward_name || 'System'}</Text>
                                 </View>
                             </View>
-
                             <View style={styles.foodList}>
-                                <Text style={styles.foodListTitle}>KITCHEN ITEMS</Text>
+                                <Text style={styles.foodListTitle}>FOOD ITEMS</Text>
                                 {selectedOrder?.items?.map((item, idx) => (
                                     <View key={idx} style={styles.detailItemRow}>
                                         <View style={styles.detailQty}><Text style={styles.detailQtyText}>{item.quantity}x</Text></View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.detailItemName}>{item.name}</Text>
                                             <Text style={styles.detailItemCat}>{item.category || 'Food'}</Text>
-                                            {item.notes ? (
-                                                <View style={styles.detailNoteBox}>
-                                                    <Text style={styles.detailNoteText}>Note: {item.notes}</Text>
-                                                </View>
-                                            ) : null}
                                         </View>
                                     </View>
                                 ))}
                             </View>
                         </ScrollView>
-
                         <View style={styles.detailsFooter}>
-                            <TouchableOpacity 
-                                style={styles.footerActionBtn} 
+                            <TouchableOpacity
+                                style={styles.footerActionBtn}
                                 onPress={() => {
                                     if (['PREPARING', 'COOKING'].includes((selectedOrder?.status || '').toUpperCase())) {
                                         updateStatus(selectedOrder.id, 'READY TO SERVE', selectedOrder.order_type_name);
@@ -707,10 +677,56 @@ const KitchenDashboard = () => {
                 </View>
             </Modal>
 
+            {/* HISTORY DETAIL MODAL */}
+            <Modal visible={showHistoryModal} transparent animationType="slide" onRequestClose={() => setShowHistoryModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.detailsModal}>
+                        <View style={styles.detailsHeader}>
+                            <View>
+                                <Text style={styles.detailsTitle}>Order History</Text>
+                                <Text style={styles.detailsId}>#{selectedHistoryOrder?.id}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setShowHistoryModal(false)} style={styles.closeBtn}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={styles.detailsScroll}>
+                            <View style={{ marginBottom: 15 }}>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Date: {selectedHistoryOrder && new Date(selectedHistoryOrder.created_at).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Table: {selectedHistoryOrder?.table_number || 'Counter'}</Text>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Status: {selectedHistoryOrder?.status}</Text>
+                            </View>
+                            <Text style={{ fontWeight: 'bold', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 5 }}>Food Items</Text>
+                            {selectedHistoryOrder?.items && (typeof selectedHistoryOrder.items === 'string' ? JSON.parse(selectedHistoryOrder.items) : selectedHistoryOrder.items).map((item, idx) => (
+                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <Text style={{ fontWeight: '500' }}>{item.name}</Text>
+                                    <Text style={{ color: '#64748B' }}>x{item.quantity}</Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        <TouchableOpacity style={[styles.alertCloseBtn, { borderRadius: 0 }]} onPress={() => setShowHistoryModal(false)}>
+                            <Text style={styles.alertCloseText}>CLOSE</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
             <View style={styles.mainContainer}>
                 {activeTab === 'orders'    && renderOrders()}
                 {activeTab === 'history' && renderHistory()}
                 {activeTab === 'account' && <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>}
+                {activeTab === 'notifications' && (
+                    <ScrollView style={styles.content}>
+                        <Text style={styles.sectionTitle}>Recent Notifications</Text>
+                        {notifications.map((n, idx) => (
+                            <TouchableOpacity key={idx} onPress={() => setActiveTab('orders')} style={styles.historyCard}>
+                                <Text style={{ fontWeight: 'bold', color: '#1E293B' }}>{n.title}</Text>
+                                <Text style={{ color: '#64748B', fontSize: 13 }}>{n.message}</Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 4 }}>{new Date(n.created_at).toLocaleTimeString()}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                )}
             </View>
 
             <View style={styles.bottomNav}>
@@ -843,8 +859,16 @@ const styles = StyleSheet.create({
     detailsFooter: { padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
     footerActionBtn: { backgroundColor: '#10B981', height: 64, borderRadius: 22, justifyContent: 'center', alignItems: 'center', elevation: 4 },
     footerActionText: { color: 'white', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
+    foodList: { backgroundColor: '#F8FAFC', borderRadius: 20, padding: 16, marginBottom: 10 },
     splitStatusBox: { flexDirection: 'row', gap: 12, marginTop: 10, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 12 },
     splitLabel: { fontSize: 11, fontWeight: 'bold', color: '#64748B' },
+
+    // History card styles
+    historyCard: { backgroundColor: 'white', borderRadius: 20, padding: 18, marginBottom: 14, borderLeftWidth: 5, borderLeftColor: '#10B981', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+    historyId: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+    historyDate: { fontSize: 12, color: '#64748B', marginTop: 4 },
+    historyStatus: { fontSize: 13, fontWeight: '700', color: '#10B981', marginTop: 4 },
+    historyItems: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
 });
 
 export default KitchenDashboard;

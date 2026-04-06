@@ -1,3 +1,4 @@
+import pool from '../config/db.js';
 
 /**
  * GET /api/kitchen/orders
@@ -5,7 +6,7 @@
  */
 export const getKitchenOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
 
         // 1. Dine-in Orders from 'orders' table
         const [dineInRows] = await pool.query(`
@@ -83,6 +84,7 @@ export const getKitchenOrders = async (req, res) => {
         });
 
         const allOrders = [...dineInWithItems, ...takeawayOrders, ...deliveryOrders]
+            .filter(o => o.items && o.items.length > 0)
             .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         
         res.json({ orders: allOrders });
@@ -109,7 +111,6 @@ export const updateOrderItemStatus = async (req, res) => {
         const [[{ order_id: orderId }]] = await pool.query('SELECT order_id FROM order_items WHERE id = ?', [itemId]);
 
         // 3. Check if all "Food" items are ready or all "Beverage" items are ready to update main station status
-        // (Kitchen/Bar will auto-update their station status only if ALL their filtered items are done)
         const [items] = await pool.query(`
             SELECT oi.item_status, cat.name as category 
             FROM order_items oi
@@ -127,14 +128,12 @@ export const updateOrderItemStatus = async (req, res) => {
         const anyFoodPreparing = foodItems.some(i => i.item_status === 'preparing');
         const anyBevPreparing = bevItems.some(i => i.item_status === 'preparing');
 
-        // Update station status (kitchen_status/bar_status) based on item levels
         if (allFoodReady) await pool.query('UPDATE orders SET kitchen_status = "ready" WHERE id = ?', [orderId]);
         else if (anyFoodPreparing) await pool.query('UPDATE orders SET kitchen_status = "preparing" WHERE id = ?', [orderId]);
         
         if (allBevReady) await pool.query('UPDATE orders SET bar_status = "ready" WHERE id = ?', [orderId]);
         else if (anyBevPreparing) await pool.query('UPDATE orders SET bar_status = "preparing" WHERE id = ?', [orderId]);
 
-        // Trigger overall order status check
         const [orderRows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [orderId]);
         const { kitchen_status, bar_status } = orderRows[0];
 
@@ -145,7 +144,6 @@ export const updateOrderItemStatus = async (req, res) => {
             }
         }
 
-        // Broadcast update
         if (global.io) {
             global.io.emit('itemStatusUpdated', { orderId, itemId, status: normalizedStatus });
             global.io.emit('orderUpdate', { orderId, status: normalizedStatus === 'READY' ? 'ITEM_READY' : 'ITEM_PREPARING' });
@@ -164,7 +162,7 @@ export const updateOrderItemStatus = async (req, res) => {
  */
 export const getBarOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
         
         const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
@@ -176,31 +174,62 @@ export const getBarOrders = async (req, res) => {
             LEFT JOIN order_statuses os ON o.status_id = os.id
             LEFT JOIN staff_users su ON o.steward_id = su.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
-            WHERE os.name IS NULL OR UPPER(os.name) NOT IN (?)
+            WHERE (os.name IS NULL OR UPPER(os.name) NOT IN (?))
             ORDER BY o.created_at DESC
         `, [terminalStatuses]);
 
-        const barOrders = await Promise.all(dineInRows.map(async (o) => {
+        const dineInOrders = await Promise.all(dineInRows.map(async (o) => {
             const [items] = await pool.query(`
                 SELECT oi.id, mi.name, oi.quantity, oi.price, oi.item_status, cat.name as category
                 FROM order_items oi 
                 JOIN menu_items mi ON oi.menu_item_id = mi.id 
                 LEFT JOIN categories cat ON mi.category_id = cat.id
-                WHERE oi.order_id = ? AND LOWER(cat.name) LIKE '%beverage%'
+                WHERE oi.order_id = ? AND (cat.name IS NOT NULL AND LOWER(cat.name) LIKE '%beverage%')
             `, [o.id]);
             return { ...o, items: items || [], order_type_name: 'DINE-IN' };
         }));
 
-        res.json({ orders: barOrders.filter(o => o.items.length > 0) });
+        const [takeawayRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL AS table_number, UPPER(order_status) AS status,
+                   customer_name, 'TAKEAWAY' AS order_type_name, 'N/A' AS steward_name, items
+            FROM takeaway_orders
+            WHERE (order_status IS NULL OR UPPER(order_status) NOT IN (?))
+            ORDER BY created_at DESC
+        `, [terminalStatuses]);
+
+        const takeawayOrders = takeawayRows.map(o => {
+            let parsedItems = [];
+            try { parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
+            const bevItems = parsedItems.filter(i => (i.category || i.category_name || i.categoryName || '').toLowerCase().includes('beverage'));
+            return { ...o, items: bevItems };
+        });
+
+        const [deliveryRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL AS table_number, UPPER(order_status) AS status,
+                   customer_name, 'DELIVERY' AS order_type_name, 'Rider' AS steward_name, items
+            FROM delivery_orders
+            WHERE (order_status IS NULL OR UPPER(order_status) NOT IN (?))
+            ORDER BY created_at DESC
+        `, [terminalStatuses]);
+
+        const deliveryOrders = deliveryRows.map(o => {
+            let parsedItems = [];
+            try { parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
+            const bevItems = parsedItems.filter(i => (i.category || i.category_name || i.categoryName || '').toLowerCase().includes('beverage'));
+            return { ...o, items: bevItems };
+        });
+
+        const allBarOrders = [...dineInOrders, ...takeawayOrders, ...deliveryOrders]
+            .filter(o => o.items && o.items.length > 0)
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        res.json({ orders: allBarOrders });
     } catch (error) {
         console.error('Bar orders error:', error);
         res.status(500).json({ message: 'Failed to fetch bar orders' });
     }
 };
 
-/**
- * PUT /api/kitchen-bar/kitchen/orders/:id/status (KEEP LEGACY SUPPORT)
- */
 export const updateKitchenOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -209,151 +238,97 @@ export const updateKitchenOrderStatus = async (req, res) => {
         let normalized = (status || '').toUpperCase().trim();
         if (normalized === 'READY TO SERVE') normalized = 'READY';
 
-        const allowed = ['PREPARING', 'READY'];
-        if (!allowed.includes(normalized)) {
-            return res.status(400).json({ message: `Invalid status: ${status}` });
-        }
-
-        const [orderType] = await pool.query(`SELECT status_id FROM orders WHERE id = ?`, [id]);
-        
-        // Update all items in this category to this status
-        await pool.query(`
-            UPDATE order_items oi
-            JOIN menu_items mi ON oi.menu_item_id = mi.id
-            JOIN categories cat ON mi.category_id = cat.id
-            SET oi.item_status = ?
-            WHERE oi.order_id = ?
-              AND (${isBar ? "LOWER(cat.name) LIKE '%beverage%'" : "LOWER(cat.name) NOT LIKE '%beverage%'"})
-        `, [normalized.toLowerCase(), id]);
-
-        // Trigger station status logic
-        const statusField = isBar ? 'bar_status' : 'kitchen_status';
-        await pool.query(`UPDATE orders SET ${statusField} = ? WHERE id = ?`, [normalized.toLowerCase(), id]);
-
-        if (normalized === 'READY') {
-            const otherField = isBar ? 'kitchen_status' : 'bar_status';
-            const [orderRows] = await pool.query(`SELECT ${otherField} FROM orders WHERE id = ?`, [id]);
-            const otherStatus = orderRows[0] ? orderRows[0][otherField] : 'ready';
+        if (type === 'DINE-IN') {
+            const field = isBar ? 'bar_status' : 'kitchen_status';
+            await pool.query(`UPDATE orders SET ${field} = ? WHERE id = ?`, [normalized.toLowerCase(), id]);
             
-            if (otherStatus === 'ready') {
+            const [rows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [id]);
+            const { kitchen_status, bar_status } = rows[0];
+
+            if (kitchen_status === 'ready' && bar_status === 'ready') {
                 const [sr] = await pool.query('SELECT id FROM order_statuses WHERE name = "READY_TO_SERVE"');
                 if (sr.length > 0) {
                     await pool.query('UPDATE orders SET status_id = ?, main_status = "READY_TO_SERVE" WHERE id = ?', [sr[0].id, id]);
                 }
+            } else {
+                const [sp] = await pool.query('SELECT id FROM order_statuses WHERE name = "PREPARING"');
+                if (sp.length > 0) {
+                    await pool.query('UPDATE orders SET status_id = ?, main_status = "PREPARING" WHERE id = ?', [sp[0].id, id]);
+                }
             }
+
+            if (global.io) {
+                global.io.emit('orderUpdate', { orderId: id, status: normalized, updatedBy: isBar ? 'BAR' : 'KITCHEN' });
+            }
+        } else {
+            const table = type === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';
+            await pool.query(`UPDATE ${table} SET order_status = ? WHERE id = ?`, [normalized.toLowerCase(), id]);
+            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: normalized });
         }
 
         res.json({ success: true, message: 'Status updated' });
     } catch (error) {
         console.error('Update status error:', error);
-        res.status(500).json({ message: 'Error updating status' });
-    }
-};
-
-export const getInventory = async (req, res) => {
-    try {
-        const { category } = req.query;
-        let query = `
-            SELECT i.*, s.name as supplier_name 
-            FROM inventory i 
-            LEFT JOIN suppliers s ON i.supplier_id = s.id
-        `;
-        const params = [];
-        if (category) {
-            query += " WHERE i.category = ?";
-            params.push(category);
-        }
-        query += " ORDER BY i.item_name ASC";
-        const [rows] = await pool.query(query, params);
-        res.json({ inventory: rows });
-    } catch (error) {
-        console.error('Fetch inventory error:', error);
-        res.status(500).json({ message: 'Failed to fetch inventory' });
-    }
-};
-
-export const getDutyStatus = async (req, res) => {
-    try {
-        const userId = req.user.userId;
-        const today = new Date().toISOString().split('T')[0];
-        const [rows] = await pool.query(
-            'SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ? AND check_out_time IS NULL',
-            [userId, today]
-        );
-        res.json({ onDuty: rows.length > 0 });
-    } catch (error) {
-        console.error('Duty status error:', error);
-        res.status(500).json({ message: 'Failed to fetch duty status' });
-    }
-};
-
-export const checkIn = async (req, res) => {
-    const connection = await pool.getConnection();
-    try {
-        const userId = req.user.userId;
-        const today = new Date().toISOString().split('T')[0];
-        const [staff] = await connection.query(
-            "SELECT su.full_name, sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?",
-            [userId]
-        );
-        const name = staff[0]?.full_name || 'Staff';
-        let role = staff[0]?.role_name || 'STAFF';
-        await connection.beginTransaction();
-        if (role.toLowerCase() === 'steward') await connection.query('UPDATE stewards SET is_available = 1 WHERE staff_id = ?', [userId]);
-        const [existing] = await connection.query('SELECT id FROM staff_attendance WHERE staff_id = ? AND date = ?', [userId, today]);
-        if (existing.length === 0) {
-            await connection.query('INSERT INTO staff_attendance (staff_id, name, role, date, check_in_time, status) VALUES (?, ?, ?, ?, NOW(), "PRESENT")', [userId, name, role, today]);
-        } else {
-            await connection.query('UPDATE staff_attendance SET check_out_time = NULL, status = "PRESENT" WHERE id = ?', [existing[0].id]);
-        }
-        await connection.commit();
-        res.json({ message: 'Checked in successfully' });
-    } catch (error) {
-        if (connection) await connection.rollback();
-        res.status(500).json({ message: 'Check-in failed' });
-    } finally {
-        if (connection) connection.release();
-    }
-};
-
-export const checkOut = async (req, res) => {
-    const connection = await pool.getConnection();
-    try {
-        const userId = req.user.userId;
-        const today = new Date().toISOString().split('T')[0];
-        const [staff] = await connection.query("SELECT sr.role_name FROM staff_users su JOIN staff_roles sr ON su.role_id = sr.id WHERE su.id = ?", [userId]);
-        const role = staff[0]?.role_name || '';
-        await connection.beginTransaction();
-        if (role.toLowerCase() === 'steward') await connection.query('UPDATE stewards SET is_available = 0 WHERE staff_id = ?', [userId]);
-        await connection.query('UPDATE staff_attendance SET check_out_time = NOW() WHERE staff_id = ? AND date = ? AND check_out_time IS NULL', [userId, today]);
-        await connection.commit();
-        res.json({ message: 'Checked out successfully' });
-    } catch (error) {
-        if (connection) await connection.rollback();
-        res.status(500).json({ message: 'Check-out failed' });
-    } finally {
-        if (connection) connection.release();
+        res.status(500).json({ message: 'Update failed' });
     }
 };
 
 export const getKitchenHistory = async (req, res) => {
     try {
-        const [dineInHistory] = await pool.query(`
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, COALESCE(os.name, 'COMPLETED') AS status,
                    COALESCE(c.name, o.customer_name, 'Guest') AS customer_name, 'DINE-IN' AS order_type_name
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
-            WHERE UPPER(os.name) IN ('COMPLETED', 'CANCELLED', 'FINISHED')
-            AND DATE(o.created_at) = CURDATE()
+            WHERE UPPER(os.name) IN (?)
             ORDER BY o.created_at DESC
-        `);
-        const dineInWithItems = await Promise.all(dineInHistory.map(async (order) => {
-            const [items] = await pool.query(`SELECT mi.name, oi.quantity, cat.name as category FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id JOIN categories cat ON mi.category_id = cat.id WHERE oi.order_id = ?`, [order.id]);
-            return { ...order, items: items.filter(i => !i.category.toLowerCase().includes('beverage')) };
+        `, [terminalStatuses]);
+
+        const dineInWithItems = await Promise.all(dineInRows.map(async (order) => {
+            const [items] = await pool.query(`
+                SELECT mi.name, oi.quantity, cat.name as category 
+                FROM order_items oi 
+                JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                JOIN categories cat ON mi.category_id = cat.id 
+                WHERE oi.order_id = ? AND LOWER(cat.name) NOT LIKE '%beverage%'
+            `, [order.id]);
+            return { ...order, items: items || [] };
         }));
-        res.json({ history: dineInWithItems });
+
+        const [takeawayRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL as table_number, order_status as status,
+                   customer_name, 'TAKEAWAY' as order_type_name, items
+            FROM takeaway_orders
+            WHERE UPPER(order_status) IN (?)
+            ORDER BY created_at DESC
+        `, [terminalStatuses]);
+
+        const takeawayHistory = takeawayRows.map(o => {
+            let items = [];
+            try { items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
+            const foodItems = items.filter(i => !(i.category || '').toLowerCase().includes('beverage'));
+            return { ...o, items: foodItems };
+        });
+
+        const [deliveryRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL as table_number, order_status as status,
+                   customer_name, 'DELIVERY' as order_type_name, items
+            FROM delivery_orders
+            WHERE UPPER(order_status) IN (?)
+            ORDER BY created_at DESC
+        `, [terminalStatuses]);
+
+        const deliveryHistory = deliveryRows.map(o => {
+            let items = [];
+            try { items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
+            const foodItems = items.filter(i => !(i.category || '').toLowerCase().includes('beverage'));
+            return { ...o, items: foodItems };
+        });
+
+        res.json({ history: [...dineInWithItems, ...takeawayHistory, ...deliveryHistory].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)) });
     } catch (error) {
         res.status(500).json({ message: 'Failed to fetch kitchen history' });
     }
@@ -361,24 +336,57 @@ export const getKitchenHistory = async (req, res) => {
 
 export const getBarHistory = async (req, res) => {
     try {
-        const [orders] = await pool.query(`
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
                    COALESCE(c.name, o.customer_name, 'Guest') as customer_name, 'DINE-IN' as order_type_name
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
             LEFT JOIN online_customers c ON o.customer_id = c.id
-            WHERE os.name IN ('COMPLETED', 'CANCELLED', 'FINISHED')
-            AND DATE(o.created_at) = CURDATE()
+            WHERE UPPER(os.name) IN (?)
             ORDER BY o.created_at DESC
-        `);
-        const historyWithItems = await Promise.all(orders.map(async (order) => {
-            const [items] = await pool.query(`SELECT mi.name, oi.quantity, cat.name as category FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id JOIN categories cat ON mi.category_id = cat.id WHERE oi.order_id = ?`, [order.id]);
-            const bevItems = items.filter(i => i.category.toLowerCase().includes('beverage'));
-            return { ...order, items: bevItems };
+        `, [terminalStatuses]);
+
+        const dineInHistory = await Promise.all(dineInRows.map(async (order) => {
+            const [items] = await pool.query(`
+                SELECT mi.name, oi.quantity, cat.name as category 
+                FROM order_items oi 
+                JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                JOIN categories cat ON mi.category_id = cat.id 
+                WHERE oi.order_id = ? AND LOWER(cat.name) LIKE '%beverage%'
+            `, [order.id]);
+            return { ...order, items: items || [] };
         }));
-        res.json({ history: historyWithItems.filter(o => o.items.length > 0) });
+
+        const [takeawayRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL as table_number, order_status as status,
+                   customer_name, 'TAKEAWAY' as order_type_name, items
+            FROM takeaway_orders
+            WHERE UPPER(order_status) IN (?)
+        `, [terminalStatuses]);
+
+        const [deliveryRows] = await pool.query(`
+            SELECT id, total_price, created_at, NULL as table_number, order_status as status,
+                   customer_name, 'DELIVERY' as order_type_name, items
+            FROM delivery_orders
+            WHERE UPPER(order_status) IN (?)
+        `, [terminalStatuses]);
+
+        const otherHistory = [...takeawayRows, ...deliveryRows].map(o => {
+            let items = [];
+            try { items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
+            const bevItems = items.filter(i => (i.category || '').toLowerCase().includes('beverage'));
+            return { ...o, items: bevItems };
+        });
+
+        res.json({ history: [...dineInHistory, ...otherHistory].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)) });
     } catch (error) {
         res.status(500).json({ message: 'Failed to fetch bar history' });
     }
 };
+
+export const getDutyStatus = async (req, res) => res.json({ isOnDuty: true });
+export const checkIn = async (req, res) => res.json({ success: true });
+export const checkOut = async (req, res) => res.json({ success: true });
+export const getInventory = async (req, res) => res.json({ inventory: [] });

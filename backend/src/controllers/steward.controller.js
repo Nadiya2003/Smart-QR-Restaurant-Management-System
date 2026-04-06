@@ -1,16 +1,29 @@
 import pool from '../config/db.js';
 
+// Use the machine's LAN IP from env for building absolute URLs
+// This avoids returning 'localhost' to clients on other devices
+const BACKEND_BASE_URL = process.env.BACKEND_PUBLIC_URL || 
+    (process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(':3000', ':5000') : null);
+
 export const getAllStewards = async (req, res) => {
     try {
-        // stewards table columns: id, staff_id, is_available, created_at, loyalty_points
-        // No rating_avg column exists. Rating is computed from feedback/ratings tables.
+        // First, check which columns exist in the stewards table to build a safe query
+        const [colRows] = await pool.query(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stewards'
+        `);
+        const stewardCols = colRows.map(r => r.COLUMN_NAME);
+        const hasRating = stewardCols.includes('rating');
+
+        const ratingSelect = hasRating ? 'COALESCE(s.rating, 0.0)' : '0.0';
+
         const query = `
             SELECT 
                 u.id as id, 
                 u.full_name as name, 
                 u.profile_image as avatar,
                 COALESCE(s.is_available, 0) as is_available,
-                COALESCE(s.rating, 0.0) as rating,
+                ${ratingSelect} as rating,
                 COALESCE(att.attendance_count, 0) as attendance_count,
                 att.check_in_time,
                 COALESCE(ord.active_orders, 0) as activeOrders
@@ -36,16 +49,18 @@ export const getAllStewards = async (req, res) => {
 
         const [rows] = await pool.query(query);
 
+        // Use env-configured public URL, or fall back to the request host
+        // req.get('host') returns 'localhost:5000' when dev server proxies — bad for LAN clients
+        const reqHost = req.get('host') || 'localhost:5000';
+        const protocol = req.protocol === 'https' ? 'https' : 'http';
+        const baseUrl = BACKEND_BASE_URL || `${protocol}://${reqHost}`;
+
         const stewards = rows.map(row => {
-            const host = req.get('host') || 'localhost:5000';
-            const protocol = req.protocol === 'https' ? 'https' : 'http';
-            const baseUrl = `${protocol}://${host}`;
-            
             // Dual check: attendance today (no check-out) OR is_available flag = 1
             const hasAttendance = parseInt(row.attendance_count || 0) > 0;
             const onDuty = hasAttendance || row.is_available === 1;
 
-            // Image URL resolution
+            // Image URL resolution — always produce an absolute URL
             let avatarUrl = `${baseUrl}/stewards/steward-${(row.id % 6) + 1}.png`;
             if (row.avatar && !row.avatar.includes('default')) {
                 if (row.avatar.startsWith('http')) {

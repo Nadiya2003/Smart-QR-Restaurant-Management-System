@@ -390,11 +390,11 @@ export const createDineInOrder = async (req, res) => {
         let hasFood = false;
         let hasBeverages = false;
 
-        if (Array.isArray(items)) {
             for (const item of items) {
                 const menuItem = item.menuItem || item;
                 const catName = (menuItem.category_name || menuItem.category || 'Food').toUpperCase();
                 const isBeverage = catName.includes('BEVERAGE') || catName.includes('DRINK') || catName.includes('BAR');
+                const itemNotes = item.notes || menuItem.notes || '';
 
                 if (isBeverage) hasBeverages = true;
                 else hasFood = true;
@@ -403,7 +403,8 @@ export const createDineInOrder = async (req, res) => {
                     name: menuItem.name,
                     quantity: item.quantity || 1,
                     price: menuItem.price || 0,
-                    category: catName
+                    category: catName,
+                    notes: itemNotes
                 });
                 
                 // Add to order_analytics (for reports)
@@ -422,13 +423,12 @@ export const createDineInOrder = async (req, res) => {
                     ]
                 );
 
-                // Add to order_items (for steward view)
+                // Add to order_items (for kitchen/bar view)
                 await connection.query(
-                    'INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)',
-                    [targetOrderId, menuItem.id || 0, item.quantity || 1, menuItem.price || 0]
+                    'INSERT INTO order_items (order_id, menu_item_id, quantity, price, notes, item_status) VALUES (?, ?, ?, ?, ?, "pending")',
+                    [targetOrderId, menuItem.id || 0, item.quantity || 1, menuItem.price || 0, itemNotes]
                 );
             }
-        }
 
         // 4b. Update split statuses based on item types (Requirement #2)
         if (!hasFood) {
@@ -468,6 +468,8 @@ export const createDineInOrder = async (req, res) => {
         }
 
         // Emit for Real-time update (Requirement 13)
+        // NOTE: Only emit 'newOrder' — do NOT also emit 'orderUpdate' here.
+        // Emitting both for the same event causes duplicate popups on steward dashboards.
         if (global.io) {
             global.io.emit('newOrder', { 
                 orderId: targetOrderId, 
@@ -480,17 +482,6 @@ export const createDineInOrder = async (req, res) => {
                 customerType,
                 totalPrice: inclusiveNewTotal,
                 items: fullDetailedItems
-            });
-            global.io.emit('orderUpdate', { 
-                orderId: targetOrderId, 
-                type: 'DINE-IN',
-                isUpdate,
-                stewardId: resolvedStewardId,
-                staffId: steward_id,
-                tableNumber: table_number,
-                customerName,
-                customerType,
-                status: 'PENDING'
             });
         }
 

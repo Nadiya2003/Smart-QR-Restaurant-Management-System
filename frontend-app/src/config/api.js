@@ -1,19 +1,27 @@
 import { Platform } from 'react-native';
 
-// Backend API Configuration
-// When running on a physical device via Expo Go, we need to use the computer's LAN IP
-// When running on web or emulator, localhost works fine
-
-// IMPORTANT: Change this to your computer's local IP address
-// Find it with: ipconfig (Windows) or ifconfig (Mac/Linux)
-const LOCAL_IP = '192.168.1.3'; // Updated to current PC IP
+// ============================================================
+// ⚠️  NETWORK CONFIG — READ IF YOU GET "Network error"
+// ============================================================
+// The LOCAL_IP must match the IP of the PC running the backend.
+// To find your current IP:
+//   Windows → open Command Prompt → run: ipconfig
+//   Mac/Linux → open Terminal → run: ifconfig
+//
+// Look for "IPv4 Address" under your active Wi-Fi/Ethernet.
+// Both your phone AND the PC must be on the SAME Wi-Fi network.
+// ============================================================
+const LOCAL_IP = '192.168.1.4'; // ← UPDATE THIS if you change networks
+const PORT = 5000;               // Must match backend PORT (default 5000)
 
 const getBaseUrl = () => {
-    if (Platform.OS === 'web') {
-        return `http://${LOCAL_IP}:5000`;
+    // Android emulator uses 10.0.2.2 to reach host machine
+    if (Platform.OS === 'android' && __DEV__) {
+        // Uncomment the line below ONLY if using an Android emulator, not a physical device
+        // return `http://10.0.2.2:${PORT}`;
     }
-    // For Android/iOS physical devices or emulators
-    return `http://${LOCAL_IP}:5000`;
+    // Physical devices and iOS simulator need the LAN IP
+    return `http://${LOCAL_IP}:${PORT}`;
 };
 
 export const API_BASE_URL = getBaseUrl();

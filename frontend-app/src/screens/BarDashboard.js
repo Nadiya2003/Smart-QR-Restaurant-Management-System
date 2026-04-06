@@ -56,16 +56,12 @@ const BarDashboard = () => {
     // Data States
     const [orders, setOrders] = useState([]);
     const [history, setHistory] = useState([]);
-    const [inventory, setInventory] = useState([]);
     const [notifications, setNotifications] = useState([]);
-    const [isOnDuty, setIsOnDuty] = useState(false);
     const [updatingId, setUpdatingId] = useState(null);
     const [socketConnected, setSocketConnected] = useState(false);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
 
-    // Notification Popup State
-    const [alertPopupVisible, setAlertPopupVisible] = useState(false);
-    const [activeAlert, setActiveAlert] = useState(null);
-    
     // Sound & Notification refs
     const prevOrderIds = useRef(new Set());
     const prevItemCount = useRef(0);
@@ -106,11 +102,9 @@ const BarDashboard = () => {
     const fetchData = useCallback(async (isSilent = false) => {
         if (!isSilent) setLoading(true);
         try {
-            const [orderRes, historyRes, invRes, statusRes, notifRes] = await Promise.all([
+            const [orderRes, historyRes, notifRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/bar/orders`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/bar/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/inventory?category=Bar`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/status`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers })
             ]);
 
@@ -145,8 +139,6 @@ const BarDashboard = () => {
                 setOrders(newOrders);
             }
             if (historyRes.ok) setHistory((await historyRes.json()).history || []);
-            if (invRes.ok) setInventory((await invRes.json()).inventory || []);
-            if (statusRes.ok) setIsOnDuty((await statusRes.json()).onDuty);
             if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
         } catch (error) {
             console.error('Bar fetch error:', error);
@@ -241,19 +233,7 @@ const BarDashboard = () => {
     const onRefresh = () => { setRefreshing(true); fetchData(); };
 
     const handleDutyToggle = async () => {
-        const endpoint = isOnDuty ? 'check-out' : 'check-in';
-        try {
-            const res = await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/${endpoint}`, {
-                method: 'POST', headers
-            });
-            if (res.ok) {
-                setIsOnDuty(!isOnDuty);
-                Alert.alert('Attendance', `Shift ${!isOnDuty ? 'Started ✅' : 'Ended 🔴'}`);
-                fetchData(true);
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to update attendance');
-        }
+        // Auto check-in only — bar staff don't manually toggle
     };
 
     const updateStatus = async (orderId, newStatus, orderTypeName) => {
@@ -424,18 +404,10 @@ const BarDashboard = () => {
         const pending = orders.filter(o => !['PREPARING', 'READY'].includes((o.status || '').toUpperCase()));
         const preparing = orders.filter(o => (o.status || '').toUpperCase() === 'PREPARING');
         const ready = orders.filter(o => (o.status || '').toUpperCase() === 'READY');
-        const lowStock = inventory.filter(i => i.quantity <= i.min_level);
 
         return (
             <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-                <View style={[styles.dutyCard, isOnDuty ? styles.onDutyBg : styles.offDutyBg]}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.dutyTitle}>{isOnDuty ? '🟢 Bar Station Active' : '🔴 Bar Station Offline'}</Text>
-                        <Text style={styles.dutySub}>Toggle to start receiving beverage tickets</Text>
-                    </View>
-                    <Switch value={isOnDuty} onValueChange={handleDutyToggle} trackColor={{ false: '#9CA3AF', true: '#8B5CF6' }} thumbColor={isOnDuty ? '#fff' : '#f4f3f4'} />
-                </View>
-
+                {/* Stats — no duty card, no stock box */}
                 <View style={styles.statsRow}>
                     <View style={[styles.statBox, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
                         <Text style={[styles.statVal, { color: '#C2410C' }]}>{pending.length}</Text>
@@ -449,10 +421,6 @@ const BarDashboard = () => {
                         <Text style={[styles.statVal, { color: '#065F46' }]}>{ready.length}</Text>
                         <Text style={styles.statLabel}>✅ Ready</Text>
                     </View>
-                    <View style={[styles.statBox, { backgroundColor: lowStock.length > 0 ? '#FEF2F2' : '#F9FAFB', borderColor: lowStock.length > 0 ? '#FCA5A5' : '#E5E7EB' }]}>
-                        <Text style={[styles.statVal, { color: lowStock.length > 0 ? '#DC2626' : '#9CA3AF' }]}>{lowStock.length}</Text>
-                        <Text style={styles.statLabel}>📦 Stocks</Text>
-                    </View>
                 </View>
 
                 <View style={styles.sectionHeader}>
@@ -465,10 +433,11 @@ const BarDashboard = () => {
                 ) : (
                     <>
                         {pending.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#F59E0B' }]} /><Text style={styles.groupText}>NEW TICKETS ({pending.length})</Text></View>{pending.map(renderOrderCard)}</>}
-                        {preparing.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#F59E0B' }]} /><Text style={styles.groupText}>PREPARING ({preparing.length})</Text></View>{preparing.map(renderOrderCard)}</>}
+                        {preparing.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#8B5CF6' }]} /><Text style={styles.groupText}>PREPARING ({preparing.length})</Text></View>{preparing.map(renderOrderCard)}</>}
                         {ready.length > 0 && <><View style={styles.groupLabel}><View style={[styles.groupDot, { backgroundColor: '#10B981' }]} /><Text style={styles.groupText}>STATION READY ({ready.length})</Text></View>{ready.map(renderOrderCard)}</>}
                     </>
                 )}
+                <View style={{ height: 40 }} />
             </ScrollView>
         );
     };
@@ -486,7 +455,7 @@ const BarDashboard = () => {
                 </TouchableOpacity>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.greeting}>Hello, {user?.name}</Text>
-                    <Text style={styles.roleTitle}>Bar Manager Dashboard</Text>
+                    <Text style={styles.roleTitle}>Bar Dashboard</Text>
                 </View>
                 <View style={styles.headerRight}>
                     {!socketConnected && <View style={styles.offlineDot} />}
@@ -499,21 +468,13 @@ const BarDashboard = () => {
             </View>
 
             {/* Notification ALERT POPUP */}
-            <Modal
-                animationType="fade"
-                transparent={true}
-                visible={alertPopupVisible}
-                onRequestClose={() => setAlertPopupVisible(false)}
-            >
+            <Modal animationType="fade" transparent={true} visible={alertPopupVisible} onRequestClose={() => setAlertPopupVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.alertPopup}>
                         <View style={[styles.alertHeader, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]}>
-                            <Text style={styles.alertEmoji}>
-                                {activeAlert?.type === 'CANCEL' ? '🚨' : '🍹'}
-                            </Text>
+                            <Text style={styles.alertEmoji}>{activeAlert?.type === 'CANCEL' ? '🚨' : '🍹'}</Text>
                             <Text style={styles.alertTitle}>{activeAlert?.title}</Text>
                         </View>
-                        
                         <View style={styles.alertBody}>
                             <View style={styles.alertRow}>
                                 <Text style={styles.alertLabel}>ORDER ID:</Text>
@@ -529,44 +490,100 @@ const BarDashboard = () => {
                                     <Text style={styles.alertVal}>{activeAlert.customer}</Text>
                                 </View>
                             )}
-                            {activeAlert?.status && (
-                                <View style={styles.alertRow}>
-                                    <Text style={styles.alertLabel}>NEW STATUS:</Text>
-                                    <Text style={[styles.alertVal, { color: '#8B5CF6', fontWeight: 'bold' }]}>{activeAlert.status}</Text>
+                            {activeAlert?.reason && (
+                                <View style={[styles.alertRow, { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, borderBottomWidth: 0 }]}>
+                                    <Text style={[styles.alertLabel, { color: '#EF4444' }]}>REASON:</Text>
+                                    <Text style={[styles.alertVal, { color: '#991B1B', flex: 1, textAlign: 'right' }]}>{activeAlert.reason}</Text>
                                 </View>
                             )}
                         </View>
-
-                        <TouchableOpacity 
-                            style={[styles.alertCloseBtn, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]} 
-                            onPress={() => {
-                                setAlertPopupVisible(false);
-                                setActiveTab('orders');
-                                fetchData();
-                            }}
+                        <TouchableOpacity
+                            style={[styles.alertCloseBtn, activeAlert?.type === 'CANCEL' && { backgroundColor: '#EF4444' }]}
+                            onPress={() => { setAlertPopupVisible(false); setActiveTab('orders'); fetchData(); }}
                         >
-                            <Text style={styles.alertCloseText}>VIEW ORDER 📑</Text>
+                            <Text style={styles.alertCloseText}>VIEW ORDERS 📑</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* HISTORY DETAIL MODAL */}
+            <Modal visible={showHistoryModal} transparent animationType="slide" onRequestClose={() => setShowHistoryModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.historyModal}>
+                        <View style={styles.historyModalHeader}>
+                            <View>
+                                <Text style={styles.historyModalTitle}>Order History</Text>
+                                <Text style={styles.historyModalId}>#{selectedHistoryOrder?.id}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setShowHistoryModal(false)} style={styles.closeBtn}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ padding: 25 }}>
+                            <View style={{ marginBottom: 15 }}>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Date: {selectedHistoryOrder && new Date(selectedHistoryOrder.created_at).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Table: {selectedHistoryOrder?.table_number || 'Counter'}</Text>
+                                <Text style={{ fontSize: 13, color: '#64748B' }}>Status: {selectedHistoryOrder?.status}</Text>
+                            </View>
+                            <Text style={{ fontWeight: 'bold', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 5 }}>Beverage Items</Text>
+                            {selectedHistoryOrder?.items && (typeof selectedHistoryOrder.items === 'string' ? JSON.parse(selectedHistoryOrder.items) : selectedHistoryOrder.items).map((item, idx) => (
+                                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <Text style={{ fontWeight: '500' }}>{item.name}</Text>
+                                    <Text style={{ color: '#64748B' }}>x{item.quantity}</Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        <TouchableOpacity style={[styles.alertCloseBtn, { borderRadius: 0 }]} onPress={() => setShowHistoryModal(false)}>
+                            <Text style={styles.alertCloseText}>CLOSE</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
 
             <View style={styles.mainContainer}>
-                {activeTab === 'orders'    && renderOrders()}
+                {activeTab === 'orders' && renderOrders()}
                 {activeTab === 'history' && (
                     <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                         <View style={styles.sectionHeader}>
-                            <View><Text style={styles.sectionTitle}>📜 Bar History</Text></View>
+                            <View><Text style={styles.sectionTitle}>📜 Bar Order History</Text></View>
                             <TouchableOpacity onPress={() => fetchData()} style={styles.refreshBtn}><Text style={styles.refreshBtnText}>↻ Refresh</Text></TouchableOpacity>
                         </View>
                         {history.length === 0 ? (
-                            <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No History</Text></View>
+                            <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No History</Text><Text style={styles.emptyText}>Completed drink orders appear here.</Text></View>
                         ) : (
-                            history.map(renderOrderCard)
+                            history.map(order => (
+                                <TouchableOpacity
+                                    key={order.id}
+                                    style={styles.historyCard}
+                                    onPress={() => { setSelectedHistoryOrder(order); setShowHistoryModal(true); }}
+                                >
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Text style={styles.historyId}>#{order.id} — Table {order.table_number || 'Counter'}</Text>
+                                        <Text style={{ fontSize: 18 }}>👁️</Text>
+                                    </View>
+                                    <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleString()}</Text>
+                                    <Text style={styles.historyStatus}>{order.status}</Text>
+                                    <Text style={styles.historyItems}>{(order.items || []).length} beverage item(s)</Text>
+                                </TouchableOpacity>
+                            ))
                         )}
+                        <View style={{ height: 40 }} />
                     </ScrollView>
                 )}
                 {activeTab === 'account' && <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>}
+                {activeTab === 'notifications' && (
+                    <ScrollView style={styles.content}>
+                        <Text style={styles.sectionTitle}>Recent Notifications</Text>
+                        {notifications.map((n, idx) => (
+                            <TouchableOpacity key={idx} onPress={() => setActiveTab('orders')} style={styles.historyCard}>
+                                <Text style={{ fontWeight: 'bold', color: '#1E293B' }}>{n.title}</Text>
+                                <Text style={{ color: '#64748B', fontSize: 13 }}>{n.message}</Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 4 }}>{new Date(n.created_at).toLocaleTimeString()}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                )}
             </View>
 
             <View style={styles.bottomNav}>
@@ -667,6 +684,20 @@ const styles = StyleSheet.create({
     alertVal: { fontSize: 16, color: '#1E293B', fontWeight: '900' },
     alertCloseBtn: { backgroundColor: '#8B5CF6', paddingVertical: 22, alignItems: 'center' },
     alertCloseText: { color: 'white', fontWeight: '900', fontSize: 15, letterSpacing: 1 },
+
+    // History card styles
+    historyCard: { backgroundColor: 'white', borderRadius: 20, padding: 18, marginBottom: 14, borderLeftWidth: 5, borderLeftColor: '#8B5CF6', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+    historyId: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+    historyDate: { fontSize: 12, color: '#64748B', marginTop: 4 },
+    historyStatus: { fontSize: 13, fontWeight: '700', color: '#8B5CF6', marginTop: 4 },
+    historyItems: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+
+    // History detail modal
+    historyModal: { width: '90%', maxWidth: 500, maxHeight: '80%', backgroundColor: 'white', borderRadius: 32, overflow: 'hidden' },
+    historyModalHeader: { padding: 25, backgroundColor: '#F5F3FF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    historyModalTitle: { fontSize: 12, fontWeight: '900', color: '#7C3AED', letterSpacing: 1.5, textTransform: 'uppercase' },
+    historyModalId: { fontSize: 32, fontWeight: '900', color: '#1E293B' },
+    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
 });
 
 export default BarDashboard;

@@ -20,6 +20,8 @@ export function MenuPage({ onNavigate }) {
   const { currentOrder, selectedStewardId, tableNumber, clearOrder } = useOrder();
   const { isAuthenticated, logout } = useAuth();
 
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -178,7 +180,7 @@ export function MenuPage({ onNavigate }) {
                 image: (item.image_url || item.image) ? (
                   (item.image_url || item.image).startsWith('http') 
                     ? (item.image_url || item.image) 
-                    : `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${item.image_url || item.image}`
+                    : `${BASE_URL}${item.image_url || item.image}`
                 ) : null,
                 isAvailable: item.is_active !== 0 && item.is_active !== false && item.is_active !== '0'
               }} onAddToCart={addItem} />

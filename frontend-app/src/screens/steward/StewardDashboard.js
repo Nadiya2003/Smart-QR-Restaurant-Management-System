@@ -51,6 +51,7 @@ const StewardDashboard = () => {
 
     // New Order System States
     const [activeOrderContext, setActiveOrderContext] = useState(null); // { table, orderId, type: 'new' | 'update' }
+    const selfTriggeredUpdate = useRef(false); // Suppress duplicate socket popup for own status updates
     const [showCart, setShowCart] = useState(false);
 
     // Cross-platform Filter Modal
@@ -75,7 +76,8 @@ const StewardDashboard = () => {
 
     // Notification log
     const [readyAlerts, setReadyAlerts] = useState([]);
-    const notifiedIds = useRef(new Set());
+    const notifiedIds = useRef(new Set());        // dedup ready-order voice alerts
+    const seenOrderIds = useRef(new Set());        // dedup newOrder popup (prevents double popup)
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
@@ -189,15 +191,23 @@ const StewardDashboard = () => {
         });
 
         socket.on('orderUpdate', (data) => {
-            // Requirement #1: Reliable popups for status updates
+            // If this steward triggered the update themselves, skip the popup (avoid duplicate)
+            if (selfTriggeredUpdate.current) {
+                selfTriggeredUpdate.current = false;
+                fetchData(true);
+                return;
+            }
+
+            // Show popups for updates triggered by OTHER staff or the kitchen/bar
             if (data.staffId === user.id || !data.staffId) {
                 Vibration && Vibration.vibrate([100, 200, 100, 200]);
                 playNotificationSound();
 
                 if (data.action === 'ITEM_REMOVED') {
-                    pushToQueue('UPDATE', { ...data, title: 'Item Cancelled!', message: 'A customer dropped an item from Order #' + data.orderId, color: '#FCD34D' });
+                    pushToQueue('UPDATE', { ...data, title: 'Item Removed!', message: `A customer dropped an item from Order #${data.orderId}`, color: '#FCD34D' });
                     appendNotification('Item Removed 🗑️', `Order #${data.orderId} item altered.`);
                 } else if (data.status && data.status !== 'SESSION_ENDED') {
+                    // Only show popup for status changes initiated externally (kitchen ready, etc.)
                     pushToQueue('UPDATE', {
                         ...data,
                         title: 'Status Updated 🔔',
@@ -218,20 +228,30 @@ const StewardDashboard = () => {
         });
 
         socket.on('newOrder', (data) => {
-            // Requirement #1: Reliable sound + Popup for NEW orders
-            if (!data.staffId || data.staffId === user.id) {
-                Vibration && Vibration.vibrate([200, 100, 200]);
-                playNotificationSound();
-                appendNotification('New Order Placed 🥗', `Table ${data.tableNumber || 'Counter'} has placed Order #${data.orderId}`, { type: 'NEW_ORDER', refId: data.orderId });
-                pushToQueue('NEW_ORDER', {
-                    ...data,
-                    title: "NEW ORDER RECEIVED! 🥗",
-                    orderId: data.orderId || 'NEW',
-                    tableNumber: data.tableNumber || 'Counter',
-                    customerName: data.customerName || 'Guest'
-                });
-                fetchData(true);
-            }
+            // Deduplication: skip if we already showed a popup for this orderId
+            const orderKey = `${data.orderId}-${data.isUpdate ? 'upd' : 'new'}`;
+            if (seenOrderIds.current.has(orderKey)) return;
+            seenOrderIds.current.add(orderKey);
+            // Auto-clear after 30s so the same order can notify again after a long gap
+            setTimeout(() => seenOrderIds.current.delete(orderKey), 30000);
+
+            Vibration && Vibration.vibrate([200, 100, 200]);
+            playNotificationSound();
+
+            const title = data.isUpdate ? '🍽️ ITEMS ADDED TO ORDER!' : '🥗 NEW ORDER RECEIVED!';
+            const notifMsg = data.isUpdate
+                ? `Table ${data.tableNumber || '?'} added more items to Order #${data.orderId}`
+                : `Table ${data.tableNumber || 'Counter'} placed Order #${data.orderId}`;
+
+            appendNotification(title, notifMsg, { type: 'NEW_ORDER', refId: data.orderId });
+            pushToQueue('NEW_ORDER', {
+                ...data,
+                title,
+                orderId: data.orderId || 'NEW',
+                tableNumber: data.tableNumber || 'Counter',
+                customerName: data.customerName || 'Guest'
+            });
+            fetchData(true);
         });
 
         socket.on('paymentRequest', (data) => {
@@ -245,24 +265,34 @@ const StewardDashboard = () => {
         });
 
         socket.on('cancelRequest', (data) => {
-            if (data.staffId === user.id) {
-                Vibration && Vibration.vibrate([300, 150, 300]);
-                if (data.playSound || true) playNotificationSound();
-                appendNotification('Cancel Request 🚫', `Table ${data.tableNumber} wants to cancel: "${data.reason}".`, { type: 'CANCEL_REQ', refId: data.orderId });
-                pushToQueue('CANCEL', data);
-                fetchData(true);
-            }
+            // Show to ALL stewards (customers send this, not staff)
+            Vibration && Vibration.vibrate([300, 150, 300]);
+            playNotificationSound();
+            appendNotification('Cancel Request 🚫', `Table ${data.tableNumber} wants to cancel: "${data.reason || 'No reason given'}".`, { type: 'CANCEL_REQ', refId: data.orderId });
+            pushToQueue('CANCEL', {
+                ...data,
+                title: '🚫 CANCEL REQUEST',
+                message: `Table ${data.tableNumber || '?'} - Order #${data.orderId} wants to cancel.\nReason: ${data.reason || 'No reason provided'}`,
+                color: '#EF4444'
+            });
+            fetchData(true);
         });
 
         socket.on('orderCancelled', (data) => {
-            Vibration && Vibration.vibrate([100, 50, 400]);
+            // Strong vibration pattern for cancellation urgency
+            Vibration && Vibration.vibrate([300, 100, 300, 100, 600]);
             playNotificationSound();
             fetchData(true);
-            appendNotification('Order Cancelled 🛑', `Order #${data.orderId} for Table ${data.tableNumber} cancelled officially.`);
+            appendNotification(
+                '🛑 Order Cancelled',
+                `Order #${data.orderId} · Table ${data.tableNumber || '?'} has been CANCELLED.${ data.reason ? ` Reason: ${data.reason}` : '' }`
+            );
             pushToQueue('CANCEL', {
                 ...data,
-                title: '🛑 ORDER CANCELLED!',
-                message: `Table ${data.tableNumber} order #${data.orderId} has been cancelled. STOP preparation and clear table if needed.`,
+                title: '🛑 ORDER CANCELLED',
+                tableNumber: data.tableNumber || '?',
+                orderId: data.orderId,
+                reason: data.reason || 'Customer cancelled the order',
                 color: '#EF4444'
             });
         });
@@ -317,6 +347,8 @@ const StewardDashboard = () => {
 
     const handleUpdateStatus = async (orderId, status) => {
         try {
+            // Mark as self-triggered so socket won't show duplicate popup
+            selfTriggeredUpdate.current = true;
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers,
@@ -324,14 +356,20 @@ const StewardDashboard = () => {
             });
 
             if (res.ok) {
-                fetchData();
+                fetchData(true);
+                // Single clean success notification in the notification log only
+                appendNotification('Status Updated ✅', `Order #${orderId} status set to ${status}.`);
             } else {
+                selfTriggeredUpdate.current = false;
                 const err = await res.json();
                 if (err.message && err.message.includes('Payment pending')) {
                     Alert.alert('Payment Required', err.message);
+                } else {
+                    Alert.alert('Error', err.message || 'Failed to update status');
                 }
             }
         } catch (error) {
+            selfTriggeredUpdate.current = false;
             Alert.alert('Error', 'Failed to update status');
         }
     };
@@ -361,20 +399,26 @@ const StewardDashboard = () => {
     };
 
     const handleCancelRequest = async () => {
-        if (!cancelReason) return Alert.alert('Error', 'Please provide a reason');
+        if (!cancelReason.trim()) return Alert.alert('Reason Required', 'Please enter a reason for cancellation before submitting.');
         try {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/${orderDetail.id}/cancel-request`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ reason: cancelReason })
+                body: JSON.stringify({ reason: cancelReason.trim() })
             });
             if (res.ok) {
                 setShowCancelModal(false);
                 setCancelReason('');
-                fetchData();
+                fetchData(true);
+                // Single clean success notification
+                appendNotification('Cancel Request Sent 🚫', `Cancellation request for Order #${orderDetail.id} has been submitted.`);
+                Alert.alert('Request Sent ✅', `Cancellation request for Order #${orderDetail.id} has been sent to the manager.`);
+            } else {
+                const err = await res.json();
+                Alert.alert('Failed', err.message || 'Could not send cancel request');
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to send request');
+            Alert.alert('Error', 'Network error. Failed to send cancel request.');
         }
     };
 
@@ -1302,22 +1346,67 @@ return (
             </View>
         </SafeAreaView>
         <Modal visible={showCancelModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <Text style={styles.modalTitle}>Request Cancellation</Text>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+                <View style={{ backgroundColor: 'white', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 40 }}>
+                    {/* Header */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 22 }}>🚫</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Request Cancellation</Text>
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>Order #{orderDetail?.id} · Table {orderDetail?.table_number}</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity onPress={() => { setShowCancelModal(false); setCancelReason(''); }}>
+                            <Text style={{ fontSize: 22, color: '#9CA3AF' }}>✕</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Warning Banner */}
+                    <View style={{ backgroundColor: '#FEF3C7', borderRadius: 12, padding: 12, marginVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ fontSize: 18 }}>⚠️</Text>
+                        <Text style={{ flex: 1, fontSize: 13, color: '#92400E', fontWeight: '600' }}>This will notify the manager. Only cancel if absolutely necessary.</Text>
+                    </View>
+
+                    {/* Reason Input */}
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8 }}>Reason for Cancellation *</Text>
                     <TextInput
-                        placeholder="Reason for cancellation..."
-                        style={styles.input}
+                        placeholder="e.g. Customer changed mind, wrong order placed..."
+                        placeholderTextColor="#9CA3AF"
+                        style={{
+                            borderWidth: 1.5,
+                            borderColor: cancelReason.trim() ? '#EF4444' : '#D1D5DB',
+                            borderRadius: 14,
+                            padding: 14,
+                            fontSize: 15,
+                            color: '#111827',
+                            minHeight: 90,
+                            textAlignVertical: 'top',
+                            backgroundColor: '#F9FAFB',
+                            marginBottom: 20
+                        }}
                         value={cancelReason}
                         onChangeText={setCancelReason}
                         multiline
+                        maxLength={300}
                     />
-                    <View style={styles.modalActions}>
-                        <TouchableOpacity onPress={() => setShowCancelModal(false)} style={styles.cancelBtn}>
-                            <Text>Back</Text>
+                    <Text style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'right', marginTop: -16, marginBottom: 16 }}>{cancelReason.length}/300</Text>
+
+                    {/* Action Buttons */}
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity
+                            onPress={() => { setShowCancelModal(false); setCancelReason(''); }}
+                            style={{ flex: 1, paddingVertical: 15, borderRadius: 14, borderWidth: 1.5, borderColor: '#D1D5DB', alignItems: 'center' }}
+                        >
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: '#6B7280' }}>← Go Back</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleCancelRequest} style={styles.confirmBtn}>
-                            <Text style={{ color: 'white' }}>Send Request</Text>
+                        <TouchableOpacity
+                            onPress={handleCancelRequest}
+                            style={{ flex: 1.5, paddingVertical: 15, borderRadius: 14, backgroundColor: '#EF4444', alignItems: 'center' }}
+                        >
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: 'white' }}>Send Cancel Request 🚫</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

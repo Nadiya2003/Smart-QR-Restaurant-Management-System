@@ -394,7 +394,7 @@ export function OrderProvider({ children }) {
             {children}
         </OrderContext.Provider>
     );
-};
+}
 
 export function useOrder() {
   const context = useContext(OrderContext);

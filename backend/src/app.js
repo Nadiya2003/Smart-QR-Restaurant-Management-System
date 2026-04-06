@@ -22,7 +22,7 @@ const app = express();
 // Middleware
 app.use(cors({
     origin: true, // Allow all origins (needed for Expo Go mobile app)
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
@@ -103,3 +103,7 @@ app.use((err, req, res, next) => {
 });
 
 export default app;
+
+// Trigger nodemon restart
+
+// Fix crash trigger

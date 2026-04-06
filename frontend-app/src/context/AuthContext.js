@@ -32,46 +32,60 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Helper: fetch with a timeout to avoid hanging on unreachable servers
+    const fetchWithTimeout = (url, options, timeoutMs = 10000) => {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+            fetch(url, options)
+                .then(res => { clearTimeout(timer); resolve(res); })
+                .catch(err => { clearTimeout(timer); reject(err); });
+        });
+    };
+
     const login = async (username, password) => {
+        let staffData = null;
+        let staffResponse = null;
+        let unifiedData = null;
+        let unifiedResponse = null;
+
+        // --- Try staff/admin login first ---
         try {
-            // Try staff/admin login first (supports hardcoded Admin login)
-            const response = await fetch(apiConfig.STAFF.LOGIN, {
+            staffResponse = await fetchWithTimeout(apiConfig.STAFF.LOGIN, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    username, 
-                    email: username, 
+                body: JSON.stringify({
+                    username,
+                    email: username,
                     password,
-                    deviceType: 'mobile' 
+                    deviceType: 'mobile'
                 }),
             });
+            staffData = await staffResponse.json();
 
-            const data = await response.json();
-
-            if (response.ok && data.token) {
+            if (staffResponse.ok && staffData.token) {
                 const userData = {
-                    ...data.user,
-                    name: data.user.name || data.user.full_name || username,
-                    role: data.user.role || 'STAFF',
+                    ...staffData.user,
+                    name: staffData.user.name || staffData.user.full_name || username,
+                    role: staffData.user.role || 'STAFF',
                 };
-
                 setUser(userData);
-                setToken(data.token);
-
+                setToken(staffData.token);
                 await AsyncStorage.setItem("user", JSON.stringify(userData));
-                await AsyncStorage.setItem("token", data.token);
-
+                await AsyncStorage.setItem("token", staffData.token);
                 return { success: true, role: userData.role };
             }
+        } catch (staffErr) {
+            console.warn("Staff login attempt failed (network):", staffErr.message);
+        }
 
-            // If staff login fails, try unified auth (customer login)
-            const unifiedResponse = await fetch(apiConfig.AUTH.LOGIN, {
+        // --- Fallback: try unified auth (customer / any role) ---
+        try {
+            unifiedResponse = await fetchWithTimeout(apiConfig.AUTH.LOGIN, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: username, password }),
             });
-
-            const unifiedData = await unifiedResponse.json();
+            unifiedData = await unifiedResponse.json();
 
             if (unifiedResponse.ok && unifiedData.token) {
                 const userData = {
@@ -79,28 +93,26 @@ export const AuthProvider = ({ children }) => {
                     name: unifiedData.user.name || unifiedData.user.full_name || username,
                     role: unifiedData.user.role || 'CUSTOMER',
                 };
-
                 setUser(userData);
                 setToken(unifiedData.token);
-
                 await AsyncStorage.setItem("user", JSON.stringify(userData));
                 await AsyncStorage.setItem("token", unifiedData.token);
-
                 return { success: true, role: userData.role };
             }
-
-            // Both failed
+        } catch (unifiedErr) {
+            console.warn("Unified login attempt failed (network):", unifiedErr.message);
             return {
                 success: false,
-                message: data.message || unifiedData.message || 'Invalid credentials'
-            };
-        } catch (error) {
-            console.error("Login error:", error);
-            return {
-                success: false,
-                message: 'Network error. Make sure the backend server is running.'
+                message: 'Network error. Make sure the backend server is running and your IP is correct.'
             };
         }
+
+        // Both endpoints responded but neither accepted credentials
+        const errorMsg =
+            (unifiedData?.message) ||
+            (staffData?.message) ||
+            'Invalid credentials. Please check your username/email and password.';
+        return { success: false, message: errorMsg };
     };
 
     const logout = async () => {

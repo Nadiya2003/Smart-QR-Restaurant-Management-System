@@ -1,32 +1,46 @@
-import mysql from 'mysql2/promise';
+import pool from './src/config/db.js';
 
-(async () => {
-    const conn = await mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: 'Nmk@6604',
-        database: 'smart_qr_restaurant'
-    });
-
+async function migrate() {
     try {
-        await conn.query('ALTER TABLE stewards ADD COLUMN rating DECIMAL(3,2) DEFAULT 5.00');
-        console.log('Added rating to stewards');
-    } catch(e) { console.log(e.message); }
+        console.log('--- Database Migration ---');
+        
+        // 1. Add notes to order_items
+        try {
+            await pool.query('ALTER TABLE order_items ADD COLUMN notes TEXT');
+            console.log('✓ Added notes to order_items');
+        } catch (e) {
+            if (e.code === 'ER_DUP_COLUMN_NAME') console.log('- Notes column already exists in order_items');
+            else throw e;
+        }
 
-    try {
-        await conn.query('ALTER TABLE feedback ADD COLUMN steward_id INT DEFAULT NULL');
-        console.log('Added steward_id to feedback');
-    } catch(e) { console.log(e.message); }
+        // 2. Add notes to takeaway_orders if missing
+        // Wait, takeaway_orders uses a JSON column 'items'. It should already contain notes within the JSON.
+        
+        // 3. Add notes to delivery_orders if missing
+        // Delivery orders ALSO uses a JSON column 'items'.
+        
+        // 4. Ensure kitchen_status and bar_status exist in orders
+        const [cols] = await pool.query('SHOW COLUMNS FROM orders');
+        const colNames = cols.map(c => c.Field);
+        if (!colNames.includes('kitchen_status')) {
+            await pool.query("ALTER TABLE orders ADD COLUMN kitchen_status VARCHAR(20) DEFAULT 'pending'");
+            console.log('✓ Added kitchen_status to orders');
+        }
+        if (!colNames.includes('bar_status')) {
+            await pool.query("ALTER TABLE orders ADD COLUMN bar_status VARCHAR(20) DEFAULT 'pending'");
+            console.log('✓ Added bar_status to orders');
+        }
+        if (!colNames.includes('main_status')) {
+            await pool.query("ALTER TABLE orders ADD COLUMN main_status VARCHAR(20) DEFAULT 'PENDING'");
+            console.log('✓ Added main_status to orders');
+        }
 
-    try {
-        await conn.query('ALTER TABLE feedback ADD COLUMN is_complaint TINYINT(1) DEFAULT 0');
-        console.log('Added is_complaint to feedback');
-    } catch(e) { console.log(e.message); }
+        console.log('--- Migration Complete ---');
+        process.exit(0);
+    } catch (err) {
+        console.error('MIGRATION FAILED:', err);
+        process.exit(1);
+    }
+}
 
-    try {
-        await conn.query('ALTER TABLE restaurant_feedbacks ADD COLUMN steward_id INT DEFAULT NULL');
-        console.log('Added steward_id to restaurant_feedbacks');
-    } catch(e) { console.log(e.message); }
-
-    process.exit(0);
-})();
+migrate();

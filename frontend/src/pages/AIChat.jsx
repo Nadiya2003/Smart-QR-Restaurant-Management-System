@@ -22,7 +22,7 @@ function AIChat() {
     const [inputText, setInputText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [showScrollButton, setShowScrollButton] = useState(false);
-    
+
     const messagesEndRef = useRef(null);
     const chatContainerRef = useRef(null);
     const isUserScrolling = useRef(false);
@@ -40,17 +40,17 @@ function AIChat() {
 
     const handleScroll = () => {
         if (!chatContainerRef.current) return;
-        
+
         const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
         const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
-        
+
         isUserScrolling.current = !isNearBottom;
         setShowScrollButton(!isNearBottom);
     };
 
     const scrollToBottom = (behavior = "auto", force = false) => {
         if (!chatContainerRef.current) return;
-        
+
         if (force || !isUserScrolling.current) {
             requestAnimationFrame(() => {
                 if (chatContainerRef.current) {
@@ -87,7 +87,7 @@ function AIChat() {
 
     const getAIResponse = async (input) => {
         const text = input.toLowerCase();
-        
+
         // 1. Natural Language Understanding & Intent Keywords
         const intents = {
             order_status: ['where', 'status', 'track', 'my order', 'ready', 'preparing', 'delay', 'progress', 'when'],
@@ -130,7 +130,7 @@ function AIChat() {
                 const today = new Date();
                 const dDate = today.toISOString().split('T')[0];
                 const dTime = today.toTimeString().split(' ')[0].substring(0, 5); // HH:MM Output
-                
+
                 const tablesRes = await fetchDataAPI(`/api/reservations/availability?date=${dDate}&time=${dTime}`);
                 if (tablesRes && tablesRes.tables) {
                     const availableCount = tablesRes.tables.filter(t => t.current_status === 'available').length;
@@ -144,9 +144,9 @@ function AIChat() {
             case 'order_status':
                 const token = localStorage.getItem('token');
                 if (!token) return "We don't know who you are just yet! Please log in to securely track your personal order status. 🔒";
-                
+
                 const accountData = await fetchDataAPI('/api/customer/account');
-                
+
                 if (accountData && accountData.orders && accountData.orders.length > 0) {
                     const activeOrder = accountData.orders.find(o => !['COMPLETED', 'CANCELLED'].includes(o.order_status));
                     if (activeOrder) {
@@ -182,7 +182,7 @@ function AIChat() {
 
     const processMessage = async (text) => {
         const userMsg = { id: `user-${Date.now()}`, sender: 'user', text };
-        
+
         setMessages((prev) => [...prev, userMsg]);
         setIsTyping(true);
         scrollToBottom("smooth", true);
@@ -190,7 +190,7 @@ function AIChat() {
         // Fetch AI response with an artificial delay for realism
         const minDelay = new Promise(resolve => setTimeout(resolve, 800));
         const aiResponsePromise = getAIResponse(text);
-        
+
         const [aiResponseText] = await Promise.all([aiResponsePromise, minDelay]);
 
         const aiMsg = {
@@ -198,12 +198,12 @@ function AIChat() {
             sender: 'ai',
             text: aiResponseText,
         };
-        
+
         setMessages((prev) => {
             if (prev.some(m => m.id === aiMsg.id)) return prev;
             return [...prev, aiMsg];
         });
-        
+
         setIsTyping(false);
     };
 
@@ -231,7 +231,7 @@ function AIChat() {
 
                 <GlassCard className="flex-1 flex flex-col h-[550px] md:h-[650px] mb-4 overflow-hidden border-[#D4AF37]/20 relative">
                     {/* Chat Messages Area */}
-                    <div 
+                    <div
                         ref={chatContainerRef}
                         onScroll={handleScroll}
                         className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar bg-black/20 pb-24"
@@ -242,11 +242,10 @@ function AIChat() {
                                 className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
                             >
                                 <div
-                                    className={`max-w-[85%] border px-5 py-3 rounded-2xl text-sm md:text-base whitespace-pre-line shadow-sm ${
-                                        msg.sender === 'user'
-                                            ? 'bg-gradient-to-r from-[#D4AF37] to-[#E6C86E] text-black font-medium rounded-tr-none border-transparent shadow-[#D4AF37]/20'
-                                            : 'bg-white/10 text-white font-light rounded-tl-none border-white/5 backdrop-blur-md'
-                                    }`}
+                                    className={`max-w-[85%] border px-5 py-3 rounded-2xl text-sm md:text-base whitespace-pre-line shadow-sm ${msg.sender === 'user'
+                                        ? 'bg-gradient-to-r from-[#D4AF37] to-[#E6C86E] text-black font-medium rounded-tr-none border-transparent shadow-[#D4AF37]/20'
+                                        : 'bg-white/10 text-white font-light rounded-tl-none border-white/5 backdrop-blur-md'
+                                        }`}
                                 >
                                     {msg.text}
                                 </div>
@@ -258,32 +257,32 @@ function AIChat() {
                             <div className="flex flex-col gap-3 mt-8 animate-fade-in pl-2">
                                 <span className="text-[11px] text-gray-400 uppercase tracking-widest font-semibold">SUGGESTED FOR YOU</span>
                                 <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                                    <button 
+                                    <button
                                         onClick={() => handleQuickQuestion('Where is my order?')}
                                         className="text-sm bg-[#1A1A1A]/80 border border-white/10 hover:border-[#D4AF37]/50 text-gray-300 hover:text-white px-4 py-2.5 rounded-full transition-all duration-300 text-left flex items-center gap-2 group"
                                     >
-                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">🔍</span> 
+                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">🔍</span>
                                         Check my order
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleQuickQuestion('Any table free?')}
                                         className="text-sm bg-[#1A1A1A]/80 border border-white/10 hover:border-[#D4AF37]/50 text-gray-300 hover:text-white px-4 py-2.5 rounded-full transition-all duration-300 text-left flex items-center gap-2 group"
                                     >
-                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">🪑</span> 
+                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">🪑</span>
                                         Available tables
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleQuickQuestion('Book a table')}
                                         className="text-sm bg-[#1A1A1A]/80 border border-white/10 hover:border-[#D4AF37]/50 text-gray-300 hover:text-white px-4 py-2.5 rounded-full transition-all duration-300 text-left flex items-center gap-2 group"
                                     >
-                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">📅</span> 
+                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">📅</span>
                                         Book a table
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleQuickQuestion('Today\'s specials')}
                                         className="text-sm bg-[#1A1A1A]/80 border border-white/10 hover:border-[#D4AF37]/50 text-gray-300 hover:text-white px-4 py-2.5 rounded-full transition-all duration-300 text-left flex items-center gap-2 group"
                                     >
-                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">✨</span> 
+                                        <span className="text-[#D4AF37] group-hover:scale-110 transition-transform">✨</span>
                                         Today's specials
                                     </button>
                                 </div>

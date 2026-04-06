@@ -37,7 +37,11 @@ export function OrderTrackingPage({ onNavigate }) {
     // Status Change Feedback (Sync with socket events)
     if (status && status !== prevStatus) {
         setPrevStatus(status);
-        if (status !== 'PENDING') setStatusAlertVisible(true);
+        if (status !== 'PENDING') {
+            setStatusAlertVisible(true);
+            // Non-blocking sound feedback
+            try { new Audio('/status-update.mp3').play().catch(() => {}); } catch(e) {}
+        }
     }
 
     if (status === 'PAYMENT_REQUIRED') {
@@ -66,7 +70,7 @@ export function OrderTrackingPage({ onNavigate }) {
         const timer = setTimeout(async () => {
             await clearOrder(false);
             onNavigate('menu');
-        }, 3000);
+        }, 1000);
         return () => clearTimeout(timer);
     }
   }, [currentOrder?.status, onNavigate, currentOrder?.id, currentOrder?.steward_id, clearOrder]);
@@ -256,16 +260,16 @@ export function OrderTrackingPage({ onNavigate }) {
                   return (
                     <div
                         key={`${item.menuItem?.id || item.id || idx}-${idx}`}
-                        className="flex justify-between items-start animate-in fade-in slide-in-from-left-2 duration-300"
+                        className="flex justify-between items-start animate-in fade-in slide-in-from-left-2 duration-300 border-b border-gray-50 pb-3 last:border-0"
                         style={{ animationDelay: `${idx * 50}ms` }}
                     >
                         <div className="flex gap-4">
                             <span className="font-black text-gray-900 bg-gray-50 border border-gray-100 w-8 h-8 rounded-lg flex items-center justify-center text-xs">
                                 {itemQty}
                             </span>
-                            <div>
+                            <div className="flex-1">
                                 <p className="text-gray-900 font-bold text-sm leading-tight mb-0.5">{itemName}</p>
-                                <p className="text-[10px] text-gray-400 font-medium">Unit Price: Rs. {itemPrice.toLocaleString()}</p>
+                                <p className="text-[10px] text-gray-400 font-medium">Unit Price: Rs. {Number(itemPrice).toLocaleString()}</p>
                                 
                                 {canCancel && (
                                     <button 
@@ -281,7 +285,7 @@ export function OrderTrackingPage({ onNavigate }) {
                                 )}
                             </div>
                         </div>
-                        <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                        <span className="font-bold text-gray-900 text-sm whitespace-nowrap ml-4">
                             Rs. {(itemPrice * itemQty).toLocaleString()}
                         </span>
                     </div>
