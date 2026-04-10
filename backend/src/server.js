@@ -36,25 +36,78 @@ import pool from './config/db.js';
 setInterval(async () => {
     try {
         console.log('[Maintenance] Checking for stale orders (>6h)...');
+        
+        // 1. Get 'COMPLETED' status ID
         const [statusRows] = await pool.query("SELECT id FROM order_statuses WHERE name = 'COMPLETED'");
         const completedId = statusRows[0]?.id || 5;
 
-        const [result] = await pool.query(`
-            UPDATE orders 
-            SET status_id = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE status_id NOT IN (
-                SELECT id FROM order_statuses WHERE name IN ('COMPLETED', 'CANCELLED')
-            )
-            AND created_at < DATE_SUB(NOW(), INTERVAL 6 HOUR)
-        `, [completedId]);
+        // 2. Find stale orders that are not COMPLETED or CANCELLED
+        const [staleOrders] = await pool.query(`
+            SELECT o.id, o.table_id, rt.table_number
+            FROM orders o
+            LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+            JOIN order_statuses os ON o.status_id = os.id
+            WHERE os.name NOT IN ('COMPLETED', 'CANCELLED')
+            AND o.created_at < DATE_SUB(NOW(), INTERVAL 6 HOUR)
+        `);
 
-        if (result.affectedRows > 0) {
-            console.log(`[Maintenance] Auto-completed ${result.affectedRows} stale orders.`);
+        if (staleOrders.length > 0) {
+            const staleIds = staleOrders.map(o => o.id);
+            const staleTableIds = Array.from(new Set(staleOrders.map(o => o.table_id).filter(id => id !== null)));
+
+            // 3. Update Order Statuses
+            await pool.query('UPDATE orders SET status_id = ?, main_status = "COMPLETED", updated_at = CURRENT_TIMESTAMP WHERE id IN (?)', [completedId, staleIds]);
+
+            // 4. Reset Tables to Available
+            if (staleTableIds.length > 0) {
+                await pool.query('UPDATE restaurant_tables SET status = "available" WHERE id IN (?)', [staleTableIds]);
+            }
+
+            // 5. Notify Sockets for Real-time Refresh
+            staleOrders.forEach(order => {
+                if (global.io) {
+                    // Notify order update
+                    global.io.emit('orderUpdate', { 
+                        orderId: order.id, 
+                        status: 'COMPLETED',
+                        mainStatus: 'COMPLETED',
+                        isAutoClosed: true,
+                        message: 'Order auto-closed after 6 hours.'
+                    });
+
+                    // Notify table status change
+                    if (order.table_id) {
+                        global.io.emit('tableUpdate', { 
+                            tableId: order.table_id, 
+                            tableNumber: order.table_number,
+                            status: 'available' 
+                        });
+                    }
+                }
+            });
+
+            console.log(`[Maintenance] ✅ Auto-closed ${staleOrders.length} stale orders and reset ${staleTableIds.length} tables.`);
         }
+
+        // Also handle Takeaway and Delivery stale orders (optional but good for consistency)
+        await pool.query(`
+            UPDATE takeaway_orders 
+            SET order_status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP 
+            WHERE order_status NOT IN ('COMPLETED', 'CANCELLED') 
+            AND created_at < DATE_SUB(NOW(), INTERVAL 6 HOUR)
+        `);
+
+        await pool.query(`
+            UPDATE delivery_orders 
+            SET order_status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP 
+            WHERE order_status NOT IN ('COMPLETED', 'CANCELLED', 'DELIVERED') 
+            AND created_at < DATE_SUB(NOW(), INTERVAL 6 HOUR)
+        `);
+
     } catch (err) {
         console.error('[Maintenance] Auto-completion task failed:', err.message);
     }
-}, 30 * 60 * 1000);
+}, 10 * 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);

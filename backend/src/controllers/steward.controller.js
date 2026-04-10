@@ -37,11 +37,12 @@ export const getAllStewards = async (req, res) => {
                 GROUP BY staff_id
             ) att ON u.id = att.staff_id
             LEFT JOIN (
-                SELECT o.steward_id as staff_id, COUNT(*) as active_orders
+                SELECT s2.staff_id, COUNT(*) as active_orders
                 FROM orders o 
+                JOIN stewards s2 ON o.steward_id = s2.id
                 JOIN order_statuses os ON o.status_id = os.id
                 WHERE os.name NOT IN ('COMPLETED', 'CANCELLED', 'REJECTED')
-                GROUP BY o.steward_id
+                GROUP BY s2.staff_id
             ) ord ON u.id = ord.staff_id
             WHERE LOWER(sr.role_name) = 'steward' 
             AND u.is_active = 1

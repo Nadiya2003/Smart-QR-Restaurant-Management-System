@@ -77,8 +77,8 @@ export const updateOrderStatus = async (req, res) => {
         const statusId = statuses[0].id;
 
         await pool.query(
-            'UPDATE orders SET status_id = ? WHERE id = ?',
-            [statusId, orderId]
+            'UPDATE orders SET status_id = ?, main_status = ? WHERE id = ?',
+            [statusId, targetStatus, orderId]
         );
 
         // Notify relevant staff based on new status

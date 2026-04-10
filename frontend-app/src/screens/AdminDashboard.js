@@ -10,6 +10,43 @@ import AccountSection from './AccountSection';
 
 const screenWidth = Dimensions.get('window').width;
 
+// ─── Timer Component ──────────────────────────────────────────────
+const OrderTimer = ({ createdAt }) => {
+    const [timeLeft, setTimeLeft] = useState(20 * 60);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        const calculateTime = () => {
+            const start = new Date(createdAt).getTime();
+            const now = new Date().getTime();
+            const elapsed = Math.floor((now - start) / 1000);
+            const remaining = Math.max(0, (20 * 60) - elapsed);
+            setTimeLeft(remaining);
+        };
+        calculateTime();
+        timerRef.current = setInterval(calculateTime, 1000);
+        return () => clearInterval(timerRef.current);
+    }, [createdAt]);
+
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const isUrgent = timeLeft < 5 * 60;
+    const isLate = timeLeft === 0;
+
+    return (
+        <View style={[styles.timerBox, isUrgent && styles.timerUrgent, isLate && styles.timerLate]}>
+            <Text style={[styles.timerLabel, isUrgent && !isLate && styles.timerLabelUrgent, isLate && { color: '#FFFFFF' }]}>{isLate ? 'OVERDUE' : 'TIME'}</Text>
+            <Text style={[styles.timerText, isUrgent && !isLate && styles.timerTextUrgent, isLate && { color: '#FFFFFF' }]}>
+                {isLate ? '⚠️ LATE' : formatTime(timeLeft)}
+            </Text>
+        </View>
+    );
+};
+
 const AdminDashboard = () => {
     const { token, user, logout, loading: authLoading } = useAuth();
 
@@ -109,6 +146,8 @@ const AdminDashboard = () => {
     const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterTableDate, setFilterTableDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterTableTime, setFilterTableTime] = useState('19:00'); // Default check time
+    const [showResDetailModal, setShowResDetailModal] = useState(false);
+    const [selectedReservation, setSelectedReservation] = useState(null);
 
     // Form States
     const [menuForm, setMenuForm] = useState({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
@@ -289,13 +328,15 @@ const AdminDashboard = () => {
         });
 
         socket.on('newOrder', () => {
-            playNotificationSound();
-            fetchData(true);
+             playNotificationSound();
+             Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+             fetchData(true);
         });
 
         socket.on('orderUpdate', () => fetchData(true));
         socket.on('cancelRequest', () => {
             playNotificationSound();
+            Alert.alert('Cancellation!', 'Order cancellation request received');
             fetchData(true);
         });
 
@@ -728,15 +769,22 @@ const AdminDashboard = () => {
     const renderOrders = () => (
         <>
             <View style={styles.subTabRow}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => (
-                    <TouchableOpacity 
-                        key={tab} 
-                        style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
-                        onPress={() => setOrderSubTab(tab)}
-                    >
-                        <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>{tab}</Text>
-                    </TouchableOpacity>
-                ))}
+                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => {
+                    const count = tab === 'CANCELLATIONS' ? cancelRequestList.length : 
+                        orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
+                    
+                    return (
+                        <TouchableOpacity 
+                            key={tab} 
+                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
+                            onPress={() => setOrderSubTab(tab)}
+                        >
+                            <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
+                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : '🚨'} {tab} ({count})
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -808,8 +856,9 @@ const AdminDashboard = () => {
                                     <Text style={styles.avatarText}>#{order.id}</Text>
                                 </View>
                                 <View style={styles.listCardInfo}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Text style={styles.listCardName}>Order #{order.id}</Text>
+                                        <OrderTimer createdAt={order.created_at} />
                                         <Text style={{ fontSize: 12, color: '#6B7280' }}>{order.order_type}</Text>
                                     </View>
                                     <Text style={styles.listCardSub}>Customer: {order.customer_name || 'Guest'}</Text>
@@ -1782,7 +1831,14 @@ const AdminDashboard = () => {
                 reservationList.map((res) => {
                     const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
                     return (
-                        <View key={res.id} style={styles.listCard}>
+                        <TouchableOpacity 
+                            key={res.id} 
+                            style={styles.listCard}
+                            onPress={() => {
+                                setSelectedReservation(res);
+                                setShowResDetailModal(true);
+                            }}
+                        >
                             <View style={styles.listCardHeader}>
                                 <View style={[styles.avatarCircle, { backgroundColor: '#EDE9FE' }]}>
                                     <Text style={styles.avatarText}>👤</Text>
@@ -1805,7 +1861,7 @@ const AdminDashboard = () => {
                                     </View>
                                     <Text style={styles.listCardSub}>{res.guest_count || res.party_size || 1} Guests • {res.mobile_number || 'N/A'}</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? (res.reservation_date.includes('T') ? res.reservation_date.split('T')[0] : res.reservation_date) : 'N/A'}</Text>
                                         <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginLeft: 10 }}>🕒 {res.reservation_time || res.time}</Text>
                                     </View>
                                     <Text style={[styles.listCardSub, { marginTop: 4, fontStyle: 'italic' }]}>
@@ -1830,7 +1886,7 @@ const AdminDashboard = () => {
                                     )}
                                 </View>
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     );
                 })
             )}
@@ -2160,6 +2216,7 @@ const AdminDashboard = () => {
             {renderInventoryModal()}
             {renderReviewModal()}
             {renderFilterModal()}
+            {renderReservationDetailModal()}
         </View>
     );
 
@@ -2442,6 +2499,122 @@ const AdminDashboard = () => {
                         <TouchableOpacity style={styles.saveBtn} onPress={() => setShowTotalCustomersModal(false)}>
                             <Text style={styles.saveBtnText}>Close</Text>
                         </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderReservationDetailModal() {
+        if (!selectedReservation) return null;
+        const res = selectedReservation;
+        const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
+
+        return (
+            <Modal visible={showResDetailModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Reservation Details</Text>
+                            <TouchableOpacity onPress={() => setShowResDetailModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ marginTop: 20 }}>
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Customer Information</Text>
+                                <View style={{ marginTop: 10 }}>
+                                    <Text style={styles.summaryLabel}>Name</Text>
+                                    <Text style={styles.summaryValue}>{res.customer_name || 'Guest'}</Text>
+                                    
+                                    <Text style={[styles.summaryLabel, { marginTop: 10 }]}>Mobile</Text>
+                                    <Text style={styles.summaryValue}>{res.mobile_number || 'N/A'}</Text>
+                                    
+                                    <Text style={[styles.summaryLabel, { marginTop: 10 }]}>Email</Text>
+                                    <Text style={styles.summaryValue}>{res.customer_email || res.email || 'N/A'}</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Booking Schedule</Text>
+                                <View style={{ marginTop: 10 }}>
+                                    <View style={styles.summaryRow}>
+                                        <Text style={styles.summaryLabel}>Date</Text>
+                                        <Text style={styles.summaryValue}>{res.reservation_date ? (res.reservation_date.includes('T') ? res.reservation_date.split('T')[0] : res.reservation_date) : 'N/A'}</Text>
+                                    </View>
+                                    <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                        <Text style={styles.summaryLabel}>Time</Text>
+                                        <Text style={styles.summaryValue}>{res.reservation_time || 'N/A'}</Text>
+                                    </View>
+                                    <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                        <Text style={styles.summaryLabel}>Guests</Text>
+                                        <Text style={styles.summaryValue}>{res.guest_count} Person(s)</Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            <View style={styles.listCard}>
+                                <Text style={styles.listCardName}>Table Allocation</Text>
+                                <View style={{ marginTop: 10 }}>
+                                    <View style={styles.summaryRow}>
+                                        <Text style={styles.summaryLabel}>Area</Text>
+                                        <Text style={styles.summaryValue}>{res.area_name || 'General'}</Text>
+                                    </View>
+                                    <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                                        <Text style={styles.summaryLabel}>Table Number</Text>
+                                        <Text style={styles.summaryValue}>#{res.table_number || 'N/A'}</Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            {res.special_requests && (
+                                <View style={styles.listCard}>
+                                    <Text style={styles.listCardName}>Special Requests</Text>
+                                    <Text style={[styles.listCardSub, { marginTop: 8 }]}>{res.special_requests}</Text>
+                                </View>
+                            )}
+
+                            <View style={[styles.badge, { 
+                                alignSelf: 'center', 
+                                marginTop: 10,
+                                backgroundColor: status === 'CONFIRMED' ? '#D1FAE5' : status === 'CANCELLED' ? '#FEE2E2' : '#FEF3C7',
+                                paddingHorizontal: 20,
+                                paddingVertical: 8
+                            }]}>
+                                <Text style={[styles.badgeText, { color: status === 'CONFIRMED' ? '#059669' : status === 'CANCELLED' ? '#DC2626' : '#D97706', fontSize: 14 }]}>
+                                    Status: {status}
+                                </Text>
+                            </View>
+                        </ScrollView>
+
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                            {status === 'PENDING' && (
+                                <>
+                                    <TouchableOpacity 
+                                        style={[styles.saveBtn, { backgroundColor: '#10B981' }]} 
+                                        onPress={() => {
+                                            updateResStatus(res.id, 'CONFIRMED');
+                                            setShowResDetailModal(false);
+                                        }}
+                                    >
+                                        <Text style={styles.saveBtnText}>Confirm</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.saveBtn, { backgroundColor: '#EF4444' }]} 
+                                        onPress={() => {
+                                            updateResStatus(res.id, 'CANCELLED');
+                                            setShowResDetailModal(false);
+                                        }}
+                                    >
+                                        <Text style={styles.saveBtnText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowResDetailModal(false)}>
+                                <Text style={styles.cancelBtnText}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>

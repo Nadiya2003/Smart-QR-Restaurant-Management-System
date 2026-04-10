@@ -92,7 +92,10 @@ return (
                         `}
                     >
                         <span className="text-lg font-black text-white mb-1">
-                            #{table.table_number}
+                            Table #{table.table_number}
+                        </span>
+                        <span className="text-[11px] font-bold text-white/80 mb-1">
+                            ({table.capacity} seats)
                         </span>
                         <span className="text-[10px] font-bold text-white/90 uppercase tracking-tight">
                             {getStatusLabel(table.current_status)}

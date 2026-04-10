@@ -4,6 +4,7 @@ import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import config from '../config';
+import { io } from 'socket.io-client';
 
 import AccountAvatar from '../assets/default-customer-avatar.png';
 
@@ -33,6 +34,25 @@ function Account() {
     useEffect(() => {
         window.scrollTo(0, 0);
         fetchAccountData();
+
+        // Socket integration for real-time updates
+        const socket = io(config.API_BASE_URL);
+        
+        socket.on('reservationUpdate', (data) => {
+            setAccountData(prev => {
+                if (!prev.reservations) return prev;
+                return {
+                    ...prev,
+                    reservations: prev.reservations.map(res => 
+                        Number(res.id) === Number(data.id) ? { ...res, status: data.status } : res
+                    )
+                };
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+        };
     }, []);
 
     const fetchAccountData = async () => {

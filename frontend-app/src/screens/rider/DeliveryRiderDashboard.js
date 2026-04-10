@@ -12,6 +12,43 @@ import AccountSection from '../AccountSection';
 
 const { width } = Dimensions.get('window');
 
+// ─── Timer Component ──────────────────────────────────────────────
+const OrderTimer = ({ createdAt }) => {
+    const [timeLeft, setTimeLeft] = useState(20 * 60);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        const calculateTime = () => {
+            const start = new Date(createdAt).getTime();
+            const now = new Date().getTime();
+            const elapsed = Math.floor((now - start) / 1000);
+            const remaining = Math.max(0, (20 * 60) - elapsed);
+            setTimeLeft(remaining);
+        };
+        calculateTime();
+        timerRef.current = setInterval(calculateTime, 1000);
+        return () => clearInterval(timerRef.current);
+    }, [createdAt]);
+
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const isUrgent = timeLeft < 5 * 60;
+    const isLate = timeLeft === 0;
+
+    return (
+        <View style={[styles.timerBox, isUrgent && styles.timerUrgent, isLate && styles.timerLate]}>
+            <Text style={[styles.timerLabel, isUrgent && !isLate && styles.timerLabelUrgent, isLate && { color: '#FFFFFF' }]}>{isLate ? 'OVERDUE' : 'TIME'}</Text>
+            <Text style={[styles.timerText, isUrgent && !isLate && styles.timerTextUrgent, isLate && { color: '#FFFFFF' }]}>
+                {isLate ? '⚠️ LATE' : formatTime(timeLeft)}
+            </Text>
+        </View>
+    );
+};
+
 const DeliveryRiderDashboard = ({ onLogout }) => {
     const { user, token, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('home');
@@ -56,6 +93,28 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         payment_status: 'Unpaid'
     });
     const [selectedMenuCategory, setSelectedMenuCategory] = useState('');
+    const [orderSubTab, setOrderSubTab] = useState('DELIVERY');
+    const soundRef = useRef(null);
+
+    // Initialize Notification Sound
+    useEffect(() => {
+        const loadSound = async () => {
+            try {
+                const sound = require('expo-audio').createAudioPlayer(
+                    { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
+                );
+                soundRef.current = sound;
+            } catch (err) {}
+        };
+        loadSound();
+    }, []);
+
+    const playNotificationSound = async () => {
+        try {
+            if (soundRef.current) soundRef.current.play();
+            Vibration.vibrate([0, 500, 200, 500]);
+        } catch (err) {}
+    };
 
     const headers = {
         'Content-Type': 'application/json',
@@ -110,12 +169,8 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         });
 
         socket.on('new_delivery_order', (data) => {
-            try {
-                Vibration.vibrate([0, 500, 200, 500]);
-            } catch (e) {
-                console.warn('Vibration failed', e);
-            }
-            Alert.alert('New Order!', `New delivery order #${data?.orderId} from ${data?.customer_name || 'Guest'}`);
+            playNotificationSound();
+            Alert.alert('New Order!', data.isUpdate ? 'Order details changed' : 'New Order Started - Begin Preparation');
             fetchData(true);
         });
 
@@ -488,7 +543,9 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     <Text style={styles.emptyText}>No active deliveries at the moment.</Text>
                 </View>
             ) : (
-                orders.filter(o => ['Pending', 'Ready', 'Out for Delivery'].includes(o.status)).map(order => renderOrderCard(order))
+                orders.filter(o => (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab))
+                    .filter(o => ['Pending', 'Ready', 'Out for Delivery'].includes(o.status))
+                    .map(order => renderOrderCard(order))
             )}
         </ScrollView>
     );
@@ -503,6 +560,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 <View style={[styles.statusBadge, getStatusColor(order.status)]}>
                     <Text style={styles.statusBadgeText}>{order.status}</Text>
                 </View>
+                <OrderTimer createdAt={order.created_at} />
             </View>
 
             <View style={styles.customerInfo}>
@@ -568,25 +626,52 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         }
     };
 
-    const renderOrdersTab = () => (
-        <ScrollView 
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            style={styles.content}
-        >
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>📦 All Delivery Orders</Text>
-                <Text style={styles.orderCount}>{orders.length} total</Text>
-            </View>
+    const renderOrdersTab = () => {
+        const filteredByType = orders.filter(o => (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab));
+        
+        const getCount = (type) => orders.filter(o => 
+            (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === type && 
+            !['Delivered', 'Cancelled', 'Rejected'].includes(o.status)
+        ).length;
 
-            {orders.length === 0 ? (
-                <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No delivery orders found.</Text>
+        return (
+            <ScrollView 
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                style={styles.content}
+            >
+                <View style={styles.subTabRow}>
+                    {[
+                        { key: 'DINE-IN', label: 'Dine-In', icon: '🍽️' },
+                        { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
+                        { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }
+                    ].map(tab => (
+                        <TouchableOpacity 
+                            key={tab.key} 
+                            style={[styles.subTab, orderSubTab === tab.key && styles.activeSubTab]}
+                            onPress={() => setOrderSubTab(tab.key)}
+                        >
+                            <Text style={[styles.subTabText, orderSubTab === tab.key && styles.activeSubTabText]}>
+                                {tab.icon} {tab.label} ({getCount(tab.key)})
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
                 </View>
-            ) : (
-                orders.map(order => renderOrderCard(order))
-            )}
-        </ScrollView>
-    );
+
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>📦 {orderSubTab.replace('-', ' ')} Orders</Text>
+                    <Text style={styles.orderCount}>{filteredByType.length} total</Text>
+                </View>
+
+                {filteredByType.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyText}>No {orderSubTab.replace('-', ' ')} orders found.</Text>
+                    </View>
+                ) : (
+                    filteredByType.map(order => renderOrderCard(order))
+                )}
+            </ScrollView>
+        );
+    };
 
     const renderCreateTab = () => {
         const categories = [...new Set(menuItems.map(item => item.category))];
@@ -983,7 +1068,23 @@ const styles = StyleSheet.create({
     notifMsg: { color: '#6B7280', fontSize: 13, marginTop: 4 },
     notifTime: { fontSize: 10, color: '#9CA3AF', marginTop: 8 },
     activeNavText: { color: '#111827' },
-    activeNavLabel: { color: '#111827', fontWeight: 'bold' }
+    activeNavLabel: { color: '#111827', fontWeight: 'bold' },
+
+    // Timer Styles
+    timerBox: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F3F4F6', alignItems: 'center' },
+    timerUrgent: { backgroundColor: '#FEE2E2' },
+    timerLate: { backgroundColor: '#EF4444' },
+    timerLabel: { fontSize: 8, fontWeight: '900', color: '#94A3B8' },
+    timerLabelUrgent: { color: '#EF4444' },
+    timerText: { fontSize: 12, fontWeight: '800', color: '#475569' },
+    timerTextUrgent: { color: '#EF4444' },
+
+    // Sub Tab Styles
+    subTabRow: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 12, padding: 4, marginBottom: 20 },
+    subTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    activeSubTab: { backgroundColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+    subTabText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+    activeSubTabText: { color: '#0F172A' },
 });
 
 export default DeliveryRiderDashboard;

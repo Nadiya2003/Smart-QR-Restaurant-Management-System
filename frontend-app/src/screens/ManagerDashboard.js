@@ -10,6 +10,43 @@ import AccountSection from './AccountSection';
 
 const screenWidth = Dimensions.get('window').width;
 
+// ─── Timer Component ──────────────────────────────────────────────
+const OrderTimer = ({ createdAt }) => {
+    const [timeLeft, setTimeLeft] = useState(20 * 60);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        const calculateTime = () => {
+            const start = new Date(createdAt).getTime();
+            const now = new Date().getTime();
+            const elapsed = Math.floor((now - start) / 1000);
+            const remaining = Math.max(0, (20 * 60) - elapsed);
+            setTimeLeft(remaining);
+        };
+        calculateTime();
+        timerRef.current = setInterval(calculateTime, 1000);
+        return () => clearInterval(timerRef.current);
+    }, [createdAt]);
+
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const isUrgent = timeLeft < 5 * 60;
+    const isLate = timeLeft === 0;
+
+    return (
+        <View style={[styles.timerBox, isUrgent && styles.timerUrgent, isLate && styles.timerLate]}>
+            <Text style={[styles.timerLabel, isUrgent && !isLate && styles.timerLabelUrgent, isLate && { color: '#FFFFFF' }]}>{isLate ? 'OVERDUE' : 'TIME'}</Text>
+            <Text style={[styles.timerText, isUrgent && !isLate && styles.timerTextUrgent, isLate && { color: '#FFFFFF' }]}>
+                {isLate ? '⚠️ LATE' : formatTime(timeLeft)}
+            </Text>
+        </View>
+    );
+};
+
 const ManagerDashboard = () => {
     const { token, user, logout, loading: authLoading } = useAuth();
 
@@ -297,13 +334,15 @@ const ManagerDashboard = () => {
         });
 
         socket.on('newOrder', () => {
-            playNotificationSound();
-            fetchData(true);
+             playNotificationSound();
+             Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+             fetchData(true);
         });
 
         socket.on('orderUpdate', () => fetchData(true));
         socket.on('cancelRequest', () => {
             playNotificationSound();
+             Alert.alert('Cancellation!', 'Order cancellation request received');
             fetchData(true);
         });
 
@@ -766,15 +805,22 @@ const ManagerDashboard = () => {
     const renderOrders = () => (
         <>
             <View style={styles.subTabRow}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => (
-                    <TouchableOpacity 
-                        key={tab} 
-                        style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
-                        onPress={() => setOrderSubTab(tab)}
-                    >
-                        <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>{tab}</Text>
-                    </TouchableOpacity>
-                ))}
+                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => {
+                     const count = tab === 'CANCELLATIONS' ? cancelRequestList.length : 
+                        orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
+
+                    return (
+                        <TouchableOpacity 
+                            key={tab} 
+                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
+                            onPress={() => setOrderSubTab(tab)}
+                        >
+                            <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
+                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : '🚨'} {tab} ({count})
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -846,8 +892,9 @@ const ManagerDashboard = () => {
                                     <Text style={styles.avatarText}>#{order.id}</Text>
                                 </View>
                                 <View style={styles.listCardInfo}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Text style={styles.listCardName}>Order #{order.id}</Text>
+                                        <OrderTimer createdAt={order.created_at} />
                                         <Text style={{ fontSize: 12, color: '#6B7280' }}>{order.order_type}</Text>
                                     </View>
                                     <Text style={styles.listCardSub}>Customer: {order.customer_name || 'Guest'}</Text>

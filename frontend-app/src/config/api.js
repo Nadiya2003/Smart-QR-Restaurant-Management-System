@@ -11,7 +11,7 @@ import { Platform } from 'react-native';
 // Look for "IPv4 Address" under your active Wi-Fi/Ethernet.
 // Both your phone AND the PC must be on the SAME Wi-Fi network.
 // ============================================================
-const LOCAL_IP = '192.168.1.4'; // ← UPDATE THIS if you change networks
+const LOCAL_IP = '192.168.1.3'; // ← UPDATE THIS if you change networks
 const PORT = 5000;               // Must match backend PORT (default 5000)
 
 const getBaseUrl = () => {

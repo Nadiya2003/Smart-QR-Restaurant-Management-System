@@ -22,21 +22,60 @@ export function OrderStatusTracker({ currentOrder }) {
     { id: 'COMPLETED', label: 'Completed', icon: CheckCircleIcon }
   ];
 
-  // Helper for tracking index (Treat COMPLETED/FINISHED as absolute terminal end)
+  // 1. Check for item types
+  const hasFood = currentOrder?.items?.some(i => {
+      const cat = (i.category || i.menuItem?.category?.name || i.category_name || '').toLowerCase();
+      return !cat.includes('beverage') && !cat.includes('bar');
+  }) ?? false;
+
+  const hasBeverage = currentOrder?.items?.some(i => {
+      const cat = (i.category || i.menuItem?.category?.name || i.category_name || '').toLowerCase();
+      return cat.includes('beverage') || cat.includes('bar');
+  }) ?? false;
+
+  // 2. Normalize Status
   let normalizedStatus = currentStatus?.toUpperCase() || 'PLACED';
   if (normalizedStatus === 'PENDING') normalizedStatus = 'PLACED';
   if (normalizedStatus === 'READY') normalizedStatus = 'READY_TO_SERVE';
   
-  const statusIndex = steps.findIndex((s) => s.id === normalizedStatus);
-  const isAllDone = currentStatus?.toUpperCase() === 'COMPLETED' || currentStatus?.toUpperCase() === 'FINISHED';
+  let statusIndex = steps.findIndex((s) => s.id === normalizedStatus);
+
+  // 3. Dynamic Override for Preparing/Ready logic (The User's specific rule map)
+  const isFoodPreparing = ['preparing', 'ready'].includes((kitchenStatus || '').toLowerCase());
+  const isBevPreparing = ['preparing', 'ready'].includes((barStatus || '').toLowerCase());
+  
+  const isFoodReady = (kitchenStatus || '').toLowerCase() === 'ready';
+  const isBevReady = (barStatus || '').toLowerCase() === 'ready';
+
+  const bothPreparingSatisfied = 
+      (hasFood && hasBeverage && isFoodPreparing && isBevPreparing) ||
+      (hasFood && !hasBeverage && isFoodPreparing) ||
+      (!hasFood && hasBeverage && isBevPreparing);
+
+  const bothReadySatisfied = 
+      (hasFood && hasBeverage && isFoodReady && isBevReady) ||
+      (hasFood && !hasBeverage && isFoodReady) ||
+      (!hasFood && hasBeverage && isBevReady);
+
+  // If the backend has reached at least PREPARING, manually control the UI visual progression based on item statuses
+  if (statusIndex >= 2 && statusIndex < 4) {
+      if (bothReadySatisfied) {
+          statusIndex = 4; // Ticks "Ready to Serve", moves to SERVED active step
+      } else if (bothPreparingSatisfied) {
+          statusIndex = 3; // Ticks "Preparing", moves to READY_TO_SERVE active step
+      } else {
+          statusIndex = 2; // PREPARING is active
+      }
+  }
+
+  const isAllDone = ['COMPLETED', 'FINISHED'].includes(currentStatus?.toUpperCase());
+  if (isAllDone) statusIndex = steps.length - 1;
 
   return (
     <div className="py-6 px-4">
       <div className="relative">
-        {/* Vertical Line */}
         <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-gray-200"></div>
 
-        {/* Active Line Fill */}
         <div
           className="absolute left-6 top-6 w-0.5 bg-gray-900 transition-all duration-500"
           style={{
@@ -46,7 +85,7 @@ export function OrderStatusTracker({ currentOrder }) {
 
         <div className="space-y-8 relative">
           {steps.map((step, index) => {
-            const isCompleted = isAllDone || (statusIndex >= 0 && index <= statusIndex);
+            const isCompleted = isAllDone || (statusIndex >= 0 && index < statusIndex);
             const isCurrent = statusIndex >= 0 && index === statusIndex;
             const isNext = !isAllDone && statusIndex >= 0 && index === statusIndex + 1;
             const Icon = step.icon;
@@ -88,38 +127,66 @@ export function OrderStatusTracker({ currentOrder }) {
                     {isCurrent && (
                       <p className="text-sm text-gray-600 font-medium mt-0.5 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
-                        {step.id === 'READY_TO_SERVE' ? 'Your order is ready' : step.id === 'SERVED' ? 'Order served. Enjoy your meal!' : 'Currently in progress...'}
+                        {step.id === 'READY_TO_SERVE' ? 'Food is ready, awaiting service' : 
+                         step.id === 'SERVED' ? 'Order served. Enjoy your meal!' : 
+                         'Currently in progress...'}
                       </p>
                     )}
                   </div>
                 </div>
 
-                {/* Sub-status Split Handling (Requirement #3) */}
-                {step.id === 'PREPARING' && isCurrent && (
-                  <div className="ml-16 flex flex-wrap gap-2 mt-1">
+                {/* Sub-status Sub-sections */}
+                {step.id === 'PREPARING' && (isCurrent || isCompleted) && (
+                  <div className="ml-16 flex flex-col gap-2 mt-1">
                     {/* Food Status */}
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                      kitchenStatus === 'ready' 
-                        ? 'bg-green-100 text-green-700' 
-                        : kitchenStatus === 'preparing' 
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-gray-100 text-gray-400'
-                    }`}>
-                      {kitchenStatus === 'ready' ? '✔' : kitchenStatus === 'preparing' ? '⏳' : '•'} 
-                      Food {kitchenStatus === 'ready' ? 'Ready' : kitchenStatus === 'preparing' ? 'Preparing' : 'Pending'}
-                    </div>
+                    {!hasFood ? (
+                      <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 bg-gray-100 text-gray-400 self-start">
+                        • No food items in this order
+                      </div>
+                    ) : (
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 self-start ${
+                        isFoodReady
+                          ? 'bg-green-100 text-green-700' 
+                          : isFoodPreparing
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-gray-100 text-gray-400'
+                      }`}>
+                        {isFoodReady || isFoodPreparing ? '✔' : '•'} 
+                        Food Section: {isFoodReady ? 'Ready' : isFoodPreparing ? 'Preparing' : 'Pending'}
+                      </div>
+                    )}
 
                     {/* Drink Status */}
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                      barStatus === 'ready' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : barStatus === 'preparing' 
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-gray-100 text-gray-400'
-                    }`}>
-                      {barStatus === 'ready' ? '✔' : barStatus === 'preparing' ? '⏳' : '•'} 
-                      Beverages {barStatus === 'ready' ? 'Ready' : barStatus === 'preparing' ? 'Preparing' : 'Pending'}
-                    </div>
+                    {!hasBeverage ? (
+                      <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 bg-gray-100 text-gray-400 self-start">
+                        • No beverages in this order
+                      </div>
+                    ) : (
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 self-start ${
+                        isBevReady
+                          ? 'bg-blue-100 text-blue-700' 
+                          : isBevPreparing
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-gray-100 text-gray-400'
+                      }`}>
+                        {isBevReady || isBevPreparing ? '✔' : '•'} 
+                        Beverage Section: {isBevReady ? 'Ready' : isBevPreparing ? 'Preparing' : 'Pending'}
+                      </div>
+                    )}
+
+                    {/* New Items Status (Requirement) */}
+                    {(statusIndex >= 2 && currentOrder?.items?.some(i => (i.item_status || 'PENDING').toUpperCase() === 'PENDING')) && (
+                      <div className="px-3 py-1 mt-1 rounded-full text-xs font-bold flex items-center gap-1.5 bg-amber-50 text-amber-600 self-start border border-amber-200">
+                        • New Items – Waiting to Prepare
+                      </div>
+                    )}
+                    {(statusIndex >= 2 && 
+                      currentOrder?.items?.some(i => (i.item_status || '').toUpperCase() === 'READY') && 
+                      currentOrder?.items?.some(i => (i.item_status || '').toUpperCase() === 'PREPARING')) && (
+                      <div className="px-3 py-1 mt-1 rounded-full text-xs font-bold flex items-center gap-1.5 bg-green-50 text-green-700 self-start border border-green-200">
+                        ✔ New items preparing
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

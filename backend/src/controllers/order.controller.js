@@ -184,8 +184,8 @@ export const getCustomerOrders = async (req, res) => {
                     pm.name as payment_method_name,
                     rt.table_number,
                     (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
-                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
+                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price, 'category', cat.name)
+                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id LEFT JOIN categories cat ON mi.category_id = cat.id WHERE oi.order_id = o.id) as items,
                     "DINE-IN" as type 
              FROM orders o 
              LEFT JOIN order_statuses os ON o.status_id = os.id
@@ -510,8 +510,8 @@ export const getActiveOrderByTable = async (req, res) => {
                     rt.table_number,
                     pm.name as payment_method_name,
                     (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
-                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.order_id = o.id) as items,
+                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price, 'category', cat.name)
+                    ) FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id LEFT JOIN categories cat ON mi.category_id = cat.id WHERE oi.order_id = o.id) as items,
                     "DINE-IN" as type 
              FROM orders o 
              LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
@@ -602,6 +602,9 @@ export const requestDineInCancellation = async (req, res) => {
                     [cancelStatusId, reason || 'Customer cancelled via App', id]
                 );
 
+                // For full cancellation, update all items to CANCELLED locally as well for staff visibility
+                await pool.query('UPDATE order_items SET item_status = "cancelled" WHERE order_id = ?', [id]);
+
                 if (order.table_id) {
                     await pool.query('UPDATE restaurant_tables SET status = "cleaning" WHERE id = ?', [order.table_id]);
                     if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
@@ -617,10 +620,11 @@ export const requestDineInCancellation = async (req, res) => {
                 console.log(`[Cancel] Full direct cancellation for Order #${id}`);
             }
 
-            // Notify Steward
+            // Notify Staff: Kitchen, Bar, and the assigned Steward (Requirement: Targeted Notifications)
             try {
+                // Fetch involved item categories and assigned steward
                 const [orderDetails] = await pool.query(`
-                    SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
+                    SELECT o.id, o.table_id, rt.table_number, o.steward_id, s.staff_id,
                            c.name as customer_name,
                            CASE WHEN o.customer_id IS NOT NULL THEN 'registered' ELSE 'guest' END as customer_type
                     FROM orders o
@@ -630,21 +634,68 @@ export const requestDineInCancellation = async (req, res) => {
                     WHERE o.id = ?
                 `, [id]);
 
+                // Check which categories are in this order to notify matching stations
+                const [items] = await pool.query(`
+                    SELECT cat.name as category
+                    FROM order_items oi
+                    JOIN menu_items mi ON oi.menu_item_id = mi.id
+                    LEFT JOIN categories cat ON mi.category_id = cat.id
+                    WHERE oi.order_id = ?
+                `, [id]);
+
                 if (global.io && orderDetails.length > 0) {
                     const od = orderDetails[0];
-                    const isDirect = true;
-                    const eventName = isPartial ? 'orderUpdate' : 'orderCancelled';
-                    global.io.emit(eventName, {
+                    
+                    const hasFood = items.some(i => {
+                        const cat = (i.category || '').toLowerCase();
+                        return !cat.includes('beverage') && !cat.includes('bar');
+                    });
+                    const hasBeb = items.some(i => {
+                        const cat = (i.category || '').toLowerCase();
+                        return cat.includes('beverage') || cat.includes('bar');
+                    });
+
+                    const payload = {
                         orderId: parseInt(id),
                         tableNumber: od.table_number,
                         staffId: od.staff_id,
                         customerName: od.customer_name || 'Guest',
                         customerType: od.customer_type,
                         reason: reason || (isPartial ? 'Partial items removed' : 'Customer Cancelled'),
-                        isDirect: isDirect,
+                        isDirect: true,
                         playSound: true,
-                        isPartial: isPartial
-                    });
+                        isPartial: isPartial,
+                        action: isPartial ? 'ITEM_CANCELLED' : 'ORDER_CANCELLED'
+                    };
+
+                    // Unified payload for consistency
+                    const orderUpdatePayload = {
+                        orderId: parseInt(id),
+                        id: parseInt(id),
+                        status: isPartial ? 'ACTIVE' : 'CANCELLED',
+                        mainStatus: isPartial ? 'ACTIVE' : 'CANCELLED',
+                        action: isPartial ? 'ITEM_CANCELLED' : 'ORDER_CANCELLED',
+                        isPartial: isPartial,
+                        tableNumber: od.table_number,
+                        reason: payload.reason
+                    };
+
+                    // 1. Notify Assigned Steward room (Targeted)
+                    if (od.staff_id) {
+                        global.io.to(`steward_room_${od.staff_id}`).emit('orderUpdate', orderUpdatePayload);
+                    }
+                    
+                    // 2. Notify ALL (including Customer Dashboard)
+                    global.io.emit('orderUpdate', orderUpdatePayload);
+                    global.io.emit('orderCancelled', orderUpdatePayload);
+
+                    // 3. Notify Stations
+                    if (hasFood) {
+                        global.io.to('kitchen_room').emit('orderCancelled', { ...payload, department: 'KITCHEN' });
+                    }
+                    if (hasBeb) {
+                        global.io.to('bar_room').emit('orderCancelled', { ...payload, department: 'BAR' });
+                    }
                 }
             } catch (notifErr) {
                 console.error('Notify cancellation error:', notifErr);
@@ -669,7 +720,7 @@ export const requestDineInCancellation = async (req, res) => {
             [reason || 'Not specified', id]
         );
 
-        // Notify steward of the request
+        // Notify Staff of the request (Targeted)
         try {
             const [orderDetails] = await pool.query(`
                 SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
@@ -684,7 +735,7 @@ export const requestDineInCancellation = async (req, res) => {
 
             if (global.io && orderDetails.length > 0) {
                 const od = orderDetails[0];
-                global.io.emit('cancelRequest', {
+                const payload = {
                     orderId: parseInt(id),
                     tableNumber: od.table_number,
                     staffId: od.staff_id,
@@ -694,7 +745,18 @@ export const requestDineInCancellation = async (req, res) => {
                     isDirect: false,
                     playSound: true,
                     isPartial: !!itemIds
-                });
+                };
+
+                // Notify specific Steward room
+                if (od.staff_id) {
+                    global.io.to(`steward_room_${od.staff_id}`).emit('cancelRequest', payload);
+                } else {
+                    global.io.emit('cancelRequest', payload);
+                }
+
+                // Also notify stations so they can see a 'pending cancel' indicator if relevant
+                global.io.to('kitchen_room').emit('cancelRequest', payload);
+                global.io.to('bar_room').emit('cancelRequest', payload);
             }
         } catch (notifErr) {
             console.error('Cancel request notify error:', notifErr);
@@ -751,9 +813,48 @@ export const removeOrderItem = async (req, res) => {
 
         await connection.commit();
         
-        // Notify dashboards instantly that an item was dropped!
-        if (global.io) {
-            global.io.emit('orderUpdate', { orderId: parseInt(orderId), action: 'ITEM_REMOVED' });
+        // 4. Notify Kitchen, Bar, and Steward instantly
+        try {
+            const [orderDetails] = await pool.query(`
+                SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id, mi.name, cat.name as category
+                FROM orders o
+                LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+                LEFT JOIN stewards s ON o.steward_id = s.id
+                JOIN order_items oi ON oi.order_id = o.id
+                JOIN menu_items mi ON oi.menu_item_id = mi.id
+                LEFT JOIN categories cat ON mi.category_id = cat.id
+                WHERE o.id = ? AND oi.id = ?
+            `, [orderId, itemId]);
+
+            if (global.io && orderDetails.length > 0) {
+                const od = orderDetails[0];
+                const catName = (od.category || '').toLowerCase();
+                const isBev = catName.includes('beverage') || catName.includes('bar');
+
+                const payload = {
+                    orderId: parseInt(orderId),
+                    itemId: parseInt(itemId),
+                    itemName: od.name,
+                    tableNumber: od.table_number,
+                    staffId: od.staff_id,
+                    action: 'ITEM_REMOVED',
+                    playSound: true
+                };
+
+                // Notify Steward
+                if (od.staff_id) {
+                    global.io.to(`steward_room_${od.staff_id}`).emit('orderUpdate', payload);
+                }
+
+                // Notify specific department
+                if (isBev) {
+                    global.io.to('bar_room').emit('itemCancelled', { ...payload, department: 'BAR' });
+                } else {
+                    global.io.to('kitchen_room').emit('itemCancelled', { ...payload, department: 'KITCHEN' });
+                }
+            }
+        } catch (notifError) {
+            console.error('Remove item notification error:', notifError);
         }
 
         res.json({ success: true, message: "Item removed and total price updated" });
@@ -912,9 +1013,9 @@ export const endDineInSession = async (req, res) => {
         if (global.io) {
             global.io.emit('orderUpdate', { orderId, type: 'DINE-IN', status: 'SESSION_ENDED' });
             // Free the table in real-time
-            if (order.table_id) {
+            if (tableId) {
                 global.io.emit('tableUpdate', { 
-                    tableId: order.table_id, 
+                    tableId: tableId, 
                     status: 'Available',
                     type: 'SESSION_ENDED'
                 });

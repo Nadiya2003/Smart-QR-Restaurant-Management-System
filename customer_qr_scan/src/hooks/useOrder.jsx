@@ -81,23 +81,35 @@ export function OrderProvider({ children }) {
 
     socket.on('orderUpdate', (data) => {
         const activeId = localStorage.getItem('activeOrderId');
-        const isForThisOrder = data.orderId?.toString() === activeId || data.id?.toString() === activeId;
+        const orderIdFromData = (data.orderId || data.id)?.toString();
+        const isForThisOrder = orderIdFromData === activeId;
         
         if (isForThisOrder) {
+            const rawStatus = (data.mainStatus || data.status || '').toUpperCase();
+            if (!rawStatus) return;
+
             playStatusSound();
             
-            // PAYMENT_REQUIRED: Steward clicked COMPLETED but order is unpaid
-            // Immediately set local status so OrderTrackingPage redirects to payment
-            if (data.status === 'PAYMENT_REQUIRED') {
+            // Handle PAYMENT_REQUIRED separately as it's a virtual UI status
+            if (rawStatus === 'PAYMENT_REQUIRED') {
                 setCurrentOrder(prev => prev ? { ...prev, status: 'PAYMENT_REQUIRED' } : prev);
-                return; // Don't refetch — the DB status hasn't changed, keep virtual status
+                return;
             }
             
-            // COMPLETED: Order was paid and closed — update local status then refetch
-            if (data.status === 'COMPLETED') {
-                setCurrentOrder(prev => prev ? { ...prev, status: 'COMPLETED' } : prev);
-            }
-            
+            // Update local state immediately for visual feedback
+            setCurrentOrder(prev => {
+                if (!prev) return prev;
+                return { 
+                    ...prev, 
+                    status: rawStatus,
+                    main_status: rawStatus,
+                    kitchen_status: data.kitchenStatus || prev.kitchen_status,
+                    bar_status: data.barStatus || prev.bar_status,
+                    isAutoClosed: data.isAutoClosed || prev.isAutoClosed
+                };
+            });
+
+            // Refetch full object to ensure data consistency
             if (user) fetchOrderHistory();
             else fetchGuestOrder();
         }
@@ -105,11 +117,11 @@ export function OrderProvider({ children }) {
 
     socket.on('orderCancelled', (data) => {
         const activeId = localStorage.getItem('activeOrderId');
-        const isForThisOrder = data.orderId?.toString() === activeId || data.id?.toString() === activeId;
+        const orderIdFromData = (data.orderId || data.id)?.toString();
         
-        if (isForThisOrder) {
+        if (orderIdFromData === activeId) {
             playStatusSound();
-            setCurrentOrder(prev => prev ? { ...prev, status: 'CANCELLED' } : prev);
+            setCurrentOrder(prev => prev ? { ...prev, status: 'CANCELLED', main_status: 'CANCELLED' } : prev);
             if (user) fetchOrderHistory();
             else fetchGuestOrder();
         }

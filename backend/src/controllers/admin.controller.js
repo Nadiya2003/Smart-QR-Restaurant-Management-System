@@ -21,10 +21,10 @@ export const getAllStaff = async (req, res) => {
             } catch (e) {
                 permissions = s.permissions ? [s.permissions] : [];
             }
-            return { 
-                ...s, 
+            return {
+                ...s,
                 status: s.is_active ? 'active' : 'inactive',
-                permissions 
+                permissions
             };
         });
 
@@ -228,7 +228,7 @@ export const toggleCustomerStatus = async (req, res) => {
         const newIsActive = status === 'active' ? 1 : 0;
 
         await pool.query('UPDATE online_customers SET is_active = ? WHERE id = ?', [newIsActive, id]);
-        
+
         // Audit log
         try {
             const performerId = req.user?.userId || 0;
@@ -237,7 +237,7 @@ export const toggleCustomerStatus = async (req, res) => {
                 'INSERT INTO audit_logs (action_type, target_user_id, performed_by, details) VALUES (?, ?, ?, ?)',
                 [actionType, id, performerId, `Customer account status changed to ${status}`]
             );
-        } catch (e) {}
+        } catch (e) { }
 
         res.json({ message: `Customer status updated to ${status}` });
     } catch (err) {
@@ -334,7 +334,7 @@ export const createOrder = async (req, res) => {
             const statusId = pendingStatus[0]?.id || 1;
 
             const finalOrderType = 'guest'; // Admin orders via this route are usually guest or we'd have a customer selection
-            
+
             // 'orders' table for DINE_IN
             const [result] = await connection.query(
                 'INSERT INTO orders (customer_id, table_id, status_id, order_type_id, order_type, total_price) VALUES (?, ?, ?, 1, ?, ?)',
@@ -345,7 +345,7 @@ export const createOrder = async (req, res) => {
             if (table_id) {
                 await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [table_id]);
             }
-            
+
             for (const item of items) {
                 await connection.query(
                     'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -386,7 +386,7 @@ export const createOrder = async (req, res) => {
                 'INSERT INTO audit_logs (action_type, performed_by, details) VALUES (?, ?, ?)',
                 ['ORDER_CREATED', performerId, `Manual ${order_type} order created for ${customer_name || 'Guest'}`]
             );
-        } catch (e) {}
+        } catch (e) { }
 
         await connection.commit();
         res.status(201).json({ message: 'Order created successfully' });
@@ -478,7 +478,7 @@ export const handleCancellationAction = async (req, res) => {
 
         const [requestRows] = await connection.query('SELECT * FROM cancel_requests WHERE id = ?', [id]);
         if (requestRows.length === 0) return res.status(404).json({ message: 'Request not found' });
-        
+
         const request = requestRows[0];
         const status = action === 'approve' ? 'approved' : 'rejected';
 
@@ -503,18 +503,18 @@ export const handleCancellationAction = async (req, res) => {
                 // Dine-in order cancellation
                 if (request.item_ids) {
                     const itemIds = typeof request.item_ids === 'string' ? JSON.parse(request.item_ids) : request.item_ids;
-                    
+
                     // Delete specific items
                     await connection.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [request.order_id, itemIds]);
-                    
+
                     // Clean analytics if needed (optional here depending on how analytics works, but keep consistent)
-                    
+
                     // Recalculate Total
                     const [itemRows] = await connection.query('SELECT price, quantity FROM order_items WHERE order_id = ?', [request.order_id]);
                     if (itemRows.length === 0) {
                         const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
                         await connection.query('UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [cancelStatus[0].id, request.order_id]);
-                        
+
                         const [orderRows] = await connection.query('SELECT table_id FROM orders WHERE id = ?', [request.order_id]);
                         if (orderRows.length > 0 && orderRows[0].table_id) {
                             await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [orderRows[0].table_id]);
@@ -527,7 +527,7 @@ export const handleCancellationAction = async (req, res) => {
                 } else {
                     const [cancelStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "CANCELLED"');
                     const cancelStatusId = cancelStatus[0]?.id;
-                    
+
                     await connection.query(
                         'UPDATE orders SET status_id = ?, cancellation_status = "APPROVED", cancellation_reason = ? WHERE id = ?',
                         [cancelStatusId || 0, request.reason, request.order_id]
@@ -541,12 +541,12 @@ export const handleCancellationAction = async (req, res) => {
                 }
             }
         } else {
-             if (request.order_type === 'dine_in') {
+            if (request.order_type === 'dine_in') {
                 await connection.query(
                     'UPDATE orders SET cancellation_status = "REJECTED" WHERE id = ?',
                     [request.order_id]
                 );
-             }
+            }
         }
 
         await connection.commit();
@@ -556,7 +556,7 @@ export const handleCancellationAction = async (req, res) => {
         try {
             const [tRows] = await connection.query('SELECT rt.table_number FROM restaurant_tables rt JOIN orders o ON o.table_id = rt.id WHERE o.id = ?', [request.order_id]);
             if (tRows.length > 0) tableNumber = tRows[0].table_number;
-        } catch (e) {}
+        } catch (e) { }
 
         // Notify Dashboards (Kitchen/Steward)
         if (global.io) {
@@ -568,15 +568,18 @@ export const handleCancellationAction = async (req, res) => {
                 tableNumber: tableNumber,
                 type: (request.order_type || 'DINE-IN').toUpperCase()
             });
-            
+
             if (action === 'approve') {
                 global.io.emit('orderCancelled', {
                     orderId: parseInt(request.order_id),
+                    id: parseInt(request.order_id),
+                    status: 'CANCELLED',
+                    mainStatus: 'CANCELLED',
                     tableNumber: tableNumber,
                     reason: request.reason || 'Admin Approved Cancellation',
                     type: request.order_type || 'DINE-IN'
                 });
-                
+
                 global.io.emit('cancelRequest', {
                     orderId: parseInt(request.order_id),
                     tableNumber: tableNumber,
@@ -669,8 +672,8 @@ export const updateOrderStatus = async (req, res) => {
                             if (global.io) {
                                 global.io.emit('orderUpdate', { orderId: id, status: 'PAYMENT_REQUIRED', tableId: orderPymt.table_id });
                             }
-                            return res.status(402).json({ 
-                                message: 'Payment pending. The customer has been prompted to complete their payment. You can close this order once they settle the bill.' 
+                            return res.status(402).json({
+                                message: 'Payment pending. The customer has been prompted to complete their payment. You can close this order once they settle the bill.'
                             });
                         }
                     }
@@ -678,7 +681,7 @@ export const updateOrderStatus = async (req, res) => {
 
                 await pool.query('UPDATE orders SET status_id = ? WHERE id = ?', [statusId, id]);
                 await pool.query('UPDATE orders SET main_status = ? WHERE id = ?', [statusName, id]);
-                
+
                 // If it's a DINE-IN ready state, also ensure station statuses match (UI Requirement #5)
                 if (statusName === 'PREPARING') {
                     await pool.query('UPDATE orders SET kitchen_status = "preparing", bar_status = "preparing" WHERE id = ?', [id]);
@@ -696,7 +699,7 @@ export const updateOrderStatus = async (req, res) => {
                         // 1. Set to cleaning immediately
                         await pool.query('UPDATE restaurant_tables SET status = "cleaning" WHERE id = ?', [tableId]);
                         if (global.io) global.io.emit('tableUpdate', { tableId, status: 'cleaning' });
-                        
+
                         // 2. Set to available after 5 minutes
                         setTimeout(async () => {
                             try {
@@ -709,20 +712,20 @@ export const updateOrderStatus = async (req, res) => {
                         }, 5 * 60 * 1000);
 
                         console.log(`[StatusUpdate] Table ${tableId} set to cleaning due to order ${id} status: ${statusName}`);
-                        
+
                         // Notify Kitchen/Bar to STOP preparing (Requirement)
                         if (statusName === 'CANCELLED' && global.io) {
-                            global.io.emit('orderCancelled', { 
-                                orderId: id, 
-                                tableNumber: tableId, 
-                                reason: 'Staff Cancelled' 
+                            global.io.emit('orderCancelled', {
+                                orderId: id,
+                                tableNumber: tableId,
+                                reason: 'Staff Cancelled'
                             });
                         }
                     }
                 }
             }
         }
-        
+
         // Real-time update emit (Requirement 13)
         if (global.io) {
             let staffId = null;
@@ -739,24 +742,25 @@ export const updateOrderStatus = async (req, res) => {
                     staffId = orderInfo[0].staff_id;
                     tableNum = orderInfo[0].table_number;
                 }
-            } catch (err) {}
+            } catch (err) { }
 
-            global.io.emit('orderUpdate', { 
-                id, 
-                orderId: id,
-                type: type || 'DINE-IN', 
+            global.io.emit('orderUpdate', {
+                id: parseInt(id),
+                orderId: parseInt(id),
+                type: type || 'DINE-IN',
                 status: dbStatus,
+                mainStatus: dbStatus,
                 staffId: staffId,
                 tableNumber: tableNum
             });
 
             // Specific notification for READY status
             if (dbStatus === 'READY' || dbStatus === 'READY TO SERVE') {
-                global.io.emit('orderReadyNotify', { 
-                    orderId: id, 
+                global.io.emit('orderReadyNotify', {
+                    orderId: id,
                     tableNumber: tableNum,
                     staffId: staffId,
-                    message: `Order #${id} for Table ${tableNum} is ready!` 
+                    message: `Order #${id} for Table ${tableNum} is ready!`
                 });
             }
         }
@@ -778,7 +782,7 @@ export const getStats = async (req, res) => {
         const [[{ activeStaffCount }]] = await pool.query('SELECT COUNT(*) as activeStaffCount FROM staff_attendance WHERE date = CURDATE() AND check_out_time IS NULL');
         const [[{ count: newCustomersWeekCount }]] = await pool.query('SELECT COUNT(*) as count FROM online_customers WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
 
-        
+
         const [ordersToday] = await pool.query(`
             SELECT COUNT(*) as count FROM (
                 SELECT id FROM delivery_orders WHERE DATE(created_at) = CURDATE()
@@ -830,7 +834,7 @@ export const getStats = async (req, res) => {
             GROUP BY category_name
         `);
 
-        res.json({ 
+        res.json({
             stats: {
                 revenue: totalRevenue || 0,
                 todayRevenue: todayRevenue || 0,
@@ -844,14 +848,14 @@ export const getStats = async (req, res) => {
                 totalCustomers: customerCount,
                 customerCount: customerCount,
                 customers: customerCount,
-                
+
                 details: {
                     todayOrders: ordersToday[0].count,
                     newCustomersWeek: newCustomersWeekCount,
                     todayCategories,
                     totalRevenue: totalRevenue || 0
                 }
-            } 
+            }
         });
     } catch (err) {
         console.error('Get stats error:', err);
@@ -901,10 +905,11 @@ export const getAllReservations = async (req, res) => {
     try {
         const { date } = req.query;
         let query = `
-            SELECT r.*, rt.table_number, da.area_name
+            SELECT r.*, rt.table_number, da.area_name, c.email as customer_email
             FROM reservations r
             LEFT JOIN restaurant_tables rt ON r.table_id = rt.id
             LEFT JOIN dining_areas da ON r.area_id = da.id
+            LEFT JOIN online_customers c ON r.customer_id = c.id
         `;
         const params = [];
 
@@ -913,7 +918,7 @@ export const getAllReservations = async (req, res) => {
             params.push(date);
         }
 
-        query += " ORDER BY r.reservation_date DESC, r.reservation_time ASC, r.created_at DESC";
+        query += " ORDER BY (r.reservation_date < CURDATE()) ASC, r.reservation_date ASC, r.reservation_time ASC, r.created_at DESC";
 
         const [reservations] = await pool.query(query, params);
         res.json({ reservations });
@@ -934,6 +939,11 @@ export const updateReservationStatus = async (req, res) => {
         }
 
         await pool.query('UPDATE reservations SET reservation_status = ? WHERE id = ?', [status.toUpperCase(), id]);
+
+        if (global.io) {
+            global.io.emit('reservationUpdate', { id, status: status.toUpperCase() });
+        }
+
         res.json({ message: 'Reservation status updated' });
     } catch (err) {
         console.error('Update reservation status error:', err);
@@ -978,7 +988,7 @@ export const updateArea = async (req, res) => {
 export const getAllTables = async (req, res) => {
     try {
         const { date, time } = req.query;
-        
+
         // 1. Get all tables with area names
         const [tables] = await pool.query(`
             SELECT t.*, a.area_name 
@@ -1154,7 +1164,7 @@ export const cleanupOrders = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
-        
+
         // delete all order-related data
         await connection.query("DELETE FROM order_items");
         await connection.query("DELETE FROM orders");

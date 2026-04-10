@@ -185,9 +185,16 @@ const StewardDashboard = () => {
             fetchData(true);
         }, 10000);
 
-        // Set up real-time socket for notifications
+        // Set up real-time socket for notifications (Requirement: Targeted notifications)
         const socket = io(apiConfig.API_BASE_URL, {
             transports: ['websocket']
+        });
+
+        socket.on('connect', () => {
+            if (user?.id) {
+                socket.emit('join', `steward_room_${user.id}`);
+                console.log(`[Steward] Joined private room: steward_room_${user.id}`);
+            }
         });
 
         socket.on('orderUpdate', (data) => {
@@ -1219,7 +1226,7 @@ return (
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: 'bold' }}>TABLE</Text>
                                     <View style={{ backgroundColor: '#111827', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
-                                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: 'white' }}>T-{activeModal?.data?.tableNumber}</Text>
+                                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: 'white' }}>T-{activeModal?.data?.tableNumber || activeModal?.data?.table_number || 'N/A'}</Text>
                                     </View>
                                 </View>
 

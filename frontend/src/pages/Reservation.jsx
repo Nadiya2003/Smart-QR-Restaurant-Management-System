@@ -42,6 +42,7 @@ function Reservation() {
         guests: '2',
         areaId: '',
         tableId: '',
+        tableCapacity: 0,
         specialRequest: '',
     });
 
@@ -117,6 +118,17 @@ function Reservation() {
         // Validation
         if (!formData.name || !formData.date || !formData.time || !formData.email) {
             setError('Please fill in all required fields');
+            return;
+        }
+
+        if (!formData.tableId) {
+            setError('Please select a table');
+            return;
+        }
+
+        const guestCount = parseInt(formData.guests);
+        if (formData.tableCapacity < guestCount) {
+            setError(`Selected table does not have enough seats for ${guestCount} guests (Table capacity: ${formData.tableCapacity})`);
             return;
         }
 
@@ -378,7 +390,11 @@ function Reservation() {
                                     date={formData.date}
                                     time={formData.time}
                                     selectedTableId={formData.tableId}
-                                    onSelectTable={(table) => setFormData(prev => ({ ...prev, tableId: table.id }))}
+                                    onSelectTable={(table) => setFormData(prev => ({ 
+                                        ...prev, 
+                                        tableId: table.id,
+                                        tableCapacity: table.capacity 
+                                    }))}
                                 />
                                 {formData.tableId && (
                                     <p className="text-center text-[#D4AF37] font-semibold animate-pulse">

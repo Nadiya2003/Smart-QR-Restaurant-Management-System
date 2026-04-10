@@ -12,6 +12,43 @@ import AccountSection from './AccountSection';
 
 const { width } = Dimensions.get('window');
 
+// ─── Timer Component ──────────────────────────────────────────────
+const OrderTimer = ({ createdAt }) => {
+    const [timeLeft, setTimeLeft] = useState(20 * 60);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        const calculateTime = () => {
+            const start = new Date(createdAt).getTime();
+            const now = new Date().getTime();
+            const elapsed = Math.floor((now - start) / 1000);
+            const remaining = Math.max(0, (20 * 60) - elapsed);
+            setTimeLeft(remaining);
+        };
+        calculateTime();
+        timerRef.current = setInterval(calculateTime, 1000);
+        return () => clearInterval(timerRef.current);
+    }, [createdAt]);
+
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const isUrgent = timeLeft < 5 * 60;
+    const isLate = timeLeft === 0;
+
+    return (
+        <View style={[styles.timerBox, isUrgent && styles.timerUrgent, isLate && styles.timerLate]}>
+            <Text style={[styles.timerLabel, isUrgent && !isLate && styles.timerLabelUrgent, isLate && { color: '#FFFFFF' }]}>{isLate ? 'OVERDUE' : 'TIME'}</Text>
+            <Text style={[styles.timerText, isUrgent && !isLate && styles.timerTextUrgent, isLate && { color: '#FFFFFF' }]}>
+                {isLate ? '⚠️ LATE' : formatTime(timeLeft)}
+            </Text>
+        </View>
+    );
+};
+
 const CashierDashboard = () => {
     const { user, token, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('home'); // home, tables, pos, reservations, bookings, stats
@@ -44,6 +81,7 @@ const CashierDashboard = () => {
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [settlementData, setSettlementData] = useState({ payment_method_id: null, email: '' });
+    const [orderSubTab, setOrderSubTab] = useState('DINE_IN');
 
     // Reservation Filters
     const [filterResDate, setFilterResDate] = useState(new Date().toISOString().split('T')[0]);
@@ -149,13 +187,15 @@ const CashierDashboard = () => {
         });
 
         socket.on('newOrder', () => {
-            playNotificationSound();
-            fetchData(true);
+             playNotificationSound();
+             Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+             fetchData(true);
         });
 
         socket.on('orderUpdate', () => fetchData(true));
         socket.on('paymentRequested', () => {
             playNotificationSound();
+            Alert.alert('Payment Requested!', 'A customer is ready to pay');
             fetchData(true);
         });
 
@@ -737,42 +777,70 @@ const CashierDashboard = () => {
         </ScrollView>
     );
 
-    const renderStatsTab = () => (
-        <ScrollView style={styles.content}>
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Order Management</Text>
-            </View>
-            {orders.map(order => (
-                <TouchableOpacity 
-                    key={order.id} 
-                    style={[styles.historyCard, order.status_name === 'COMPLETED' ? styles.orderCompleted : styles.orderPending]}
-                    onPress={() => {
-                        setSelectedOrder(order);
-                        setSettlementData({ ...settlementData, email: order.phone ? '' : '' });
-                        setShowSettlementModal(true);
-                    }}
-                >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <View>
-                            <Text style={styles.historyId}>#{order.id} - {order.type_name}</Text>
-                            <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleString()}</Text>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: order.status_name === 'COMPLETED' ? '#D1FAE5' : '#FEF3C7' }]}>
-                            <Text style={[styles.statusText, { color: order.status_name === 'COMPLETED' ? '#065F46' : '#92400E' }]}>
-                                {order.status_name}
+    const renderStatsTab = () => {
+        const filteredByType = orders.filter(o => o.type_name === orderSubTab);
+        const getCount = (type) => orders.filter(o => o.type_name === type && o.status_name !== 'COMPLETED').length;
+
+        return (
+            <ScrollView style={styles.content}>
+                <View style={styles.subTabRow}>
+                    {[
+                        { key: 'DINE_IN', label: 'Dine-In', icon: '🍽️' },
+                        { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
+                        { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }
+                    ].map(tab => (
+                        <TouchableOpacity 
+                            key={tab.key} 
+                            style={[styles.subTab, orderSubTab === tab.key && styles.activeSubTab]}
+                            onPress={() => setOrderSubTab(tab.key)}
+                        >
+                            <Text style={[styles.subTabText, orderSubTab === tab.key && styles.activeSubTabText]}>
+                                {tab.icon} {tab.label} ({getCount(tab.key)})
                             </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>{orderSubTab.replace('_', ' ')} Orders</Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280' }}>Manage {filteredByType.length} total orders</Text>
+                </View>
+
+                {filteredByType.map(order => (
+                    <TouchableOpacity 
+                        key={order.id} 
+                        style={[styles.historyCard, order.status_name === 'COMPLETED' ? styles.orderCompleted : styles.orderPending]}
+                        onPress={() => {
+                            setSelectedOrder(order);
+                            setSettlementData({ ...settlementData, email: order.phone ? '' : '' });
+                            setShowSettlementModal(true);
+                        }}
+                    >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={styles.historyId}>#{order.id}</Text>
+                                    <OrderTimer createdAt={order.created_at} />
+                                </View>
+                                <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleString()}</Text>
+                            </View>
+                            <View style={[styles.statusBadge, { backgroundColor: order.status_name === 'COMPLETED' ? '#D1FAE5' : '#FEF3C7' }]}>
+                                <Text style={[styles.statusText, { color: order.status_name === 'COMPLETED' ? '#065F46' : '#92400E' }]}>
+                                    {order.status_name}
+                                </Text>
+                            </View>
                         </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'flex-end' }}>
-                        <View>
-                            <Text style={styles.historyTable}>{order.table_number ? `Table ${order.table_number}` : (order.customer_name || 'Walk-in')}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'flex-end' }}>
+                            <View>
+                                <Text style={styles.historyTable}>{order.table_number ? `Table ${order.table_number}` : (order.customer_name || 'Walk-in')}</Text>
+                            </View>
+                            <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
                         </View>
-                        <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
-                    </View>
-                </TouchableOpacity>
-            ))}
-        </ScrollView>
-    );
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        );
+    };
 
     const renderSettlementModal = () => (
         <Modal visible={showSettlementModal} transparent animationType="slide">
@@ -1118,7 +1186,23 @@ const styles = StyleSheet.create({
     printBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 12, borderRadius: 10, borderWeight: 1, borderColor: '#3B82F6', borderWidth: 1 },
     printBtnText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 14 },
     tinyStatusBtn: { backgroundColor: 'white', borderColor: '#BFDBFE', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-    tinyStatusText: { fontSize: 10, fontWeight: 'bold', color: '#1E40AF' }
+    tinyStatusText: { fontSize: 10, fontWeight: 'bold', color: '#1E40AF' },
+
+    // Timer Styles
+    timerBox: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: '#F3F4F6', alignItems: 'center' },
+    timerUrgent: { backgroundColor: '#FEE2E2' },
+    timerLate: { backgroundColor: '#EF4444' },
+    timerLabel: { fontSize: 6, fontWeight: '900', color: '#94A3B8' },
+    timerLabelUrgent: { color: '#EF4444' },
+    timerText: { fontSize: 10, fontWeight: '800', color: '#475569' },
+    timerTextUrgent: { color: '#EF4444' },
+
+    // Sub Tab Styles
+    subTabRow: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 12, padding: 4, marginBottom: 20 },
+    subTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    activeSubTab: { backgroundColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+    subTabText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+    activeSubTabText: { color: '#0F172A' },
 });
 
 export default CashierDashboard;

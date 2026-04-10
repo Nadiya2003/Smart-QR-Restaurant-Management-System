@@ -204,7 +204,7 @@ export const getReservations = async (req, res) => {
             params.push(date);
         }
 
-        query += " ORDER BY r.reservation_date DESC, r.reservation_time ASC";
+        query += " ORDER BY (r.reservation_date < CURDATE()) ASC, r.reservation_date ASC, r.reservation_time ASC";
 
         const [reservations] = await pool.query(query, params);
         res.json({ reservations });

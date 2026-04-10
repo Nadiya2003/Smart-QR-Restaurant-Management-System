@@ -6,7 +6,7 @@ import pool from '../config/db.js';
  */
 export const getKitchenOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED'];
 
         // 1. Dine-in Orders from 'orders' table
         const [dineInRows] = await pool.query(`
@@ -38,7 +38,11 @@ export const getKitchenOrders = async (req, res) => {
                 JOIN menu_items mi ON oi.menu_item_id = mi.id
                 LEFT JOIN categories cat ON mi.category_id = cat.id
                 WHERE oi.order_id = ?
-                  AND (cat.name IS NULL OR LOWER(cat.name) NOT LIKE '%beverage%')
+                  AND (cat.name IS NULL OR (
+                      LOWER(cat.name) NOT LIKE '%beverage%' AND 
+                      LOWER(cat.name) NOT LIKE '%drink%' AND 
+                      LOWER(cat.name) NOT LIKE '%bar%'
+                  ))
             `, [order.id]);
             return { ...order, items: items || [] };
         }));
@@ -133,20 +137,45 @@ export const updateOrderItemStatus = async (req, res) => {
         
         if (allBevReady) await pool.query('UPDATE orders SET bar_status = "ready" WHERE id = ?', [orderId]);
         else if (anyBevPreparing) await pool.query('UPDATE orders SET bar_status = "preparing" WHERE id = ?', [orderId]);
-
         const [orderRows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [orderId]);
         const { kitchen_status, bar_status } = orderRows[0];
 
-        if (kitchen_status === 'ready' && (bevItems.length === 0 || bar_status === 'ready')) {
+        const isFoodReady = foodItems.length === 0 || kitchen_status === 'ready';
+        const isBevReady = bevItems.length === 0 || bar_status === 'ready';
+
+        if (isFoodReady && isBevReady) {
             const [sr] = await pool.query('SELECT id FROM order_statuses WHERE name = "READY_TO_SERVE"');
             if (sr.length > 0) {
                 await pool.query('UPDATE orders SET status_id = ?, main_status = "READY_TO_SERVE" WHERE id = ?', [sr[0].id, orderId]);
             }
+        } else if (kitchen_status === 'preparing' || bar_status === 'preparing') {
+            const [sp] = await pool.query('SELECT id FROM order_statuses WHERE name = "PREPARING"');
+            if (sp.length > 0) {
+                await pool.query('UPDATE orders SET status_id = ?, main_status = "PREPARING" WHERE id = ?', [sp[0].id, orderId]);
+            }
         }
+
+        // Fetch updated order for socket broadcast
+        const [updatedOrder] = await pool.query('SELECT main_status, kitchen_status, bar_status FROM orders WHERE id = ?', [orderId]);
+        const mainStatus = updatedOrder[0]?.main_status || 'PENDING';
 
         if (global.io) {
             global.io.emit('itemStatusUpdated', { orderId, itemId, status: normalizedStatus });
-            global.io.emit('orderUpdate', { orderId, status: normalizedStatus === 'READY' ? 'ITEM_READY' : 'ITEM_PREPARING' });
+            global.io.emit('orderUpdate', { 
+                orderId, 
+                id: orderId,
+                status: mainStatus, 
+                mainStatus: mainStatus,
+                itemStatus: normalizedStatus,
+                kitchenStatus: updatedOrder[0]?.kitchen_status,
+                barStatus: updatedOrder[0]?.bar_status
+            });
+            global.io.emit('orderStatusUpdated', { 
+                orderId, 
+                mainStatus, 
+                kitchenStatus: updatedOrder[0]?.kitchen_status, 
+                barStatus: updatedOrder[0]?.bar_status 
+            });
         }
 
         res.json({ success: true, message: 'Item status updated' });
@@ -162,7 +191,7 @@ export const updateOrderItemStatus = async (req, res) => {
  */
 export const getBarOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED'];
         
         const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
@@ -184,7 +213,11 @@ export const getBarOrders = async (req, res) => {
                 FROM order_items oi 
                 JOIN menu_items mi ON oi.menu_item_id = mi.id 
                 LEFT JOIN categories cat ON mi.category_id = cat.id
-                WHERE oi.order_id = ? AND (cat.name IS NOT NULL AND LOWER(cat.name) LIKE '%beverage%')
+                WHERE oi.order_id = ? AND (cat.name IS NOT NULL AND (
+                    LOWER(cat.name) LIKE '%beverage%' OR 
+                    LOWER(cat.name) LIKE '%drink%' OR 
+                    LOWER(cat.name) LIKE '%bar%'
+                ))
             `, [o.id]);
             return { ...o, items: items || [], order_type_name: 'DINE-IN' };
         }));
@@ -200,7 +233,10 @@ export const getBarOrders = async (req, res) => {
         const takeawayOrders = takeawayRows.map(o => {
             let parsedItems = [];
             try { parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
-            const bevItems = parsedItems.filter(i => (i.category || i.category_name || i.categoryName || '').toLowerCase().includes('beverage'));
+            const bevItems = parsedItems.filter(i => {
+                const catName = (i.category || i.category_name || i.categoryName || '').toLowerCase();
+                return catName.includes('beverage') || catName.includes('drink') || catName.includes('bar');
+            });
             return { ...o, items: bevItems };
         });
 
@@ -215,7 +251,10 @@ export const getBarOrders = async (req, res) => {
         const deliveryOrders = deliveryRows.map(o => {
             let parsedItems = [];
             try { parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []); } catch (_) {}
-            const bevItems = parsedItems.filter(i => (i.category || i.category_name || i.categoryName || '').toLowerCase().includes('beverage'));
+            const bevItems = parsedItems.filter(i => {
+                const catName = (i.category || i.category_name || i.categoryName || '').toLowerCase();
+                return catName.includes('beverage') || catName.includes('drink') || catName.includes('bar');
+            });
             return { ...o, items: bevItems };
         });
 
@@ -242,10 +281,50 @@ export const updateKitchenOrderStatus = async (req, res) => {
             const field = isBar ? 'bar_status' : 'kitchen_status';
             await pool.query(`UPDATE orders SET ${field} = ? WHERE id = ?`, [normalized.toLowerCase(), id]);
             
+            // Bulk update corresponding items
+            if (isBar) {
+                await pool.query(`
+                    UPDATE order_items 
+                    SET item_status = ? 
+                    WHERE order_id = ? 
+                    AND menu_item_id IN (
+                        SELECT mi.id FROM menu_items mi
+                        JOIN categories c ON mi.category_id = c.id
+                        WHERE LOWER(c.name) LIKE '%beverage%' OR LOWER(c.name) LIKE '%drink%' OR LOWER(c.name) LIKE '%bar%'
+                    )
+                `, [normalized.toLowerCase(), id]);
+            } else {
+                await pool.query(`
+                    UPDATE order_items 
+                    SET item_status = ? 
+                    WHERE order_id = ? 
+                    AND menu_item_id IN (
+                        SELECT mi.id FROM menu_items mi
+                        LEFT JOIN categories c ON mi.category_id = c.id
+                        WHERE c.name IS NULL OR (LOWER(c.name) NOT LIKE '%beverage%' AND LOWER(c.name) NOT LIKE '%drink%' AND LOWER(c.name) NOT LIKE '%bar%')
+                    )
+                `, [normalized.toLowerCase(), id]);
+            }
+            
+            // Fetch current statuses and item composition
             const [rows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [id]);
             const { kitchen_status, bar_status } = rows[0];
 
-            if (kitchen_status === 'ready' && bar_status === 'ready') {
+            const [items] = await pool.query(`
+                SELECT cat.name as category 
+                FROM order_items oi
+                JOIN menu_items mi ON oi.menu_item_id = mi.id
+                JOIN categories cat ON mi.category_id = cat.id
+                WHERE oi.order_id = ?
+            `, [id]);
+            
+            const hasFood = items.some(i => !(i.category || '').toLowerCase().includes('beverage') && !(i.category || '').toLowerCase().includes('bar'));
+            const hasBev = items.some(i => (i.category || '').toLowerCase().includes('beverage') || (i.category || '').toLowerCase().includes('bar'));
+
+            const isFoodReady = !hasFood || kitchen_status === 'ready';
+            const isBevReady = !hasBev || bar_status === 'ready';
+
+            if (isFoodReady && isBevReady) {
                 const [sr] = await pool.query('SELECT id FROM order_statuses WHERE name = "READY_TO_SERVE"');
                 if (sr.length > 0) {
                     await pool.query('UPDATE orders SET status_id = ?, main_status = "READY_TO_SERVE" WHERE id = ?', [sr[0].id, id]);
@@ -257,8 +336,26 @@ export const updateKitchenOrderStatus = async (req, res) => {
                 }
             }
 
+            // Fetch updated order for socket broadcast
+            const [updatedOrder] = await pool.query('SELECT main_status, kitchen_status, bar_status FROM orders WHERE id = ?', [id]);
+            const mainStatus = updatedOrder[0]?.main_status || normalized;
+
             if (global.io) {
-                global.io.emit('orderUpdate', { orderId: id, status: normalized, updatedBy: isBar ? 'BAR' : 'KITCHEN' });
+                global.io.emit('orderUpdate', { 
+                    orderId: id, 
+                    id: id,
+                    status: mainStatus, 
+                    mainStatus: mainStatus,
+                    kitchenStatus: updatedOrder[0]?.kitchen_status,
+                    barStatus: updatedOrder[0]?.bar_status,
+                    updatedBy: isBar ? 'BAR' : 'KITCHEN' 
+                });
+                global.io.emit('orderStatusUpdated', { 
+                    orderId: id, 
+                    mainStatus, 
+                    kitchenStatus: updatedOrder[0]?.kitchen_status, 
+                    barStatus: updatedOrder[0]?.bar_status 
+                });
             }
         } else {
             const table = type === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';

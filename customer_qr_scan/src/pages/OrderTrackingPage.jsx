@@ -56,12 +56,19 @@ export function OrderTrackingPage({ onNavigate }) {
 
     if (['COMPLETED', 'FINISHED'].includes(status)) {
         const isPaid = !!currentOrder?.paid_at;
-        const timer = setTimeout(() => {
-            onNavigate(isPaid ? 'feedback' : 'payment', { 
-                orderId: currentOrder.id, 
-                stewardId: currentOrder.steward_id 
-            });
-        }, 3000); 
+        const isAutoClosed = currentOrder?.isAutoClosed;
+
+        const timer = setTimeout(async () => {
+            if (isAutoClosed) {
+                await clearOrder(false);
+                onNavigate('welcome');
+            } else {
+                onNavigate(isPaid ? 'feedback' : 'payment', { 
+                    orderId: currentOrder.id, 
+                    steward_id: currentOrder.steward_id 
+                });
+            }
+        }, isAutoClosed ? 5000 : 3000); 
         return () => clearTimeout(timer);
     }
     
