@@ -58,6 +58,13 @@ const InventoryDashboard = () => {
         'Authorization': `Bearer ${token}`,
     };
 
+    const handleLogout = () => {
+        Alert.alert('Logout', 'Are you sure you want to logout?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', onPress: logout }
+        ]);
+    };
+
     const fetchData = useCallback(async (isSilent = false) => {
         if (!isSilent) setLoading(true);
         try {
@@ -288,7 +295,7 @@ const InventoryDashboard = () => {
                         <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Request</Text>
                     </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+                <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
                     <Text style={{ fontSize: 18 }}>🚪</Text>
                 </TouchableOpacity>
             </View>

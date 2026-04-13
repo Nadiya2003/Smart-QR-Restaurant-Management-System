@@ -1,6 +1,7 @@
 import pool from '../config/db.js';
 import PDFDocument from 'pdfkit';
 import path from 'path';
+import fs from 'fs';
 
 /**
  * Common filter builder for reports
@@ -228,13 +229,20 @@ export const generateUnifiedReport = async (req, res) => {
             case 'revenue':
                 title = "Revenue Analytics Report";
                 const [revTrend] = await pool.query(`
-                    SELECT DATE(created_at) as date, SUM(total_price) as revenue, COUNT(DISTINCT order_id) as orders
+                    SELECT 
+                        DATE(created_at) as date, 
+                        SUM(CASE WHEN order_status != 'cancelled' THEN total_price ELSE 0 END) as revenue,
+                        SUM(CASE WHEN order_status = 'cancelled' THEN total_price ELSE 0 END) as lost,
+                        SUM(CASE WHEN order_status != 'cancelled' THEN profit ELSE 0 END) as profit,
+                        COUNT(DISTINCT order_id) as orders
                     FROM order_analytics
                     WHERE created_at >= ? AND created_at <= ?
                     GROUP BY DATE(created_at)
                 `, [startDate, endDate + " 23:59:59"]);
                 data = revTrend;
                 summary.totalRevenue = revTrend.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+                summary.totalLost = revTrend.reduce((acc, curr) => acc + Number(curr.lost), 0);
+                summary.totalProfit = revTrend.reduce((acc, curr) => acc + Number(curr.profit), 0);
                 summary.totalOrders = revTrend.reduce((acc, curr) => acc + Number(curr.orders), 0);
                 break;
 
@@ -353,55 +361,163 @@ export const generatePdfReport = async (req, res) => {
 
         // For simplicity, we reuse the query logic but tailored for PDF
         // Re-calculate or re-fetch (Ideally we'd have a helper)
-        if (type === 'revenue') {
-            title = "Revenue Analytics Report";
-            const [rows] = await pool.query(`
-                SELECT DATE(created_at) as date, SUM(total_price) as revenue, COUNT(DISTINCT order_id) as orders
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY DATE(created_at) ORDER BY date ASC
-            `, [startDate, endDate + " 23:59:59"]);
-            data = rows;
-            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
-            summary.totalOrders = rows.reduce((acc, curr) => acc + Number(curr.orders), 0);
-        } else if (type === 'food') {
-            title = "Food Sales Report";
-            const [rows] = await pool.query(`
-                SELECT item_name, SUM(quantity) as sold, SUM(total_price) as revenue
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY item_name ORDER BY sold DESC
-            `, [startDate, endDate + " 23:59:59"]);
-            data = rows;
-            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
-            summary.totalOrders = rows.reduce((acc, curr) => acc + Number(curr.sold), 0);
-        } else {
-            // Default to orders for other types in PDF for now
-            title = "Order History Report";
-            const [rows] = await pool.query(`
-                SELECT order_id, order_source, item_name, quantity, total_price, created_at
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                ORDER BY created_at DESC
-            `, [startDate, endDate + " 23:59:59"]);
-            data = rows;
-            summary.totalRevenue = rows.reduce((acc, curr) => acc + Number(curr.total_price), 0);
-            summary.totalOrders = rows.length;
+        switch (type) {
+            case 'revenue':
+                title = "Revenue Analytics Report";
+                const [revRows] = await pool.query(`
+                    SELECT 
+                        DATE(created_at) as date, 
+                        SUM(CASE WHEN order_status != 'cancelled' THEN total_price ELSE 0 END) as revenue,
+                        SUM(CASE WHEN order_status = 'cancelled' THEN total_price ELSE 0 END) as lost,
+                        SUM(CASE WHEN order_status != 'cancelled' THEN profit ELSE 0 END) as profit,
+                        COUNT(DISTINCT order_id) as orders
+                    FROM order_analytics
+                    WHERE created_at >= ? AND created_at <= ?
+                    GROUP BY DATE(created_at) ORDER BY date ASC
+                `, [startDate, endDate + " 23:59:59"]);
+                data = revRows;
+                summary.totalRevenue = revRows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+                summary.totalLost = revRows.reduce((acc, curr) => acc + Number(curr.lost), 0);
+                summary.totalProfit = revRows.reduce((acc, curr) => acc + Number(curr.profit), 0);
+                summary.totalOrders = revRows.reduce((acc, curr) => acc + Number(curr.orders), 0);
+                break;
+
+            case 'food':
+            case 'food-wise':
+                title = "Food Sales Report";
+                const [foodRows] = await pool.query(`
+                    SELECT item_name, category_name, SUM(quantity) as sold, SUM(total_price) as revenue
+                    FROM order_analytics
+                    WHERE created_at >= ? AND created_at <= ?
+                    GROUP BY item_name, category_name ORDER BY sold DESC
+                `, [startDate, endDate + " 23:59:59"]);
+                data = foodRows;
+                summary.totalRevenue = foodRows.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+                summary.totalOrders = foodRows.reduce((acc, curr) => acc + Number(curr.sold), 0);
+                break;
+
+            case 'orders':
+                title = "Order Summary Report";
+                const [orderSummary] = await pool.query(`
+                    SELECT status, COUNT(*) as count, SUM(total_price) as revenue
+                    FROM (
+                        SELECT order_status as status, total_price, created_at FROM delivery_orders
+                        UNION ALL
+                        SELECT order_status as status, total_price, created_at FROM takeaway_orders
+                        UNION ALL
+                        SELECT order_status as status, SUM(total_price) as total_price, created_at 
+                        FROM order_analytics 
+                        WHERE order_source = 'DINE-IN' 
+                        GROUP BY order_id, order_status, created_at
+                    ) as combined
+                    WHERE created_at >= ? AND created_at <= ?
+                    GROUP BY status
+                `, [startDate, endDate + " 23:59:59"]);
+                data = orderSummary;
+                summary.totalRevenue = orderSummary.reduce((acc, curr) => acc + Number(curr.revenue), 0);
+                summary.totalOrders = orderSummary.reduce((acc, curr) => acc + Number(curr.count), 0);
+                break;
+
+            case 'customers':
+                title = "Customer Activity Report";
+                const [customerData] = await pool.query(`
+                    SELECT name, email, phone, created_at as join_date, is_active as status
+                    FROM online_customers
+                    WHERE created_at >= ? AND created_at <= ?
+                `, [startDate, endDate + " 23:59:59"]);
+                data = customerData;
+                summary.totalOrders = customerData.length;
+                break;
+
+            case 'staff':
+                title = "Staff Performance Report";
+                const [staffPerformance] = await pool.query(`
+                    SELECT su.full_name, sr.role_name as role, COUNT(a.id) as attendance_days, 
+                           SUM(TIMESTAMPDIFF(HOUR, a.check_in_time, IFNULL(a.check_out_time, NOW()))) as total_hours
+                    FROM staff_users su
+                    LEFT JOIN staff_roles sr ON su.role_id = sr.id
+                    LEFT JOIN staff_attendance a ON su.id = a.staff_id
+                    WHERE su.created_at >= ? AND su.created_at <= ?
+                    GROUP BY su.id, sr.role_name
+                `, [startDate, endDate + " 23:59:59"]);
+                data = staffPerformance;
+                summary.totalOrders = staffPerformance.length;
+                break;
+
+            case 'supplier':
+                title = "Supplier Purchase Report";
+                const [supplierData] = await pool.query(`
+                    SELECT s.name as supplier, i.item_name, i.quantity, i.unit, i.last_updated as date
+                    FROM inventory i
+                    JOIN suppliers s ON i.supplier_id = s.id
+                    WHERE i.last_updated >= ? AND i.last_updated <= ?
+                `, [startDate, endDate + " 23:59:59"]);
+                data = supplierData;
+                summary.totalOrders = supplierData.length;
+                break;
+
+            case 'cancellations':
+                title = "Order Cancellations Report";
+                const [cancellations] = await pool.query(`
+                    SELECT order_id, item_name, total_price as lost_revenue, created_at as date
+                    FROM order_analytics
+                    WHERE order_status = 'cancelled' AND created_at >= ? AND created_at <= ?
+                `, [startDate, endDate + " 23:59:59"]);
+                data = cancellations;
+                summary.totalRevenue = cancellations.reduce((acc, curr) => acc + Number(curr.lost_revenue), 0);
+                summary.totalOrders = cancellations.length;
+                break;
+
+            default:
+                title = "Order History Report";
+                const [defaultRows] = await pool.query(`
+                    SELECT order_id, order_source, item_name, quantity, total_price, created_at
+                    FROM order_analytics
+                    WHERE created_at >= ? AND created_at <= ?
+                    ORDER BY created_at DESC
+                `, [startDate, endDate + " 23:59:59"]);
+                data = defaultRows;
+                summary.totalRevenue = defaultRows.reduce((acc, curr) => acc + Number(curr.total_price), 0);
+                summary.totalOrders = defaultRows.length;
         }
 
+        const dateStr = new Date().toISOString().split('T')[0];
+        const fileName = `Report_${type || 'business'}_${dateStr}.pdf`;
+
         const doc = new PDFDocument({ margin: 50 });
-        const fileName = `report_${Date.now()}.pdf`;
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         doc.pipe(res);
 
-        // Header
-        doc.fillColor('#D4AF37').fontSize(22).font('Helvetica-Bold').text("MELISSA'S FOOD COURT", { align: 'center' });
-        doc.fillColor('#333').fontSize(14).text(title, { align: 'center' });
-        doc.fontSize(10).text(`Period: ${startDate} to ${endDate}`, { align: 'center' });
-        doc.moveDown();
-        doc.strokeColor('#D4AF37').lineWidth(2).moveTo(50, 130).lineTo(550, 130).stroke();
+        // ── Invoice Style Header ──
+        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, 40, { width: 60 });
+        }
+
+        doc.fillColor('#111827')
+           .fontSize(20)
+           .font('Helvetica-Bold')
+           .text("MELISSA'S FOOD COURT", 120, 45);
+           
+        doc.fillColor('#6B7280')
+           .fontSize(10)
+           .font('Helvetica')
+           .text("145 Main Courtyard, Culinary District\nColombo, Sri Lanka\nTel: +94 112 345 678", 120, 70);
+
+        doc.fillColor('#D4AF37')
+           .fontSize(18)
+           .font('Helvetica-Bold')
+           .text("REPORT INVOICE", 50, 45, { align: 'right' });
+           
+        doc.fillColor('#4B5563')
+           .fontSize(10)
+           .font('Helvetica')
+           .text(`Generated: ${dateStr}\nReport Type: ${title}\nPeriod: ${startDate} to ${endDate}`, 50, 65, { align: 'right' });
+
+        // Header bottom borderline
+        doc.strokeColor('#D4AF37').lineWidth(2).moveTo(50, 125).lineTo(560, 125).stroke();
 
         // Summary Cards
         doc.moveDown(2);

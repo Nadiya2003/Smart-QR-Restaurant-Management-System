@@ -1,13 +1,13 @@
 
 import express from 'express';
 import * as reportController from '../controllers/report.controller.js';
-import { protect, adminOnly } from '../middleware/authMiddleware.js';
+import { protect, adminOnly, isStaff } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// All report routes require admin or authorized staff
+// All report routes require authorized staff
 router.use(protect);
-router.use(adminOnly);
+router.use(isStaff);
 
 router.get('/food', reportController.getFoodReport);
 router.get('/revenue', reportController.getRevenueReport);

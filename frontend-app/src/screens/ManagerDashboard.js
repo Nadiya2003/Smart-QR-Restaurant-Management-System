@@ -62,15 +62,15 @@ const ManagerDashboard = () => {
 
     if (authLoading) {
         return (
-            <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="large" color="#111827" />
-            </SafeAreaView>
+            </View>
         );
     }
 
     if (!hasAccess) {
         return (
-            <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                 <View style={styles.emptyState}>
                     <Text style={{ fontSize: 40, marginBottom: 20 }}>🔐</Text>
                     <Text style={[styles.headerTitle, { textAlign: 'center' }]}>Waiting for Admin Permission</Text>
@@ -81,7 +81,7 @@ const ManagerDashboard = () => {
                         <Text style={styles.saveBtnText}>Sign Out</Text>
                     </TouchableOpacity>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
@@ -104,6 +104,7 @@ const ManagerDashboard = () => {
     const [categories, setCategories] = useState([]);
     const [tables, setTables] = useState([]);
     const [diningAreas, setDiningAreas] = useState([]);
+    const [itemRemovalRequests, setItemRemovalRequests] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -281,6 +282,9 @@ const ManagerDashboard = () => {
                 
                 const cancelData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests`, { headers: reqHeaders });
                 if (cancelData) setCancelRequestList(cancelData.requests || []);
+
+                const removalData = await safeFetch(`${apiConfig.API_BASE_URL}/api/orders/removal-requests`, { headers: reqHeaders });
+                if (removalData) setItemRemovalRequests(removalData.requests || []);
             }
 
             if (activeTab === 'activity') {
@@ -346,6 +350,18 @@ const ManagerDashboard = () => {
             fetchData(true);
         });
 
+        socket.on('newReservation', () => {
+            playNotificationSound();
+            Alert.alert('New Reservation!', 'A new table reservation has been placed.');
+            fetchData(true);
+        });
+
+        socket.on('itemRemovalRequest', () => {
+            playNotificationSound();
+            Alert.alert('Removal Request!', 'A request to remove a prepared item has been received.');
+            fetchData(true);
+        });
+
         const interval = setInterval(async () => {
             try {
                 const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -367,6 +383,12 @@ const ManagerDashboard = () => {
                     if (cancelRes.ok) {
                         const c = await cancelRes.json();
                         setCancelRequestList(c.requests || []);
+                    }
+
+                    const removalRes = await fetch(`${apiConfig.API_BASE_URL}/api/orders/removal-requests`, { headers: reqHeaders });
+                    if (removalRes.ok) {
+                        const r = await removalRes.json();
+                        setItemRemovalRequests(r.requests || []);
                     }
                 }
 
@@ -805,9 +827,10 @@ const ManagerDashboard = () => {
     const renderOrders = () => (
         <>
             <View style={styles.subTabRow}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => {
-                     const count = tab === 'CANCELLATIONS' ? cancelRequestList.length : 
-                        orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
+                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
+                     const count = tab === 'CANCELLATIONS' || tab === 'ITEM REMOVALS' 
+                        ? (tab === 'CANCELLATIONS' ? cancelRequestList.length : itemRemovalRequests.filter(r => r.status === 'PENDING').length)
+                        : orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
 
                     return (
                         <TouchableOpacity 
@@ -816,7 +839,7 @@ const ManagerDashboard = () => {
                             onPress={() => setOrderSubTab(tab)}
                         >
                             <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : '🚨'} {tab} ({count})
+                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
                             </Text>
                         </TouchableOpacity>
                     );
@@ -863,6 +886,44 @@ const ManagerDashboard = () => {
                                 <TouchableOpacity 
                                     style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
                                     onPress={() => handleCancellationAction(req.id, 'reject')}
+                                >
+                                    <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    ))
+                )
+            ) : orderSubTab === 'ITEM REMOVALS' ? (
+                itemRemovalRequests.filter(r => r.status === 'PENDING').length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyIcon}>🗑️</Text>
+                        <Text style={styles.emptyText}>No pending item removal requests</Text>
+                    </View>
+                ) : (
+                    itemRemovalRequests.filter(r => r.status === 'PENDING').map((req) => (
+                        <View key={req.id} style={[styles.listCard, { borderColor: '#F59E0B', borderWidth: 1 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={styles.listCardName}>Order #{req.order_id} Item Removal</Text>
+                                <View style={[styles.badge, { backgroundColor: '#Fef3c7' }]}>
+                                    <Text style={[styles.badgeText, { color: '#B45309' }]}>REMOVAL REQUEST</Text>
+                                </View>
+                            </View>
+                            <Text style={[styles.listCardSub, { fontWeight: 'bold', color: '#111827', marginTop: 5 }]}>Item: {req.item_name}</Text>
+                            <Text style={styles.listCardSub}>Requested by: {req.staff_name || 'Staff'}</Text>
+                            <Text style={[styles.listCardSub, { marginTop: 5, color: '#374151', fontStyle: 'italic' }]}>
+                                Reason: "{req.reason}"
+                            </Text>
+                            
+                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                                <TouchableOpacity 
+                                    style={[styles.editBtn, { backgroundColor: '#10B981', flex: 1 }]} 
+                                    onPress={() => handleItemRemovalAction(req.id, 'approve')}
+                                >
+                                    <Text style={[styles.editBtnText, { color: 'white' }]}>Approve</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
+                                    onPress={() => handleItemRemovalAction(req.id, 'reject')}
                                 >
                                     <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
                                 </TouchableOpacity>
@@ -1519,13 +1580,13 @@ const ManagerDashboard = () => {
         try {
             let endpoint = '';
             switch (reportType) {
-                case 'Food Wise': endpoint = '/api/reports/food'; break;
-                case 'Revenue': endpoint = '/api/reports/revenue'; break;
-                case 'Orders': endpoint = '/api/reports/orders'; break;
-                case 'Cancellations': endpoint = '/api/reports/cancellations'; break;
-                case 'Customers': endpoint = '/api/reports/customers'; break;
-                case 'Staff': endpoint = '/api/reports/staff'; break;
-                default: endpoint = '/api/reports/revenue';
+                case 'Food Wise': endpoint = '/reports/food'; break;
+                case 'Revenue': endpoint = '/reports/revenue'; break;
+                case 'Orders': endpoint = '/reports/orders'; break;
+                case 'Cancellations': endpoint = '/reports/cancellations'; break;
+                case 'Customers': endpoint = '/reports/customers'; break;
+                case 'Staff': endpoint = '/reports/staff'; break;
+                default: endpoint = '/reports/revenue';
             }
 
             const queryParams = new URLSearchParams();
@@ -1535,7 +1596,7 @@ const ManagerDashboard = () => {
             queryParams.append('hourEnd', reportFilters.hourEnd);
             if (reportFilters.category) queryParams.append('category', reportFilters.category);
 
-            const res = await fetch(`${apiConfig.API_BASE_URL}${endpoint}?${queryParams.toString()}`, {
+            const res = await fetch(`${apiConfig.API_URL}${endpoint}?${queryParams.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1553,282 +1614,229 @@ const ManagerDashboard = () => {
 
     // ===== REPORTS TAB =====
     const renderReports = () => {
-        const reportCategories = ['Food Wise', 'Revenue', 'Orders', 'Cancellations', 'Customers', 'Staff'];
+        const reportCategories = [
+            { key: 'Food Wise', icon: '🍲' },
+            { key: 'Revenue', icon: '💰' },
+            { key: 'Orders', icon: '📋' },
+            { key: 'Cancellations', icon: '🚫' },
+            { key: 'Customers', icon: '👥' },
+            { key: 'Staff', icon: '👔' },
+        ];
+
+        const setQuickRange = (range) => {
+            const now = new Date();
+            let start = new Date();
+            if (range === 'today') start = now;
+            else if (range === 'weekly') start.setDate(now.getDate() - 7);
+            else if (range === 'monthly') start.setMonth(now.getMonth() - 1);
+            setReportFilters(f => ({
+                ...f,
+                startDate: start.toISOString().split('T')[0],
+                endDate: now.toISOString().split('T')[0]
+            }));
+        };
+
+        const handleDownloadPDF = () => {
+            const typeSlug = reportType.toLowerCase().replace(' ', '-');
+            const params = new URLSearchParams({
+                token,
+                type: typeSlug,
+                startDate: reportFilters.startDate,
+                endDate: reportFilters.endDate
+            }).toString();
+            const pdfUrl = `${apiConfig.API_URL}/reports/pdf?${params}`;
+            Linking.openURL(pdfUrl).catch(err => Alert.alert('Error', 'Could not open PDF: ' + err.message));
+        };
+
+        let kpiRevenue = 0, kpiEntries = 0;
+        if (generatedReport) {
+            if (reportType === 'Revenue' && generatedReport.trend) {
+                kpiRevenue = generatedReport.trend.reduce((a, d) => a + Number(d.revenue || 0), 0);
+                kpiEntries = generatedReport.trend.reduce((a, d) => a + Number(d.orders || 0), 0);
+            } else if (reportType === 'Food Wise' && generatedReport.items) {
+                kpiRevenue = generatedReport.items.reduce((a, i) => a + Number(i.revenue || 0), 0);
+                kpiEntries = generatedReport.items.reduce((a, i) => a + Number(i.total_sold || 0), 0);
+            } else if (reportType === 'Orders' && generatedReport.byStatus) {
+                kpiRevenue = generatedReport.byStatus.reduce((a, s) => a + Number(s.revenue || 0), 0);
+                kpiEntries = generatedReport.byStatus.reduce((a, s) => a + Number(s.count || 0), 0);
+            } else if (reportType === 'Customers' && generatedReport.summary) {
+                kpiEntries = generatedReport.summary.total || 0;
+            } else if (reportType === 'Staff' && generatedReport.attendance) {
+                kpiEntries = generatedReport.attendance.length;
+            } else if (reportType === 'Cancellations') {
+                kpiEntries = (generatedReport.deliveryCancels || []).reduce((a,c) => a+Number(c.count||0),0) +
+                             (generatedReport.takeawayCancels || []).reduce((a,c) => a+Number(c.count||0),0);
+            }
+        }
 
         return (
             <>
-                <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Full Reports Center</Text>
-                    <Text style={styles.headerSubtitle}>Generate, visualize and export business data</Text>
+                <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                    <View>
+                        <Text style={styles.headerTitle}>📈 Reports Center</Text>
+                        <Text style={styles.headerSubtitle}>Generate, analyze and export business data</Text>
+                    </View>
+                    {generatedReport && (
+                        <TouchableOpacity style={[styles.addButtonSmall, { backgroundColor: '#DC2626' }]} onPress={handleDownloadPDF}>
+                            <Text style={styles.addButtonTextSmall}>📄 PDF</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
-                {/* Filter Panel */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                    {reportCategories.map(({ key, icon }) => (
+                        <TouchableOpacity
+                            key={key}
+                            style={[styles.catPill, reportType === key && styles.activeCatPill, { paddingHorizontal: 14, paddingVertical: 10 }]}
+                            onPress={() => { setReportType(key); setGeneratedReport(null); }}
+                        >
+                            <Text style={{ fontSize: 16, marginBottom: 2 }}>{icon}</Text>
+                            <Text style={[styles.catPillText, reportType === key && styles.activeCatPillText]}>{key}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+
                 <View style={styles.listCard}>
-                    <Text style={[styles.listCardName, { marginBottom: 15 }]}>Report Parameters</Text>
-                    
-                    <Text style={styles.filterLabel}>Select Report Type</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-                        {reportCategories.map(cat => (
-                            <TouchableOpacity 
-                                key={cat} 
-                                style={[styles.catPill, reportType === cat && styles.activeCatPill]}
-                                onPress={() => setReportType(cat)}
-                            >
-                                <Text style={[styles.catPillText, reportType === cat && styles.activeCatPillText]}>{cat}</Text>
+                    <Text style={[styles.listCardName, { marginBottom: 12 }]}>PERIOD & FILTERS</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                        <TouchableOpacity
+                            style={[styles.filterBtn, { flex: 1, paddingVertical: 12, alignItems: 'center' }]}
+                            onPress={() => setFilterModal({ show: true, title: 'Start Date', placeholder: 'YYYY-MM-DD', value: reportFilters.startDate, onSubmit: (val) => val.match(/^\d{4}-\d{2}-\d{2}$/) ? setReportFilters(f => ({ ...f, startDate: val })) : Alert.alert('Invalid Format', 'Use YYYY-MM-DD') })}
+                        >
+                            <Text style={styles.filterBtnText}>📅 {reportFilters.startDate}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.filterBtn, { flex: 1, paddingVertical: 12, alignItems: 'center' }]}
+                            onPress={() => setFilterModal({ show: true, title: 'End Date', placeholder: 'YYYY-MM-DD', value: reportFilters.endDate, onSubmit: (val) => val.match(/^\d{4}-\d{2}-\d{2}$/) ? setReportFilters(f => ({ ...f, endDate: val })) : Alert.alert('Invalid Format', 'Use YYYY-MM-DD') })}
+                        >
+                            <Text style={styles.filterBtnText}>📅 {reportFilters.endDate}</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 15 }}>
+                        {['today', 'weekly', 'monthly'].map(r => (
+                            <TouchableOpacity key={r} onPress={() => setQuickRange(r)}
+                                style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB' }}>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#374151', textTransform: 'uppercase' }}>{r}</Text>
                             </TouchableOpacity>
                         ))}
-                    </ScrollView>
-
-                    <View style={styles.modalActions}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.filterLabel}>Start Date</Text>
-                            <TouchableOpacity 
-                                style={styles.filterRow} 
-                                onPress={() => {
-                                    setFilterModal({
-                                        show: true,
-                                        title: 'Start Date',
-                                        placeholder: 'Format: YYYY-MM-DD',
-                                        value: reportFilters.startDate,
-                                        onSubmit: (val) => {
-                                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                                setReportFilters(f => ({ ...f, startDate: val }));
-                                            } else {
-                                                Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                            }
-                                        }
-                                    });
-                                }}
-                            >
-                                <Text style={styles.timeText}>📅 {reportFilters.startDate}</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.filterLabel}>End Date</Text>
-                            <TouchableOpacity 
-                                style={styles.filterRow} 
-                                onPress={() => {
-                                    setFilterModal({
-                                        show: true,
-                                        title: 'End Date',
-                                        placeholder: 'Format: YYYY-MM-DD',
-                                        value: reportFilters.endDate,
-                                        onSubmit: (val) => {
-                                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                                setReportFilters(f => ({ ...f, endDate: val }));
-                                            } else {
-                                                Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                            }
-                                        }
-                                    });
-                                }}
-                            >
-                                <Text style={styles.timeText}>📅 {reportFilters.endDate}</Text>
-                            </TouchableOpacity>
-                        </View>
                     </View>
-
-                    <Text style={[styles.filterLabel, { marginTop: 10 }]}>Hour Filter ({reportFilters.hourStart}:00 - {reportFilters.hourEnd}:00)</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 15 }}>
-                        <TouchableOpacity style={[styles.filterBtn, { flex: 1 }]} onPress={() => setReportFilters(f => ({ ...f, hourStart: Math.max(0, f.hourStart - 1) }))}>
-                            <Text style={styles.filterBtnText}>Earlier</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.filterBtn, { flex: 1 }]} onPress={() => setReportFilters(f => ({ ...f, hourEnd: Math.min(23, f.hourEnd + 1) }))}>
-                            <Text style={styles.filterBtnText}>Later</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity 
-                        style={[styles.saveBtn, { backgroundColor: '#10B981' }]} 
-                        onPress={generateReport}
-                        disabled={reportLoading}
-                    >
-                        {reportLoading ? (
-                            <ActivityIndicator color="white" size="small" />
-                        ) : (
-                            <Text style={styles.saveBtnText}>📊 Generate Visual Report</Text>
-                        )}
+                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: reportLoading ? '#9CA3AF' : '#10B981' }]} onPress={generateReport} disabled={reportLoading}>
+                        {reportLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.saveBtnText}>🎯 Generate Report</Text>}
                     </TouchableOpacity>
                 </View>
 
-                {/* Report Result View */}
-                {generatedReport && (
-                    <View style={styles.chartCard}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.chartTitle}>{reportType} Report - Summary</Text>
-                            <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{new Date().toLocaleDateString()}</Text>
-                        </View>
-
-                        {reportType === 'Food Wise' && (
-                            <View style={{ marginTop: 10 }}>
-                                {generatedReport.items && (
-                                    <>
-                                        <Text style={styles.summaryLabel}>Top Selling Items</Text>
-                                        {generatedReport.items.slice(0, 4).map((item, idx) => (
-                                            <View key={idx} style={styles.permItem}>
-                                                <Text style={styles.permItemText}>{item.item_name}</Text>
-                                                <Text style={styles.summaryValue}>{item.total_sold} units</Text>
-                                            </View>
-                                        ))}
-                                        <View style={styles.barChartContainer}>
-                                            {generatedReport.items.slice(0, 6).map((item, idx) => {
-                                                const maxSold = Math.max(...generatedReport.items.map(i => Number(i.total_sold) || 1), 1);
-                                                return (
-                                                    <View key={idx} style={styles.barColumn}>
-                                                        <View style={[styles.bar, { height: (Number(item.total_sold) / maxSold) * 80 + 5, backgroundColor: '#10B981' }]} />
-                                                        <Text style={styles.barLabel}>{item.item_name.substring(0, 4)}</Text>
-                                                    </View>
-                                                );
-                                            })}
-                                        </View>
-                                    </>
-                                )}
-
-                                {generatedReport.categories && (
-                                    <View style={{ marginTop: 20 }}>
-                                        <Text style={styles.summaryLabel}>Sales by Category</Text>
-                                        {generatedReport.categories.map((cat, idx) => (
-                                            <View key={idx} style={styles.summaryRow}>
-                                                <Text style={styles.summaryLabel}>{cat.category_name}</Text>
-                                                <Text style={styles.summaryValue}>Rs. {Number(cat.revenue || 0).toLocaleString()}</Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
-                        )}
-
-                        {reportType === 'Revenue' && generatedReport.trend && (
-                            <View style={{ marginTop: 10 }}>
-                                <Text style={styles.summaryLabel}>Revenue Trend</Text>
-                                <View style={styles.barChartContainer}>
-                                    {generatedReport.trend.map((day, idx) => {
-                                        const dateLabel = day.date ? (new Date(day.date).getDate() + '/' + (new Date(day.date).getMonth() + 1)) : '??';
-                                        const maxRev = Math.max(...generatedReport.trend.map(d => Number(d.revenue) || 1), 1);
-                                        return (
-                                            <View key={idx} style={styles.barColumn}>
-                                                <View style={[styles.bar, { height: Math.min(80, (Number(day.revenue) / maxRev) * 80), backgroundColor: '#3B82F6' }]} />
-                                                <Text style={styles.barLabel}>{dateLabel}</Text>
-                                            </View>
-                                        );
-                                    })}
-                                </View>
-                            </View>
-                        )}
-
-                        {reportType === 'Orders' && generatedReport.byStatus && (
-                            <View style={{ marginTop: 10 }}>
-                                <Text style={styles.summaryLabel}>Orders by Status</Text>
-                                {generatedReport.byStatus.map((s, idx) => (
-                                    <View key={idx} style={styles.permItem}>
-                                        <Text style={styles.permItemText}>{s.status}</Text>
-                                        <Text style={styles.summaryValue}>{s.count} orders</Text>
-                                    </View>
-                                ))}
-                            </View>
-                        )}
-
-                        {reportType === 'Customers' && generatedReport.summary && (
-                            <View style={{ marginTop: 10 }}>
-                                <Text style={styles.summaryLabel}>Customer Growth</Text>
-                                <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Total Customers</Text>
-                                    <Text style={styles.summaryValue}>{generatedReport.summary.total}</Text>
-                                </View>
-                                <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                    <Text style={styles.summaryLabel}>New This Week</Text>
-                                    <Text style={[styles.summaryValue, { color: '#10B981' }]}>+{generatedReport.summary.newThisWeek}</Text>
-                                </View>
-                                
-                                {generatedReport.loyal && (
-                                    <>
-                                        <Text style={[styles.summaryLabel, { marginTop: 15 }]}>Top Customers</Text>
-                                        {generatedReport.loyal.slice(0, 3).map((c, idx) => (
-                                            <View key={idx} style={styles.permItem}>
-                                                <Text style={styles.permItemText}>{c.name}</Text>
-                                                <Text style={styles.summaryValue}>{c.order_count} orders</Text>
-                                            </View>
-                                        ))}
-                                    </>
-                                )}
-                            </View>
-                        )}
-
-                        {reportType === 'Staff' && generatedReport.attendance && (
-                            <View style={{ marginTop: 10 }}>
-                                <Text style={styles.summaryLabel}>Staff Performance</Text>
-                                {generatedReport.attendance.map((s, idx) => (
-                                    <View key={idx} style={styles.permItem}>
-                                        <Text style={styles.permItemText}>{s.full_name}</Text>
-                                        <Text style={styles.summaryValue}>{s.days_present} days / {Number(s.avg_hours || 0).toFixed(1)}h avg</Text>
-                                    </View>
-                                ))}
-                            </View>
-                        )}
-
-                        {reportType === 'Cancellations' && (
-                            <View style={{ marginTop: 10 }}>
-                                <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Delivery Cancellations</Text>
-                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
-                                        {generatedReport.deliveryCancels?.reduce((acc, curr) => acc + Number(curr.count || 0), 0) || 0}
-                                    </Text>
-                                </View>
-                                <View style={[styles.summaryRow, { marginTop: 10 }]}>
-                                    <Text style={styles.summaryLabel}>Takeaway Cancellations</Text>
-                                    <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
-                                        {generatedReport.takeawayCancels?.reduce((acc, curr) => acc + Number(curr.count || 0), 0) || 0}
-                                    </Text>
-                                </View>
-                                
-                                {(generatedReport.deliveryCancels?.length > 0 || generatedReport.takeawayCancels?.length > 0) && (
-                                    <View style={{ marginTop: 15 }}>
-                                        <Text style={styles.summaryLabel}>Top Reasons</Text>
-                                        {[...(generatedReport.deliveryCancels || []), ...(generatedReport.takeawayCancels || [])]
-                                            .sort((a,b) => b.count - a.count)
-                                            .slice(0, 3)
-                                            .map((c, i) => (
-                                                <View key={i} style={styles.permItem}>
-                                                    <Text style={styles.permItemText}>{c.cancellation_reason || 'Unknown'}</Text>
-                                                    <Text style={styles.summaryValue}>{c.count}</Text>
-                                                </View>
-                                            ))
-                                        }
-                                    </View>
-                                )}
-                            </View>
-                        )}
-
-                        <View style={[styles.modalActions, { marginTop: 25 }]}>
-                            <TouchableOpacity 
-                                style={[styles.exportBtn, { flex: 1, backgroundColor: '#DC2626' }]} 
-                                onPress={() => {
-                                    const params = new URLSearchParams({
-                                        token: token,
-                                        type: reportType.toLowerCase().replace(' ', '-'),
-                                        startDate: reportFilters.startDate,
-                                        endDate: reportFilters.endDate
-                                    }).toString();
-                                    const pdfUrl = `${apiConfig.API_BASE_URL}/api/reports/pdf?${params}`;
-                                    Linking.openURL(pdfUrl).catch(err => {
-                                        Alert.alert('Error', 'Could not open the PDF report: ' + err.message);
-                                    });
-                                }}
-                            >
-                                <Text style={styles.exportBtnText}>📄 Download PDF</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.exportBtn, { flex: 1, backgroundColor: '#3B82F6' }]} onPress={() => Alert.alert('Success', 'PNG Report captured!')}>
-                                <Text style={styles.exportBtnText}>🖼️ PNG</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.exportBtn, { flex: 1, backgroundColor: '#6B7280' }]} onPress={() => Alert.alert('Print', 'Sending to wireless printer...')}>
-                                <Text style={styles.exportBtnText}>🖨️ Print</Text>
-                            </TouchableOpacity>
-                        </View>
+                {!generatedReport && !reportLoading && (
+                    <View style={{ alignItems: 'center', paddingVertical: 50, opacity: 0.4 }}>
+                        <Text style={{ fontSize: 50 }}>📊</Text>
+                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#6B7280', marginTop: 10 }}>Select filters and generate a report</Text>
                     </View>
+                )}
+
+                {generatedReport && (
+                    <>
+                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#ECFDF5' }]}>
+                                <Text style={{ fontSize: 10, color: '#065F46', fontWeight: 'bold' }}>TOTAL REVENUE</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#065F46' }}>Rs.{Number(kpiRevenue).toLocaleString()}</Text>
+                            </View>
+                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#EFF6FF' }]}>
+                                <Text style={{ fontSize: 10, color: '#1E40AF', fontWeight: 'bold' }}>TOTAL ENTRIES</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E40AF' }}>{kpiEntries}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.chartCard}>
+                            <View style={[styles.modalHeader, { marginBottom: 15 }]}>
+                                <Text style={styles.chartTitle}>{reportType} — {reportFilters.startDate} to {reportFilters.endDate}</Text>
+                            </View>
+
+                            {reportType === 'Food Wise' && generatedReport.items && (
+                                <>
+                                    <Text style={styles.summaryLabel}>Top Selling Items</Text>
+                                    {generatedReport.items.slice(0, 6).map((item, idx) => (
+                                        <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
+                                            <Text style={styles.permItemText}>#{idx+1} {item.item_name}</Text>
+                                            <View style={{ alignItems: 'flex-end' }}>
+                                                <Text style={[styles.summaryValue, { color: '#10B981' }]}>{item.total_sold} sold</Text>
+                                                <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(item.revenue||0).toLocaleString()}</Text>
+                                            </View>
+                                        </View>
+                                    ))}
+                                    <View style={styles.barChartContainer}>
+                                        {generatedReport.items.slice(0, 6).map((item, idx) => {
+                                            const maxSold = Math.max(...generatedReport.items.map(i => Number(i.total_sold) || 1), 1);
+                                            return (<View key={idx} style={styles.barColumn}><View style={[styles.bar, { height: (Number(item.total_sold) / maxSold) * 80 + 5, backgroundColor: '#10B981' }]} /><Text style={styles.barLabel}>{item.item_name.substring(0, 5)}</Text></View>);
+                                        })}
+                                    </View>
+                                    {generatedReport.categories && (<View style={{ marginTop: 15 }}><Text style={styles.summaryLabel}>Sales by Category</Text>{generatedReport.categories.map((cat, idx) => (<View key={idx} style={styles.summaryRow}><Text style={styles.summaryLabel}>{cat.category_name}</Text><Text style={styles.summaryValue}>Rs.{Number(cat.revenue||0).toLocaleString()}</Text></View>))}</View>)}
+                                </>
+                            )}
+
+                            {reportType === 'Revenue' && generatedReport.trend && (
+                                <>
+                                    <Text style={styles.summaryLabel}>Revenue Trend</Text>
+                                    <View style={styles.barChartContainer}>
+                                        {generatedReport.trend.map((day, idx) => {
+                                            const dateLabel = day.date ? (new Date(day.date).getDate() + '/' + (new Date(day.date).getMonth() + 1)) : '??';
+                                            const maxRev = Math.max(...generatedReport.trend.map(d => Number(d.revenue) || 1), 1);
+                                            return (<View key={idx} style={styles.barColumn}><View style={[styles.bar, { height: Math.min(80, (Number(day.revenue) / maxRev) * 80), backgroundColor: '#3B82F6' }]} /><Text style={styles.barLabel}>{dateLabel}</Text></View>);
+                                        })}
+                                    </View>
+                                    {generatedReport.trend.slice(0, 5).map((day, idx) => (
+                                        <View key={idx} style={[styles.summaryRow, { alignItems: 'flex-start' }]}>
+                                            <Text style={[styles.summaryLabel, { marginTop: 2 }]}>{day.date ? new Date(day.date).toLocaleDateString() : 'N/A'}</Text>
+                                            <View style={{ alignItems: 'flex-end' }}>
+                                                <Text style={styles.summaryValue}>Rs. {Number(day.revenue||0).toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 12, color: '#10B981', fontWeight: '600', marginTop: 2 }}>+ Profit: Rs. {Number(day.profit||0).toLocaleString()}</Text>
+                                                {Number(day.lost) > 0 && <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 2 }}>- Lost: Rs. {Number(day.lost).toLocaleString()}</Text>}
+                                                <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{day.orders} successful orders</Text>
+                                            </View>
+                                        </View>
+                                    ))}
+                                    {generatedReport.bySource && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>By Order Type</Text>{generatedReport.bySource.map((src, idx) => (<View key={idx} style={styles.summaryRow}><Text style={styles.summaryLabel}>{src.type}</Text><Text style={styles.summaryValue}>Rs.{Number(src.revenue||0).toLocaleString()} ({src.count})</Text></View>))}</View>)}
+                                </>
+                            )}
+
+                            {reportType === 'Orders' && generatedReport.byStatus && (
+                                <>
+                                    <Text style={styles.summaryLabel}>Orders by Status</Text>
+                                    {generatedReport.byStatus.map((s, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{s.status}</Text><View style={{ alignItems: 'flex-end' }}><Text style={[styles.summaryValue, { color: '#3B82F6' }]}>{s.count} orders</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(s.revenue||0).toLocaleString()}</Text></View></View>))}
+                                </>
+                            )}
+
+                            {reportType === 'Customers' && generatedReport.summary && (
+                                <>
+                                    <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Total Customers</Text><Text style={styles.summaryValue}>{generatedReport.summary.total}</Text></View>
+                                    <View style={[styles.summaryRow, { marginTop: 8 }]}><Text style={styles.summaryLabel}>New This Week</Text><Text style={[styles.summaryValue, { color: '#10B981' }]}>+{generatedReport.summary.newThisWeek}</Text></View>
+                                    {generatedReport.loyal && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Loyal Customers</Text>{generatedReport.loyal.slice(0, 5).map((c, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{c.name}</Text><View style={{ alignItems: 'flex-end' }}><Text style={styles.summaryValue}>{c.order_count} orders</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(c.total_spent||0).toLocaleString()}</Text></View></View>))}</View>)}
+                                </>
+                            )}
+
+                            {reportType === 'Staff' && generatedReport.attendance && (
+                                <>
+                                    <Text style={styles.summaryLabel}>Staff Performance</Text>
+                                    {generatedReport.attendance.map((s, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{s.full_name}</Text><View style={{ alignItems: 'flex-end' }}><Text style={styles.summaryValue}>{s.days_present} days</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>{Number(s.avg_hours||0).toFixed(1)}h avg</Text></View></View>))}
+                                </>
+                            )}
+
+                            {reportType === 'Cancellations' && (
+                                <>
+                                    <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Delivery Cancellations</Text><Text style={[styles.summaryValue, { color: '#EF4444' }]}>{(generatedReport.deliveryCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}</Text></View>
+                                    <View style={[styles.summaryRow, { marginTop: 8 }]}><Text style={styles.summaryLabel}>Takeaway Cancellations</Text><Text style={[styles.summaryValue, { color: '#EF4444' }]}>{(generatedReport.takeawayCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}</Text></View>
+                                    {([...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])]).length > 0 && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Cancellation Reasons</Text>{[...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])].sort((a,b)=>b.count-a.count).slice(0,5).map((c,i)=>(<View key={i} style={styles.permItem}><Text style={styles.permItemText}>{c.cancellation_reason || 'Unknown'}</Text><Text style={styles.summaryValue}>{c.count}</Text></View>))}</View>)}
+                                </>
+                            )}
+
+                            <TouchableOpacity style={[styles.exportBtn, { marginTop: 20, backgroundColor: '#DC2626' }]} onPress={handleDownloadPDF}>
+                                <Text style={styles.exportBtnText}>📄 Download PDF Report</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </>
                 )}
             </>
         );
     };
+
 
     // ===== RESERVATIONS TAB =====
     const renderReservations = () => (
@@ -1838,7 +1846,43 @@ const ManagerDashboard = () => {
                 <Text style={styles.headerSubtitle}>{reservationList.length} scheduled bookings</Text>
             </View>
 
-            {/* Date Filter Row */}
+            {/* UPCOMING SECTION */}
+            <View style={{ marginBottom: 20 }}>
+                <View style={[styles.sectionHeader, { backgroundColor: '#F0F9FF', padding: 8, borderRadius: 8, marginBottom: 10 }]}>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#0369A1' }}>📅 UPCOMING RESERVATIONS</Text>
+                </View>
+                
+                {reservationList.filter(r => !['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase())).length === 0 ? (
+                    <View style={[styles.emptyState, { paddingVertical: 20 }]}>
+                        <Text style={styles.emptyText}>No upcoming reservations for this date</Text>
+                    </View>
+                ) : (
+                    reservationList
+                        .filter(r => !['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase()))
+                        .sort((a,b) => (a.reservation_time || a.time || '').localeCompare(b.reservation_time || b.time || ''))
+                        .map((res) => renderReservationCard(res))
+                )}
+            </View>
+
+            {/* HISTORY SECTION */}
+            <View style={{ marginBottom: 20 }}>
+                <View style={[styles.sectionHeader, { backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, marginBottom: 10 }]}>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#4B5563' }}>📜 RESERVATION HISTORY</Text>
+                </View>
+
+                {reservationList.filter(r => ['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase())).length === 0 ? (
+                    <View style={[styles.emptyState, { paddingVertical: 20 }]}>
+                        <Text style={styles.emptyText}>No history records for this date</Text>
+                    </View>
+                ) : (
+                    reservationList
+                        .filter(r => ['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase()))
+                        .sort((a,b) => (b.reservation_time || b.time || '').localeCompare(a.reservation_time || a.time || ''))
+                        .map((res) => renderReservationCard(res))
+                )}
+            </View>
+
+            {/* Date Filter Row moved down */}
             <View style={[styles.filterRow, { marginBottom: 15 }]}>
                 <Text style={styles.filterLabel}>Select Date:</Text>
                 <TouchableOpacity 
@@ -1858,69 +1902,62 @@ const ManagerDashboard = () => {
                     <Text style={styles.filterBtnText}>📅 {filterResDate}</Text>
                 </TouchableOpacity>
             </View>
-            {reservationList.length === 0 ? (
-                <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>📅</Text>
-                    <Text style={styles.emptyText}>No reservations found</Text>
-                </View>
-            ) : (
-                reservationList.map((res) => {
-                    const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
-                    return (
-                        <View key={res.id} style={styles.listCard}>
-                            <View style={styles.listCardHeader}>
-                                <View style={[styles.avatarCircle, { backgroundColor: '#EDE9FE' }]}>
-                                    <Text style={styles.avatarText}>👤</Text>
-                                </View>
-                                <View style={styles.listCardInfo}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <Text style={styles.listCardName}>{res.customer_name || res.guest_name || 'Guest'}</Text>
-                                        <View style={[styles.badge, { 
-                                            backgroundColor: status === 'CONFIRMED' ? '#D1FAE5' : status === 'CANCELLED' ? '#FEE2E2' : '#FEF3C7',
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 2
-                                        }]}>
-                                            <Text style={[styles.badgeText, { 
-                                                color: status === 'CONFIRMED' ? '#059669' : status === 'CANCELLED' ? '#DC2626' : '#D97706',
-                                                fontSize: 10
-                                            }]}>
-                                                {status}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <Text style={styles.listCardSub}>{res.guest_count || res.party_size || 1} Guests • {res.mobile_number || 'N/A'}</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? new Date(res.reservation_date).toLocaleDateString() : 'N/A'}</Text>
-                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginLeft: 10 }}>🕒 {res.reservation_time || res.time}</Text>
-                                    </View>
-                                    <Text style={[styles.listCardSub, { marginTop: 4, fontStyle: 'italic' }]}>
-                                        {res.area_name || 'General'} Area • {res.table_number ? `Table #${res.table_number}` : 'Unassigned'}
-                                    </Text>
-                                    
-                                    {status === 'PENDING' && (
-                                        <View style={[styles.modalActions, { marginTop: 15 }]}>
-                                            <TouchableOpacity 
-                                                style={[styles.addButtonSmall, { flex: 1, backgroundColor: '#10B981' }]}
-                                                onPress={() => updateResStatus(res.id, 'CONFIRMED')}
-                                            >
-                                                <Text style={[styles.addButtonTextSmall, { textAlign: 'center' }]}>Confirm</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity 
-                                                style={[styles.addButtonSmall, { flex: 1, backgroundColor: '#EF4444' }]}
-                                                onPress={() => updateResStatus(res.id, 'CANCELLED')}
-                                            >
-                                                <Text style={[styles.addButtonTextSmall, { textAlign: 'center' }]}>Cancel</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-                        </View>
-                    );
-                })
-            )}
         </>
     );
+
+    const renderReservationCard = (res) => {
+        const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
+        return (
+            <TouchableOpacity 
+                key={res.id} 
+                style={styles.listCard}
+                onPress={() => {
+                    Alert.alert(
+                        'Update Reservation Status',
+                        `Customer: ${res.customer_name || 'Guest'}\nGuests: ${res.guest_count || 1}\nTime: ${res.reservation_time}`,
+                        [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'ARRIVED', onPress: () => updateResStatus(res.id, 'ARRIVED') },
+                            { text: 'COMPLETED', onPress: () => updateResStatus(res.id, 'COMPLETED') },
+                            { text: 'NO SHOW', onPress: () => updateResStatus(res.id, 'NOSHOW') },
+                            { text: 'CANCEL BOOKING', style: 'destructive', onPress: () => updateResStatus(res.id, 'CANCELLED') }
+                        ]
+                    );
+                }}
+            >
+                <View style={styles.listCardHeader}>
+                    <View style={[styles.avatarCircle, { backgroundColor: '#EDE9FE' }]}>
+                        <Text style={styles.avatarText}>👤</Text>
+                    </View>
+                    <View style={styles.listCardInfo}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Text style={styles.listCardName}>{res.customer_name || res.guest_name || 'Guest'}</Text>
+                            <View style={[styles.badge, { 
+                                backgroundColor: status === 'CONFIRMED' ? '#D1FAE5' : status === 'CANCELLED' ? '#FEE2E2' : status === 'COMPLETED' ? '#DBEAFE' : '#FEF3C7',
+                                paddingHorizontal: 8,
+                                paddingVertical: 2
+                            }]}>
+                                <Text style={[styles.badgeText, { 
+                                    color: status === 'CONFIRMED' ? '#059669' : status === 'CANCELLED' ? '#DC2626' : status === 'COMPLETED' ? '#3B82F6' : '#D97706',
+                                    fontSize: 10
+                                }]}>
+                                    {status}
+                                </Text>
+                            </View>
+                        </View>
+                        <Text style={styles.listCardSub}>{res.guest_count || res.party_size || 1} Guests • {res.mobile_number || 'N/A'}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? (res.reservation_date.includes('T') ? res.reservation_date.split('T')[0] : res.reservation_date) : 'N/A'}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginLeft: 10 }}>🕒 {res.reservation_time || res.time}</Text>
+                        </View>
+                        <Text style={[styles.listCardSub, { marginTop: 4, fontStyle: 'italic' }]}>
+                            {res.area_name || 'General'} Area • {res.table_number ? `Table #${res.table_number}` : 'Unassigned'}
+                        </Text>
+                    </View>
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     const updateResStatus = async (id, status) => {
         try {
@@ -2102,6 +2139,25 @@ const ManagerDashboard = () => {
         }
     };
 
+    const handleItemRemovalAction = async (id, action) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/orders/removal-requests/${id}/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: 'Processed via Mobile Manager' })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Removal request ${action === 'approve' ? 'approved' : 'rejected'}`);
+                fetchData();
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Action failed');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Connection failed');
+        }
+    };
+
     const handleCancellationAction = async (id, action) => {
         try {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests/${id}/action`, {
@@ -2197,7 +2253,7 @@ const ManagerDashboard = () => {
                             <Text style={styles.avatarLetter_small}>{user?.name?.charAt(0).toUpperCase() || 'M'}</Text>
                         )}
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={logout}>
+                    <TouchableOpacity onPress={handleLogout}>
                         <Text style={styles.logoutLink}>Sign Out</Text>
                     </TouchableOpacity>
                 </View>

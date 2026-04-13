@@ -12,6 +12,9 @@ import config from '../config';
  * Updated to GOLD theme + Backend Integration
  */
 function Reservation() {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
 
@@ -98,6 +101,7 @@ function Reservation() {
             return updated;
         });
         setError('');
+        setShowSuccess(false);
     };
 
     // Handle form submission
@@ -116,19 +120,42 @@ function Reservation() {
         }
 
         // Validation
-        if (!formData.name || !formData.date || !formData.time || !formData.email) {
+        if (!formData.name || !formData.date || !formData.time || !formData.phone) {
             setError('Please fill in all required fields');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
 
         if (!formData.tableId) {
             setError('Please select a table');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
+        }
+
+        // Real-time Date and Time Validation
+        if (formData.date < todayStr) {
+            setError('Please select a valid future date.');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        if (formData.date === todayStr) {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const [selectedHour, selectedMinute] = formData.time.split(':').map(Number);
+
+            if (selectedHour < currentHour || (selectedHour === currentHour && selectedMinute < currentMinute)) {
+                setError('Please select a valid future time for today.');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
         }
 
         const guestCount = parseInt(formData.guests);
         if (formData.tableCapacity < guestCount) {
             setError(`Selected table does not have enough seats for ${guestCount} guests (Table capacity: ${formData.tableCapacity})`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
 
@@ -173,12 +200,30 @@ function Reservation() {
                     specialRequest: '',
                 });
                 // Keep the success message visible until user takes action or navigates
+            } else if (response.status === 401) {
+                // Token has expired or is invalid
+                setError('Session expired. Please log in again. Redirecting...');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                // Clear old auth
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                
+                // Save current state
+                localStorage.setItem('pendingReservation', JSON.stringify(formData));
+                localStorage.setItem('postLoginTarget', '/reservation');
+                
+                setTimeout(() => {
+                    window.location.href = '/auth';
+                }, 2000);
             } else {
                 setError(data.message || 'Failed to submit reservation');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         } catch (err) {
             console.error('Reservation error:', err);
             setError('Network error. Please try again later.');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } finally {
             setLoading(false);
         }
@@ -244,10 +289,11 @@ function Reservation() {
                 )}
 
                 {/* Reservation Form */}
+                {!showSuccess && (
                 <GlassCard className="animate-slide-up border-[#D4AF37]/20 shadow-xl shadow-[#D4AF37]/5">
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        {/* Name and Phone Row */}
-                        <div className="grid md:grid-cols-2 gap-6">
+                        {/* Name, Phone, and Email Row */}
+                        <div className="grid md:grid-cols-3 gap-6">
                             <div>
                                 <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
                                     Full Name <span className="text-red-400">*</span>
@@ -278,6 +324,20 @@ function Reservation() {
                                     required
                                 />
                             </div>
+                            <div>
+                                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                                    Email Address (Optional)
+                                </label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    placeholder="your@email.com"
+                                    className="input-glass w-full focus:ring-[#D4AF37]/50"
+                                />
+                            </div>
                         </div>
 
                         {/* Date and Time Row */}
@@ -292,6 +352,7 @@ function Reservation() {
                                     id="date"
                                     name="date"
                                     value={formData.date}
+                                    min={todayStr}
                                     onChange={handleChange}
                                     className="input-glass w-full focus:ring-[#D4AF37]/50"
                                     required
@@ -425,6 +486,7 @@ function Reservation() {
                         </Button>
                     </form>
                 </GlassCard>
+                )}
 
                 {/* Info Section */}
                 <div className="mt-8 text-center border-t border-white/5 pt-8">

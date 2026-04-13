@@ -234,6 +234,11 @@ const StewardDashboard = () => {
             fetchData(true); // Refetch to stay in sync with unified state
         });
 
+        socket.on('reservationUpdate', (data) => {
+            fetchData(true);
+            appendNotification('Reservation Updated 📅', `Reservation #${data.reservationId} status changed.`);
+        });
+
         socket.on('newOrder', (data) => {
             // Deduplication: skip if we already showed a popup for this orderId
             const orderKey = `${data.orderId}-${data.isUpdate ? 'upd' : 'new'}`;
@@ -292,7 +297,7 @@ const StewardDashboard = () => {
             fetchData(true);
             appendNotification(
                 '🛑 Order Cancelled',
-                `Order #${data.orderId} · Table ${data.tableNumber || '?'} has been CANCELLED.${ data.reason ? ` Reason: ${data.reason}` : '' }`
+                `Order #${data.orderId} · Table ${data.tableNumber || '?'} has been CANCELLED.${data.reason ? ` Reason: ${data.reason}` : ''}`
             );
             pushToQueue('CANCEL', {
                 ...data,
@@ -427,6 +432,13 @@ const StewardDashboard = () => {
         } catch (error) {
             Alert.alert('Error', 'Network error. Failed to send cancel request.');
         }
+    };
+
+    const handleLogout = () => {
+        Alert.alert('Logout', 'Are you sure you want to logout?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', onPress: logout }
+        ]);
     };
 
     const addToCart = (menuItem) => {
@@ -583,7 +595,7 @@ const StewardDashboard = () => {
                         <View style={styles.badge} />
                     )}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+                <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
                     <Text style={{ fontSize: 18 }}>🚪</Text>
                 </TouchableOpacity>
             </View>
@@ -776,131 +788,131 @@ const StewardDashboard = () => {
         </ScrollView>
     );
 
-const renderTableItem = (table) => {
-    const isReserved = table.status === 'Reserved' || table.is_reserved;
-    const isOccupied = table.status === 'Occupied' || table.is_occupied;
+    const renderTableItem = (table) => {
+        const isReserved = table.status === 'Reserved' || table.is_reserved;
+        const isOccupied = table.status === 'Occupied' || table.is_occupied;
 
-    return (
-        <TouchableOpacity
-            key={table.id}
-            style={[
-                styles.tableBox,
-                isReserved ? styles.tableBoxReserved : (isOccupied ? styles.tableBoxOccupied : styles.tableBoxAvailable)
-            ]}
-            onPress={() => {
-                if (isReserved && !isOccupied) {
-                    const res = table.reservation_details;
-                    Alert.alert(
-                        `Table ${table.table_number} - RESERVED`,
-                        `Customer: ${res?.customer_name || 'Guest'}\nSlot: ${table.reservation_time || '--:--'}\nGuests: ${res?.guests || 0}\n\nThis table is reserved within the 6-hour window.`,
-                        [{
-                            text: 'Start Order Anyway',
-                            onPress: () => {
-                                setActiveOrderContext({ type: 'new', table, orderId: null });
-                                setActiveTab('menu');
-                            }
-                        }, { text: 'Close', style: 'cancel' }]
-                    );
-                    return;
-                }
-                if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
-                setSelectedTable(table);
-
-                if (isOccupied) {
-                    Alert.alert(
-                        `Table ${table.table_number}`,
-                        `Order Status: ${table.active_order_status || 'In Progress'}`,
-                        [
-                            {
-                                text: 'View Items / Update',
-                                onPress: () => {
-                                    setActiveOrderContext({ type: 'update', table, orderId: table.active_order_id });
-                                    setActiveTab('menu');
-                                }
-                            },
-                            { text: 'Go to Order List', onPress: () => setActiveTab('orders') },
-                            { text: 'Close', style: 'cancel' }
-                        ]
-                    );
-                } else {
-                    Alert.alert(
-                        `Table ${table.table_number}`,
-                        `Capacity: ${table.capacity || 4} seats.`,
-                        [
-                            {
-                                text: 'Start New Order',
+        return (
+            <TouchableOpacity
+                key={table.id}
+                style={[
+                    styles.tableBox,
+                    isReserved ? styles.tableBoxReserved : (isOccupied ? styles.tableBoxOccupied : styles.tableBoxAvailable)
+                ]}
+                onPress={() => {
+                    if (isReserved && !isOccupied) {
+                        const res = table.reservation_details;
+                        Alert.alert(
+                            `Table ${table.table_number} - RESERVED`,
+                            `Customer: ${res?.customer_name || 'Guest'}\nSlot: ${table.reservation_time || '--:--'}\nGuests: ${res?.guests || 0}\n\nThis table is reserved within the 6-hour window.`,
+                            [{
+                                text: 'Start Order Anyway',
                                 onPress: () => {
                                     setActiveOrderContext({ type: 'new', table, orderId: null });
                                     setActiveTab('menu');
                                 }
-                            },
-                            { text: 'Mark Unavailable', onPress: () => handleTableStatusUpdate(table.id, 'not available') },
-                            { text: 'Cancel', style: 'cancel' }
-                        ]
-                    );
-                }
-            }}
+                            }, { text: 'Close', style: 'cancel' }]
+                        );
+                        return;
+                    }
+                    if (!isOnDuty) return Alert.alert('Attention', 'Please check-in to manage tables');
+                    setSelectedTable(table);
+
+                    if (isOccupied) {
+                        Alert.alert(
+                            `Table ${table.table_number}`,
+                            `Order Status: ${table.active_order_status || 'In Progress'}`,
+                            [
+                                {
+                                    text: 'View Items / Update',
+                                    onPress: () => {
+                                        setActiveOrderContext({ type: 'update', table, orderId: table.active_order_id });
+                                        setActiveTab('menu');
+                                    }
+                                },
+                                { text: 'Go to Order List', onPress: () => setActiveTab('orders') },
+                                { text: 'Close', style: 'cancel' }
+                            ]
+                        );
+                    } else {
+                        Alert.alert(
+                            `Table ${table.table_number}`,
+                            `Capacity: ${table.capacity || 4} seats.`,
+                            [
+                                {
+                                    text: 'Start New Order',
+                                    onPress: () => {
+                                        setActiveOrderContext({ type: 'new', table, orderId: null });
+                                        setActiveTab('menu');
+                                    }
+                                },
+                                { text: 'Mark Unavailable', onPress: () => handleTableStatusUpdate(table.id, 'not available') },
+                                { text: 'Cancel', style: 'cancel' }
+                            ]
+                        );
+                    }
+                }}
+            >
+                <View style={styles.tableTop}>
+                    <Text style={styles.tableNum}>T-{table.table_number}</Text>
+                    <Text style={{ fontSize: 12 }}>{isOccupied ? '🔴' : (isReserved ? '🟡' : '🟢')}</Text>
+                </View>
+
+                <Text style={styles.tableCap}>👥 {table.capacity || 4} Seats</Text>
+
+                {isReserved && !isOccupied ? (
+                    <View style={styles.resvBadgePill}>
+                        <Text style={styles.resvBadgePillText} numberOfLines={1}>
+                            📅 {table.reservation_details?.customer_name || 'Reserved'}
+                        </Text>
+                    </View>
+                ) : (
+                    <>
+                        {table.steward_name && (
+                            <Text style={styles.assignedSteward}>👤 {table.steward_name}</Text>
+                        )}
+
+                        {isOccupied && (
+                            <View style={styles.statusPill}>
+                                <Text style={styles.statusPillText}>{table.active_order_status || 'Occupied'}</Text>
+                            </View>
+                        )}
+                    </>
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const renderOrders = () => (
+        <ScrollView
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            style={styles.content}
         >
-            <View style={styles.tableTop}>
-                <Text style={styles.tableNum}>T-{table.table_number}</Text>
-                <Text style={{ fontSize: 12 }}>{isOccupied ? '🔴' : (isReserved ? '🟡' : '🟢')}</Text>
+            <View style={{ paddingHorizontal: HORIZ_PADDING, marginTop: 15 }}>
+                <Text style={styles.sectionTitle}>Active Orders</Text>
             </View>
 
-            <Text style={styles.tableCap}>👥 {table.capacity || 4} Seats</Text>
-
-            {isReserved && !isOccupied ? (
-                <View style={styles.resvBadgePill}>
-                    <Text style={styles.resvBadgePillText} numberOfLines={1}>
-                        📅 {table.reservation_details?.customer_name || 'Reserved'}
-                    </Text>
+            {orders.length === 0 ? (
+                <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>No active orders assigned to you.</Text>
                 </View>
             ) : (
-                <>
-                    {table.steward_name && (
-                        <Text style={styles.assignedSteward}>👤 {table.steward_name}</Text>
-                    )}
+                orders.map(order => {
+                    const createdTime = new Date(order.created_at || Date.now()).getTime();
+                    const diffMinutes = Math.floor((Date.now() - createdTime) / (1000 * 60));
+                    const isLate = diffMinutes >= 20;
 
-                    {isOccupied && (
-                        <View style={styles.statusPill}>
-                            <Text style={styles.statusPillText}>{table.active_order_status || 'Occupied'}</Text>
-                        </View>
-                    )}
-                </>
-            )}
-        </TouchableOpacity>
-    );
-};
-
-const renderOrders = () => (
-    <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        style={styles.content}
-    >
-        <View style={{ paddingHorizontal: HORIZ_PADDING, marginTop: 15 }}>
-            <Text style={styles.sectionTitle}>Active Orders</Text>
-        </View>
-
-        {orders.length === 0 ? (
-            <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No active orders assigned to you.</Text>
-            </View>
-        ) : (
-            orders.map(order => {
-                const createdTime = new Date(order.created_at || Date.now()).getTime();
-                const diffMinutes = Math.floor((Date.now() - createdTime) / (1000 * 60));
-                const isLate = diffMinutes >= 20;
-
-                return (
+                    return (
                         <View key={order.id} style={[
                             styles.orderCard,
-                            { 
+                            {
                                 borderWidth: 2,
                                 borderColor: isLate ? '#EF4444' : // RED for late orders
-                                             (order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE' ? '#EF4444' : 
-                                             (order.main_status || order.status) === 'PLACED' || (order.main_status || order.status) === 'PENDING' ? '#3B82F6' : 
-                                             (order.main_status || order.status) === 'CONFIRMED' ? '#3B82F6' : 
-                                             (order.main_status || order.status) === 'SERVED' ? '#10B981' : 
-                                             '#8B5CF6'
+                                    (order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE' ? '#EF4444' :
+                                        (order.main_status || order.status) === 'PLACED' || (order.main_status || order.status) === 'PENDING' ? '#3B82F6' :
+                                            (order.main_status || order.status) === 'CONFIRMED' ? '#3B82F6' :
+                                                (order.main_status || order.status) === 'SERVED' ? '#10B981' :
+                                                    '#8B5CF6'
                             }
                         ]}>
                             <View style={styles.orderHeader}>
@@ -914,11 +926,11 @@ const renderOrders = () => (
                                     </View>
                                     <Text style={styles.stewardHighlight}>Assignee: {user?.name || 'You'}</Text>
                                 </View>
-                                <View style={[styles.statusBadge, { 
+                                <View style={[styles.statusBadge, {
                                     backgroundColor: isLate ? '#EF4444' :
-                                                     (order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE' ? '#EF4444' : 
-                                                     (order.main_status || order.status) === 'SERVED' ? '#10B981' :
-                                                     (order.main_status || order.status) === 'PLACED' || (order.main_status || order.status) === 'PENDING' ? '#3B82F6' : '#F59E0B'
+                                        (order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE' ? '#EF4444' :
+                                            (order.main_status || order.status) === 'SERVED' ? '#10B981' :
+                                                (order.main_status || order.status) === 'PLACED' || (order.main_status || order.status) === 'PENDING' ? '#3B82F6' : '#F59E0B'
                                 }]}>
                                     <Text style={styles.statusText}>
                                         {isLate ? 'LATE! ' : ''}{((order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE') ? 'READY' : ((order.main_status || order.status) === 'PLACED' ? 'PENDING' : (order.main_status || order.status))}
@@ -926,282 +938,317 @@ const renderOrders = () => (
                                 </View>
                             </View>
 
-                        {/* Table + Customer Info Row */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <Text style={styles.orderTable}>Table {order.table_number}</Text>
-                            <View style={{ 
-                                backgroundColor: order.customer_type === 'Registered' ? '#EEF2FF' : '#FEF3C7', 
-                                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 
-                            }}>
-                                <Text style={{ 
-                                    fontSize: 10, fontWeight: '700', 
-                                    color: order.customer_type === 'Registered' ? '#4F46E5' : '#92400E' 
+                            {/* Table + Customer Info Row */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <Text style={styles.orderTable}>Table {order.table_number}</Text>
+                                <View style={{
+                                    backgroundColor: order.customer_type === 'Registered' ? '#EEF2FF' : '#FEF3C7',
+                                    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20
                                 }}>
-                                    {order.customer_type === 'Registered' ? '👤' : '🙋'} {order.customer_name || 'Guest'}
-                                </Text>
+                                    <Text style={{
+                                        fontSize: 10, fontWeight: '700',
+                                        color: order.customer_type === 'Registered' ? '#4F46E5' : '#92400E'
+                                    }}>
+                                        {order.customer_type === 'Registered' ? '👤' : '🙋'} {order.customer_name || 'Guest'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.orderItems}>
+                                {/* Group items by category */}
+                                {(() => {
+                                    const foodItems = (order.items || []).filter(i => !(i.category || '').toLowerCase().includes('beverage'));
+                                    const bevItems = (order.items || []).filter(i => (i.category || '').toLowerCase().includes('beverage'));
+
+                                    return (
+                                        <>
+                                            {foodItems.length > 0 && (
+                                                <View style={{ marginBottom: 10 }}>
+                                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                        <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>KITCHEN (FOODS)</Text>
+                                                        <Text style={{ fontSize: 9, color: order.kitchen_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
+                                                            {order.kitchen_status === 'ready' ? '✓ READY' : '● PREPARING'}
+                                                        </Text>
+                                                    </View>
+                                                    {foodItems.map((item, idx) => (
+                                                        <View key={`f-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                            <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                                            {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
+                                                                <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
+                                                                    <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
+                                                                </TouchableOpacity>
+                                                            )}
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            )}
+                                            {bevItems.length > 0 && (
+                                                <View style={{ marginBottom: 5 }}>
+                                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                        <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>BAR (BEVERAGES)</Text>
+                                                        <Text style={{ fontSize: 9, color: order.bar_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
+                                                            {order.bar_status === 'ready' ? '✓ READY' : '● PREPARING'}
+                                                        </Text>
+                                                    </View>
+                                                    {bevItems.map((item, idx) => (
+                                                        <View key={`b-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                            <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
+                                                            {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
+                                                                <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
+                                                                    <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
+                                                                </TouchableOpacity>
+                                                            )}
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </View>
+
+                            <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={{ color: '#6B7280', fontSize: 12 }}>Items Total</Text>
+                                <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {order.total_price}</Text>
+                            </View>
+
+                            <View style={styles.actionRow}>
+                                <TouchableOpacity
+                                    style={styles.actionBtn}
+                                    onPress={() => {
+                                        setOrderDetail(order);
+                                        setActiveOrderContext({ type: 'update', table: { table_number: order.table_number }, orderId: order.id });
+                                        setActiveTab('menu');
+                                    }}
+                                >
+                                    <Text style={styles.actionBtnText}>Add Items</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, { backgroundColor: '#3B82F6' }]}
+                                    onPress={() => {
+                                        setSelectedStatusOrder(order);
+                                        setShowStatusModal(true);
+                                    }}
+                                >
+                                    <Text style={styles.actionBtnText}>Status</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
+                                    onPress={() => {
+                                        setOrderDetail(order);
+                                        setShowCancelModal(true);
+                                    }}
+                                >
+                                    <Text style={styles.actionBtnText}>Cancel</Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
-
-                        <View style={styles.orderItems}>
-                            {/* Group items by category */}
-                            {(() => {
-                                const foodItems = (order.items || []).filter(i => !(i.category || '').toLowerCase().includes('beverage'));
-                                const bevItems = (order.items || []).filter(i => (i.category || '').toLowerCase().includes('beverage'));
-                                
-                                return (
-                                    <>
-                                        {foodItems.length > 0 && (
-                                            <View style={{ marginBottom: 10 }}>
-                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                                                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>KITCHEN (FOODS)</Text>
-                                                    <Text style={{ fontSize: 9, color: order.kitchen_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
-                                                        {order.kitchen_status === 'ready' ? '✓ READY' : '● PREPARING'}
-                                                    </Text>
-                                                </View>
-                                                {foodItems.map((item, idx) => (
-                                                    <View key={`f-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                                        <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
-                                                        {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
-                                                            <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
-                                                                <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
-                                                            </TouchableOpacity>
-                                                        )}
-                                                    </View>
-                                                ))}
-                                            </View>
-                                        )}
-                                        {bevItems.length > 0 && (
-                                            <View style={{ marginBottom: 5 }}>
-                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                                                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '900' }}>BAR (BEVERAGES)</Text>
-                                                    <Text style={{ fontSize: 9, color: order.bar_status === 'ready' ? '#10B981' : '#F59E0B', fontWeight: 'bold' }}>
-                                                        {order.bar_status === 'ready' ? '✓ READY' : '● PREPARING'}
-                                                    </Text>
-                                                </View>
-                                                {bevItems.map((item, idx) => (
-                                                    <View key={`b-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                                        <Text style={styles.itemText}>• {item.name} x{item.quantity}</Text>
-                                                        {(order.status !== 'COMPLETED' && order.status !== 'CANCELLED') && (
-                                                            <TouchableOpacity onPress={() => handleRemovePlacedItem(order.id, item.id, item.name)}>
-                                                                <Text style={{ fontSize: 16, color: '#EF4444', paddingHorizontal: 5 }}>✕</Text>
-                                                            </TouchableOpacity>
-                                                        )}
-                                                    </View>
-                                                ))}
-                                            </View>
-                                        )}
-                                    </>
-                                );
-                            })()}
-                        </View>
-
-                        <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={{ color: '#6B7280', fontSize: 12 }}>Items Total</Text>
-                            <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {order.total_price}</Text>
-                        </View>
-                        
-                        <View style={styles.actionRow}>
-                            <TouchableOpacity 
-                                style={styles.actionBtn} 
-                                onPress={() => {
-                                    setOrderDetail(order);
-                                    setActiveOrderContext({ type: 'update', table: { table_number: order.table_number }, orderId: order.id });
-                                    setActiveTab('menu');
-                                }}
-                            >
-                                <Text style={styles.actionBtnText}>Add Items</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.actionBtn, { backgroundColor: '#3B82F6' }]} 
-                                onPress={() => {
-                                    setSelectedStatusOrder(order);
-                                    setShowStatusModal(true);
-                                }}
-                            >
-                                <Text style={styles.actionBtnText}>Status</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.actionBtn, { backgroundColor: '#EF4444' }]} 
-                                onPress={() => {
-                                    setOrderDetail(order);
-                                    setShowCancelModal(true);
-                                }}
-                            >
-                                <Text style={styles.actionBtnText}>Cancel</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                );
-            })
-        )}
-<View style={{ height: 40 }} />
+                    );
+                })
+            )}
+            <View style={{ height: 40 }} />
         </ScrollView >
     );
 
-const renderMenu = () => {
-    const categories = [...new Set(menuItems.map(item => item.category))];
-    const filteredItems = menuItems.filter(item => item.category === selectedMenuCategory);
+    const renderMenu = () => {
+        const categories = [...new Set(menuItems.map(item => item.category))];
+        const filteredItems = menuItems.filter(item => item.category === selectedMenuCategory);
 
-    return (
-        <View style={{ flex: 1 }}>
-            {/* Context Header */}
-            <View style={styles.menuContextHeader}>
-                <View>
-                    <Text style={styles.menuContextTitle}>
-                        {activeOrderContext ? `Ordering for T-${activeOrderContext.table.table_number}` : 'Select a Table First'}
-                    </Text>
-                    <Text style={styles.menuContextSub}>
-                        {activeOrderContext?.type === 'update' ? `Updating Order #${activeOrderContext.orderId}` : 'Starting New Session'}
-                    </Text>
-                </View>
-                {!activeOrderContext && (
-                    <TouchableOpacity style={styles.contextSwitchBtn} onPress={() => setActiveTab('home')}>
-                        <Text style={styles.contextSwitchText}>Go to Map</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
-
-            <View style={{ marginBottom: 15, paddingHorizontal: 15 }}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                    {categories.map(cat => (
-                        <TouchableOpacity
-                            key={cat}
-                            style={[styles.catPill, selectedMenuCategory === cat && styles.activeCatPill]}
-                            onPress={() => setSelectedMenuCategory(cat)}
-                        >
-                            <Text style={[styles.catPillText, selectedMenuCategory === cat && styles.activeCatPillText]}>{cat}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
-
-{
-    filteredItems.length === 0 ? (
-        <View style={styles.emptyState}><Text style={styles.emptyText}>No items in this category</Text></View>
-    ) : (
-        <FlatList
-            data={filteredItems}
-            keyExtractor={item => item.id.toString()}
-            contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
-            renderItem={({ item }) => (
-                <View style={styles.menuCard}>
-                    <Image
-                        source={{ uri: (item.image && item.image.startsWith('http')) ? item.image : (item.image ? `${apiConfig.API_BASE_URL}${item.image}` : 'https://via.placeholder.com/100') }}
-                        style={styles.menuImg}
-                    />
-                    <View style={styles.menuInfo}>
-                         <Text style={styles.menuName}>{item.name}</Text>
-                         <Text style={styles.menuPrice}>Rs. {item.price}</Text>
+        return (
+            <View style={{ flex: 1 }}>
+                {/* Context Header */}
+                <View style={styles.menuContextHeader}>
+                    <View>
+                        <Text style={styles.menuContextTitle}>
+                            {activeOrderContext ? `Ordering for T-${activeOrderContext.table.table_number}` : 'Select a Table First'}
+                        </Text>
+                        <Text style={styles.menuContextSub}>
+                            {activeOrderContext?.type === 'update' ? `Updating Order #${activeOrderContext.orderId}` : 'Starting New Session'}
+                        </Text>
                     </View>
-                    {activeOrderContext && (
-                        <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(item)}>
-                            <Text style={styles.addBtnText}>+</Text>
+                    {!activeOrderContext && (
+                        <TouchableOpacity style={styles.contextSwitchBtn} onPress={() => setActiveTab('home')}>
+                            <Text style={styles.contextSwitchText}>Go to Map</Text>
                         </TouchableOpacity>
                     )}
                 </View>
-            )}
-        />
 
-    )}
-
-    {/* Floating Cart Button */}
-    {cart.length > 0 && (
-        <View style={styles.floatingCartContainer}>
-            <TouchableOpacity style={styles.floatingCart} onPress={() => setShowCart(true)}>
-                <View style={styles.cartContent}>
-                    <View style={styles.cartLeft}>
-                        <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cart.reduce((s, i) => s + i.quantity, 0)}</Text></View>
-                        <Text style={styles.cartLabel}>View Order Cart</Text>
-                    </View>
-                    <Text style={styles.cartTotal}>Rs. {cart.reduce((s, i) => s + (i.price * i.quantity), 0)}</Text>
+                <View style={{ marginBottom: 15, paddingHorizontal: 15 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                        {categories.map(cat => (
+                            <TouchableOpacity
+                                key={cat}
+                                style={[styles.catPill, selectedMenuCategory === cat && styles.activeCatPill]}
+                                onPress={() => setSelectedMenuCategory(cat)}
+                            >
+                                <Text style={[styles.catPillText, selectedMenuCategory === cat && styles.activeCatPillText]}>{cat}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
                 </View>
-            </TouchableOpacity>
-        </View>
-    )}
-</View>
-    );
-};
 
+                {
+                    filteredItems.length === 0 ? (
+                        <View style={styles.emptyState}><Text style={styles.emptyText}>No items in this category</Text></View>
+                    ) : (
+                        <FlatList
+                            data={filteredItems}
+                            keyExtractor={item => item.id.toString()}
+                            contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
+                            renderItem={({ item }) => (
+                                <View style={styles.menuCard}>
+                                    <Image
+                                        source={{ uri: (item.image && item.image.startsWith('http')) ? item.image : (item.image ? `${apiConfig.API_BASE_URL}${item.image}` : 'https://via.placeholder.com/100') }}
+                                        style={styles.menuImg}
+                                    />
+                                    <View style={styles.menuInfo}>
+                                        <Text style={styles.menuName}>{item.name}</Text>
+                                        <Text style={styles.menuPrice}>Rs. {item.price}</Text>
+                                    </View>
+                                    {activeOrderContext && (
+                                        <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(item)}>
+                                            <Text style={styles.addBtnText}>+</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
+                        />
 
-const renderReservations = () => (
-    <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        style={styles.content}
-    >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-            <Text style={styles.sectionTitle}>Confirmed Reservations</Text>
-            <TouchableOpacity
-                style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
-                onPress={() => setFilterModal({
-                    show: true,
-                    title: 'Filter Reservations',
-                    placeholder: 'Format: YYYY-MM-DD',
-                    type: 'DATE',
-                    value: filterResDate,
-                    onSubmit: (val) => {
-                        if (val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
-                        else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                    }
-                })}
-            >
-                <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: 'bold' }}>📅 {filterResDate}</Text>
-            </TouchableOpacity>
-        </View>
-        {reservations.length === 0 ? (
-            <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No upcoming reservations.</Text>
+                    )}
+
+                {/* Floating Cart Button */}
+                {cart.length > 0 && (
+                    <View style={styles.floatingCartContainer}>
+                        <TouchableOpacity style={styles.floatingCart} onPress={() => setShowCart(true)}>
+                            <View style={styles.cartContent}>
+                                <View style={styles.cartLeft}>
+                                    <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cart.reduce((s, i) => s + i.quantity, 0)}</Text></View>
+                                    <Text style={styles.cartLabel}>View Order Cart</Text>
+                                </View>
+                                <Text style={styles.cartTotal}>Rs. {cart.reduce((s, i) => s + (i.price * i.quantity), 0)}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
-        ) : (
-            reservations.map(res => (
-                <View key={res.id} style={styles.resvCard}>
-                    <View style={styles.resvTimeBox}>
-                        <Text style={styles.resvTime}>{res.reservation_time}</Text>
-                        <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
-                    </View>
-                    <View style={styles.resvInfo}>
-                        <Text style={styles.resvCust}>{res.customer_name}</Text>
-                        <Text style={styles.resvTable}>Table {res.table_number} • {res.guests_count} Guests</Text>
-                        <View style={styles.resvBadgeSmall}>
-                            <Text style={styles.resvBadgeTextSmall}>Confirmed</Text>
-                        </View>
-                    </View>
-                </View>
-            ))
-        )}
-    </ScrollView>
-);
+        );
+    };
 
-const renderHistory = () => (
-    <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        style={styles.content}
-    >
-        <Text style={styles.sectionTitle}>My Handled Orders</Text>
-        {history.map(order => (
-            <TouchableOpacity
-                key={order.id}
-                style={styles.historyCard}
-                onPress={() => {
-                    setSelectedHistoryOrder(order);
-                    setShowHistoryModal(true);
-                }}
+
+    const renderReservations = () => {
+        const upcoming = reservations
+            .filter(res => !['CANCELLED', 'COMPLETED', 'NOSHOW'].includes((res.reservation_status || res.status || '').toUpperCase()))
+            .sort((a,b) => (a.reservation_time || a.time || '').localeCompare(b.reservation_time || b.time || ''));
+
+        const history = reservations
+            .filter(res => ['CANCELLED', 'COMPLETED', 'NOSHOW'].includes((res.reservation_status || res.status || '').toUpperCase()))
+            .sort((a,b) => (b.reservation_time || b.time || '').localeCompare(a.reservation_time || a.time || ''));
+
+        return (
+            <ScrollView
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                style={styles.content}
             >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.historyId}>#{order.id} - Table {order.table_number}</Text>
-                    <Text style={{ fontSize: 18 }}>👁️</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                    <Text style={styles.sectionTitle}>Confirmed Reservations</Text>
+                    <TouchableOpacity
+                        style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
+                        onPress={() => setFilterModal({
+                            show: true,
+                            title: 'Filter Reservations',
+                            placeholder: 'Format: YYYY-MM-DD',
+                            type: 'DATE',
+                            value: filterResDate,
+                            onSubmit: (val) => {
+                                if (val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
+                                else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
+                            }
+                        })}
+                    >
+                        <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: 'bold' }}>📅 {filterResDate}</Text>
+                    </TouchableOpacity>
                 </View>
-                <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()} {new Date(order.created_at).toLocaleTimeString()}</Text>
-                <Text style={styles.historyStatus}>{order.status}</Text>
-                <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
-            </TouchableOpacity>
-        ))}
-    </ScrollView>
-);
 
-return (
-    <View style={styles.container}>
+                {/* UPCOMING */}
+                <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#6B7280', marginBottom: 10 }}>UPCOMING</Text>
+                    {upcoming.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyText}>No upcoming reservations.</Text>
+                        </View>
+                    ) : upcoming.map(res => (
+                        <View key={res.id} style={styles.resvCard}>
+                            <View style={styles.resvTimeBox}>
+                                <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
+                                <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
+                            </View>
+                            <View style={styles.resvInfo}>
+                                <Text style={styles.resvCust}>{res.customer_name}</Text>
+                                <Text style={styles.resvTable}>Table {res.table_number || 'N/A'} • {res.guests_count || res.guest_count} Guests</Text>
+                                <View style={[styles.resvBadgeSmall, { backgroundColor: '#ECFDF5' }]}>
+                                    <Text style={[styles.resvBadgeTextSmall, { color: '#059669' }]}>{res.reservation_status || res.status}</Text>
+                                </View>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+
+                {/* HISTORY */}
+                {history.length > 0 && (
+                    <View style={{ marginTop: 10 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#6B7280', marginBottom: 10 }}>PAST RECORDS</Text>
+                        {history.map(res => (
+                            <View key={res.id} style={[styles.resvCard, { opacity: 0.6 }]}>
+                                <View style={styles.resvTimeBox}>
+                                    <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
+                                    <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
+                                </View>
+                                <View style={styles.resvInfo}>
+                                    <Text style={styles.resvCust}>{res.customer_name}</Text>
+                                    <Text style={styles.resvTable}>Table {res.table_number || 'N/A'}</Text>
+                                    <View style={[styles.resvBadgeSmall, { backgroundColor: '#F1F5F9' }]}>
+                                        <Text style={[styles.resvBadgeTextSmall, { color: '#64748B' }]}>{res.reservation_status || res.status}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </ScrollView>
+        );
+    };
+
+    const renderHistory = () => (
+        <ScrollView
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            style={styles.content}
+        >
+            <Text style={styles.sectionTitle}>My Handled Orders</Text>
+            {history.map(order => (
+                <TouchableOpacity
+                    key={order.id}
+                    style={styles.historyCard}
+                    onPress={() => {
+                        setSelectedHistoryOrder(order);
+                        setShowHistoryModal(true);
+                    }}
+                >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.historyId}>#{order.id} - Table {order.table_number}</Text>
+                        <Text style={{ fontSize: 18 }}>👁️</Text>
+                    </View>
+                    <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()} {new Date(order.created_at).toLocaleTimeString()}</Text>
+                    <Text style={styles.historyStatus}>{order.status}</Text>
+                    <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
+                </TouchableOpacity>
+            ))}
+        </ScrollView>
+    );
+
+    return (
+        <View style={styles.container}>
         <View style={{ backgroundColor: 'white' }}>
-            <SafeAreaView edges={['top', 'left', 'right']}>
+            <View>
                 {renderHeader()}
                 <Modal visible={!!activeModal} transparent animationType="slide">
                     <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
@@ -1214,7 +1261,7 @@ return (
                             <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4, textAlign: 'center' }}>
                                 {activeModal?.type === 'PAYMENT' ? 'Payment Requested' : (activeModal?.type === 'NEW_ORDER' ? 'New Order Received!' : (activeModal?.type === 'CANCEL' ? 'Cancel Request!' : 'Order Status Update'))}
                             </Text>
-                            
+
                             {/* STATUS HIGHLIGHT - Requested as the main part */}
                             <View style={{ backgroundColor: activeModal?.type === 'CANCEL' ? '#EF4444' : '#3B82F6', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12, marginBottom: 15 }}>
                                 <Text style={{ color: 'white', fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -1231,7 +1278,7 @@ return (
                                 </View>
 
                                 {activeModal?.data?.orderId && (
-                                    <View style={{ marginTop: 10, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', pb: 15, mb: 10 }}>
+                                    <View style={{ marginTop: 10, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingBottom: 15, marginBottom: 10 }}>
                                         <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: 'bold', marginBottom: 4 }}>BILL / ORDER NUMBER</Text>
                                         <Text style={{ fontWeight: '900', fontSize: 42, color: '#111827', letterSpacing: -1 }}>
                                             #{activeModal?.data?.orderId}
@@ -1265,19 +1312,19 @@ return (
                                     </View>
                                 )}
                             </View>
-                            
+
                             <View style={{ width: '100%', gap: 10 }}>
                                 {activeModal?.type === 'PAYMENT' ? (
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         style={{ backgroundColor: '#10B981', paddingVertical: 16, borderRadius: 20, alignItems: 'center' }}
                                         onPress={() => handleProcessPayment(activeModal.data.orderId, activeModal.data.method)}
                                     >
                                         <Text style={{ color: 'white', fontWeight: '900' }}>Confirm Payment & Close Order ✓</Text>
                                     </TouchableOpacity>
                                 ) : (
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         style={{ backgroundColor: '#111827', paddingVertical: 18, borderRadius: 20, alignItems: 'center' }}
-                                        onPress={() => { nextModal(); if(activeModal?.type === 'NEW_ORDER') setActiveTab('orders'); }}
+                                        onPress={() => { nextModal(); if (activeModal?.type === 'NEW_ORDER') setActiveTab('orders'); }}
                                     >
                                         <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>OKAY</Text>
                                     </TouchableOpacity>
@@ -1286,7 +1333,7 @@ return (
                         </View>
                     </View>
                 </Modal>
-            </SafeAreaView>
+            </View>
         </View>
         <View style={styles.mainContainer}>
             {activeTab === 'home' && renderHome()}
@@ -1324,7 +1371,7 @@ return (
                 </View>
             </View>
         )}
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: 'white' }}>
+        <View style={{ backgroundColor: 'white' }}>
             <View style={styles.bottomNav}>
                 <TouchableOpacity onPress={() => setActiveTab('home')} style={[styles.navItem, activeTab === 'home' && styles.activeNav]}>
                     <Text style={activeTab === 'home' ? styles.activeNavText : styles.navText}>🏠</Text>
@@ -1351,7 +1398,7 @@ return (
                     <Text style={activeTab === 'account' ? styles.activeNavLabel : styles.navLabel}>Profile</Text>
                 </TouchableOpacity>
             </View>
-        </SafeAreaView>
+        </View>
         <Modal visible={showCancelModal} transparent animationType="slide">
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
                 <View style={{ backgroundColor: 'white', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 40 }}>
@@ -1581,17 +1628,18 @@ return (
                             <Text style={{ fontWeight: 'bold' }}>Rs. {selectedHistoryOrder?.total_price}</Text>
                         </View>
                     </View>
-                    <TouchableOpacity 
-                        style={[styles.confirmBtn, { backgroundColor: '#111827', marginTop: 20, flex: 0 }]} 
+                    <TouchableOpacity
+                        style={[styles.confirmBtn, { backgroundColor: '#111827', marginTop: 20, flex: 0 }]}
                         onPress={() => setShowHistoryModal(false)}
                     >
                         <Text style={{ color: 'white', fontWeight: 'bold' }}>Close Review</Text>
                     </TouchableOpacity>
                 </View>
             </View>
-        </Modal>
-    </View>
-);
+            </Modal>
+        </View>
+    )
+    ;
 };
 
 const styles = StyleSheet.create({

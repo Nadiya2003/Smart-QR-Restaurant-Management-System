@@ -938,7 +938,7 @@ export const updateReservationStatus = async (req, res) => {
             return res.status(400).json({ message: 'Invalid reservation status' });
         }
 
-        await pool.query('UPDATE reservations SET reservation_status = ? WHERE id = ?', [status.toUpperCase(), id]);
+        await pool.query('UPDATE reservations SET reservation_status = ?, status = ? WHERE id = ?', [status.toUpperCase(), status.toLowerCase(), id]);
 
         if (global.io) {
             global.io.emit('reservationUpdate', { id, status: status.toUpperCase() });

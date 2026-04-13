@@ -90,7 +90,7 @@ export const createPosOrder = async (req, res) => {
     try {
         await connection.beginTransaction();
         const cashierId = req.user.userId;
-        const { order_type, table_id, customer_name, phone, address, items, total_price, steward_id } = req.body;
+        const { order_type, table_id, customer_name, phone, address, items, total_price, steward_id, guest_count, needed_time } = req.body;
 
         // 1. Get IDs for status and type
         const dbType = order_type.toUpperCase().replace('-', '_'); // Map DINE-IN to DINE_IN
@@ -101,11 +101,17 @@ export const createPosOrder = async (req, res) => {
         const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['PENDING']);
         const statusId = statusRows[0].id;
 
-        // 2. Insert order
+        // Handle multi-table IDs (comma separated or array)
+        let tableIds = [];
+        if (table_id) {
+            tableIds = Array.isArray(table_id) ? table_id : String(table_id).split(',').map(id => id.trim());
+        }
+        const primaryTableId = tableIds.length > 0 ? tableIds[0] : null;
+
         const [orderResult] = await connection.query(
-            `INSERT INTO orders (order_type_id, status_id, table_id, steward_id, customer_name, phone, address, cashier_id, total_price, order_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'guest')`,
-            [typeId, statusId, table_id || null, steward_id || null, customer_name || null, phone || null, address || null, cashierId, total_price]
+            `INSERT INTO orders (order_type_id, status_id, table_id, steward_id, customer_name, phone, address, cashier_id, total_price, guest_count, needed_time, order_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'guest')`,
+            [typeId, statusId, primaryTableId, steward_id || null, customer_name || null, phone || null, address || null, cashierId, total_price, guest_count || 0, needed_time || null]
         );
         const orderId = orderResult.insertId;
 
@@ -117,9 +123,11 @@ export const createPosOrder = async (req, res) => {
             );
         }
 
-        // 4. Update table status if Dine-In
-        if ((order_type.toUpperCase() === 'DINE-IN' || order_type.toUpperCase() === 'DINE_IN') && table_id) {
-            await connection.query("UPDATE restaurant_tables SET status = 'occupied' WHERE id = ?", [table_id]);
+        // 4. Update table status if Dine-In (ALL selected tables)
+        if ((order_type.toUpperCase() === 'DINE-IN' || order_type.toUpperCase() === 'DINE_IN') && tableIds.length > 0) {
+            for (const tId of tableIds) {
+                await connection.query("UPDATE restaurant_tables SET status = 'occupied' WHERE id = ?", [tId]);
+            }
         }
 
         await connection.commit();
@@ -137,7 +145,7 @@ export const getAllOrders = async (req, res) => {
     try {
         const [orders] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, coalesce(ot.name, 'DINE_IN') as type_name, os.name as status_name,
-                   'orders' as source_table, o.phone, o.customer_name,
+                   'orders' as source_table, o.phone, o.customer_name, o.needed_time,
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
                    ) FROM order_items oi 
@@ -150,14 +158,14 @@ export const getAllOrders = async (req, res) => {
             UNION ALL
 
             SELECT to_ord.id, to_ord.total_price, to_ord.created_at, 'TAKEAWAY' as type_name, to_ord.order_status as status_name,
-                   'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name,
+                   'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name, to_ord.needed_time,
                    to_ord.items as items
             FROM takeaway_orders to_ord
 
             UNION ALL
 
             SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.order_status as status_name,
-                   'delivery_orders' as source_table, do.phone, do.customer_name,
+                   'delivery_orders' as source_table, do.phone, do.customer_name, do.needed_time,
                    do.items as items
             FROM delivery_orders do
             
@@ -293,32 +301,50 @@ export const settleOrder = async (req, res) => {
         const { id } = req.params;
         const { payment_method_id, email } = req.body;
 
+        // 1. Fetch order details for validation
+        const [orderRows] = await connection.query(
+            "SELECT o.table_id, o.total_price, o.customer_name, o.customer_id, os.name as status_name FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE o.id = ?", 
+            [id]
+        );
+        
+        if (orderRows.length === 0) throw new Error("Order not found");
+        const order = orderRows[0];
+
+        // REQUIREMENT: Payment allowed ONLY IF order is fully served
+        if (order.status_name !== 'SERVED' && order.status_name !== 'COMPLETED') {
+            await connection.rollback();
+            return res.status(400).json({ 
+                success: false, 
+                message: "Payment restricted: Order must be fully SERVED by steward before settlement." 
+            });
+        }
+
         const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['COMPLETED']);
         const completedStatusId = statusRows[0].id;
 
-        // 1. Update order status and payment
+        // 2. Update order status and payment
         const [resUpdate] = await connection.query(
-            "UPDATE orders SET status_id = ?, payment_method_id = ?, paid_at = NOW() WHERE id = ?",
+            "UPDATE orders SET status_id = ?, payment_method_id = ?, paid_at = NOW(), main_status = 'COMPLETED' WHERE id = ?",
             [completedStatusId, payment_method_id, id]
         );
 
         if (resUpdate.affectedRows === 0) throw new Error("Order not found or already settled");
-
-        // 2. Fetch order details for table status and loyalty points
-        const [orderRows] = await connection.query(
-            "SELECT table_id, total_price, customer_name, customer_id FROM orders WHERE id = ?", 
-            [id]
-        );
-        
-        if (orderRows.length === 0) throw new Error("Order data missing during settlement");
-        const order = orderRows[0];
 
         // 3. Set table status to 'cleaning' with a 5-minute delay (Requirement #3)
         if (order.table_id) {
             await connection.query("UPDATE restaurant_tables SET status = 'cleaning' WHERE id = ?", [order.table_id]);
             
             // Broadcast the 'cleaning' status immediately
-            if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
+            if (global.io) {
+                global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
+                // Requirement: Notify COMPLETED status across all dashboards
+                global.io.emit('orderUpdate', { 
+                    orderId: parseInt(id), 
+                    status: 'COMPLETED',
+                    mainStatus: 'COMPLETED',
+                    tableId: order.table_id 
+                });
+            }
 
             // Auto-reset to 'available' after 5 minutes
             setTimeout(async () => {

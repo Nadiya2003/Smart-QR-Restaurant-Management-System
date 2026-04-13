@@ -1,17 +1,9 @@
-import db from './src/config/db.js';
+import pool from './src/config/db.js';
 
-async function checkSchema() {
+async function check() {
     try {
-        const tables = ['orders', 'order_items', 'staff_attendance', 'reservations', 'bookings', 'restaurant_tables'];
-        for (const table of tables) {
-            console.log(`\n--- ${table} ---`);
-            try {
-                const [rows] = await db.query(`DESCRIBE \`${table}\``);
-                console.table(rows);
-            } catch (err) {
-                console.log(`${table} might not exist: ${err.message}`);
-            }
-        }
+        const [rows] = await pool.query("DESCRIBE orders");
+        console.log("ORDERS SCHEMA:", JSON.stringify(rows));
         process.exit(0);
     } catch (err) {
         console.error(err);
@@ -19,4 +11,4 @@ async function checkSchema() {
     }
 }
 
-checkSchema();
+check();

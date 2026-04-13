@@ -95,6 +95,13 @@ const BarDashboard = () => {
         };
     }, []);
 
+    const handleLogout = () => {
+        Alert.alert('Logout', 'Are you sure you want to logout?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', onPress: logout }
+        ]);
+    };
+
     const playNotificationSound = async () => {
         try {
             if (soundRef.current) {
@@ -602,7 +609,7 @@ const BarDashboard = () => {
                             {notifications.filter(n => n.status === 'unread').length > 0 && <View style={styles.notifBadge} />}
                         </TouchableOpacity>
                         
-                        <TouchableOpacity onPress={logout} style={[styles.iconBtn, { marginLeft: 8 }]}>
+                        <TouchableOpacity onPress={handleLogout} style={[styles.iconBtn, { marginLeft: 8 }]}>
                             <Text style={{ fontSize: 20 }}>🚪</Text>
                         </TouchableOpacity>
 

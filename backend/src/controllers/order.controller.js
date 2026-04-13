@@ -34,11 +34,15 @@ export const createDeliveryOrder = async (req, res) => {
             // Order Analytics Insertion
             if (Array.isArray(items)) {
                 for (const item of items) {
+                    const buyPrice = item.buying_price || 0;
+                    const sellPrice = item.price || 0;
+                    const qty = item.quantity || 1;
+                    const profit = (sellPrice - buyPrice) * qty;
                     await connection.query(
                         `INSERT INTO order_analytics 
-                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                        VALUES (?, 'DELIVERY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?)`,
-                        [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
+                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) 
+                        VALUES (?, 'DELIVERY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [result.insertId, item.id || 0, item.name, item.category || 'General', qty, sellPrice, sellPrice * qty, buyPrice, profit]
                     );
                 }
             }
@@ -104,11 +108,15 @@ export const createTakeawayOrder = async (req, res) => {
             // Order Analytics Insertion
             if (Array.isArray(items)) {
                 for (const item of items) {
+                    const buyPrice = item.buying_price || 0;
+                    const sellPrice = item.price || 0;
+                    const qty = item.quantity || 1;
+                    const profit = (sellPrice - buyPrice) * qty;
                     await connection.query(
                         `INSERT INTO order_analytics 
-                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                        VALUES (?, 'TAKEAWAY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?)`,
-                        [result.insertId, item.id || 0, item.name, item.category || 'General', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1)]
+                        (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) 
+                        VALUES (?, 'TAKEAWAY', 'pending', 'ONLINE', ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [result.insertId, item.id || 0, item.name, item.category || 'General', qty, sellPrice, sellPrice * qty, buyPrice, profit]
                     );
                 }
             }
@@ -408,18 +416,25 @@ export const createDineInOrder = async (req, res) => {
                 });
                 
                 // Add to order_analytics (for reports)
+                const buyPrice = menuItem.buying_price || 0;
+                const sellPrice = menuItem.price || 0;
+                const qty = item.quantity || 1;
+                const profit = (sellPrice - buyPrice) * qty;
+
                 await connection.query(
                     `INSERT INTO order_analytics 
-                    (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                    VALUES (?, 'DINE-IN', 'pending', 'CASH', ?, ?, ?, ?, ?, ?)`,
+                    (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) 
+                    VALUES (?, 'DINE-IN', 'pending', 'CASH', ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         targetOrderId, 
                         menuItem.id || 0, 
                         menuItem.name, 
                         catName, 
-                        item.quantity || 1, 
-                        menuItem.price || 0, 
-                        (menuItem.price || 0) * (item.quantity || 1)
+                        qty, 
+                        sellPrice, 
+                        sellPrice * qty,
+                        buyPrice,
+                        profit
                     ]
                 );
 
@@ -781,7 +796,7 @@ export const removeOrderItem = async (req, res) => {
 
         // 1. Get info about the item being removed
         const [itemRows] = await connection.query(
-            "SELECT quantity, price FROM order_items WHERE id = ? AND order_id = ?",
+            "SELECT quantity, price, item_status FROM order_items WHERE id = ? AND order_id = ?",
             [itemId, orderId]
         );
 
@@ -790,7 +805,18 @@ export const removeOrderItem = async (req, res) => {
             return res.status(404).json({ message: "Item not found in this order" });
         }
 
-        const { quantity, price } = itemRows[0];
+        const { quantity, price, item_status } = itemRows[0];
+
+        // RESTRICTION LOGIC: If status is 'preparing', cannot remove directly
+        if ((item_status || "").toLowerCase() === "preparing") {
+            await connection.rollback();
+            return res.status(403).json({ 
+                message: "Cannot remove item directly while it is being prepared.",
+                status: item_status,
+                requiresRequest: true
+            });
+        }
+
         const baseAmount = price * quantity;
         const inclusiveAmount = baseAmount * 1.15; // Including 10% SC and 5% Tax
 
@@ -804,8 +830,6 @@ export const removeOrderItem = async (req, res) => {
         );
 
         // 4. Update order_analytics (remove matching record for consistent reporting)
-        // Note: This is an approximation since analytics doesn't have oi.id, 
-        // but it's consistent with how createDineInOrder inserts them.
         await connection.query(
             "DELETE FROM order_analytics WHERE order_id = ? AND unit_price = ? AND quantity = ? LIMIT 1",
             [orderId, price, quantity]
@@ -1159,5 +1183,156 @@ export const requestPayment = async (req, res) => {
     } catch (err) {
         console.error('Request payment error:', err);
         res.status(500).json({ message: 'Server error' });
+    }
+};
+
+/**
+ * POST /api/orders/:orderId/items/:itemId/removal-request
+ */
+export const requestItemRemoval = async (req, res) => {
+    try {
+        const { orderId, itemId } = req.params;
+        const { reason } = req.body;
+        const requestedBy = req.user.userId;
+
+        // Verify item exists and is in 'preparing' status
+        const [items] = await pool.query(
+            "SELECT oi.id, mi.name FROM order_items oi JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE oi.id = ? AND oi.order_id = ?",
+            [itemId, orderId]
+        );
+
+        if (items.length === 0) {
+            return res.status(404).json({ message: "Item not found" });
+        }
+
+        const [requestResult] = await pool.query(
+            "INSERT INTO item_removal_requests (order_id, item_id, requested_by, reason) VALUES (?, ?, ?, ?)",
+            [orderId, itemId, requestedBy, reason || "No reason provided"]
+        );
+
+        // Notify Admin and Manager
+        if (global.io) {
+            global.io.emit('removalRequest', {
+                requestId: requestResult.insertId,
+                orderId: parseInt(orderId),
+                itemId: parseInt(itemId),
+                itemName: items[0].name,
+                requestedBy,
+                reason: reason || "No reason provided",
+                playSound: true
+            });
+        }
+
+        res.json({ success: true, message: "Removal request sent to Admin/Manager" });
+    } catch (err) {
+        console.error('Request removal error:', err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * GET /api/orders/removal-requests
+ */
+export const getRemovalRequests = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT irr.*, mi.name as item_name, oi.quantity, oi.price, rt.table_number
+            FROM item_removal_requests irr
+            JOIN order_items oi ON irr.item_id = oi.id
+            JOIN menu_items mi ON oi.menu_item_id = mi.id
+            JOIN orders o ON irr.order_id = o.id
+            LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+            WHERE irr.status = 'pending'
+            ORDER BY irr.created_at DESC
+        `);
+        res.json({ requests: rows });
+    } catch (err) {
+        console.error('Get removal requests error:', err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * PUT /api/orders/removal-requests/:requestId/approve
+ */
+export const approveRemovalRequest = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { requestId } = req.params;
+        await connection.beginTransaction();
+
+        // Get request details
+        const [reqRows] = await connection.query("SELECT * FROM item_removal_requests WHERE id = ? AND status = 'pending'", [requestId]);
+        if (reqRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Request not found or already processed" });
+        }
+
+        const { order_id, item_id } = reqRows[0];
+
+        // Get item details
+        const [itemRows] = await connection.query("SELECT quantity, price FROM order_items WHERE id = ?", [item_id]);
+        if (itemRows.length > 0) {
+            const { quantity, price } = itemRows[0];
+            const inclusiveAmount = (price * quantity) * 1.15;
+
+            // Delete item
+            await connection.query("DELETE FROM order_items WHERE id = ?", [item_id]);
+            
+            // Update order total
+            await connection.query(
+                "UPDATE orders SET total_price = GREATEST(0, total_price - ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                [inclusiveAmount, order_id]
+            );
+
+            // Update analytics
+            await connection.query(
+                "DELETE FROM order_analytics WHERE order_id = ? AND unit_price = ? AND quantity = ? LIMIT 1",
+                [order_id, price, quantity]
+            );
+        }
+
+        // Update request status
+        await connection.query("UPDATE item_removal_requests SET status = 'approved' WHERE id = ?", [requestId]);
+
+        await connection.commit();
+
+        if (global.io) {
+            global.io.emit('removalStatusUpdate', { requestId, orderId: order_id, status: 'approved' });
+            global.io.emit('orderUpdate', { orderId: order_id, action: 'ITEM_REMOVED' });
+        }
+
+        res.json({ success: true, message: "Removal request approved and item removed" });
+    } catch (err) {
+        await connection.rollback();
+        console.error('Approve removal error:', err);
+        res.status(500).json({ message: "Server error" });
+    } finally {
+        connection.release();
+    }
+};
+
+/**
+ * PUT /api/orders/removal-requests/:requestId/reject
+ */
+export const rejectRemovalRequest = async (req, res) => {
+    try {
+        const { requestId } = req.params;
+        const [reqRows] = await pool.query("SELECT * FROM item_removal_requests WHERE id = ? AND status = 'pending'", [requestId]);
+        
+        if (reqRows.length === 0) {
+            return res.status(404).json({ message: "Request not found or already processed" });
+        }
+
+        await pool.query("UPDATE item_removal_requests SET status = 'rejected' WHERE id = ?", [requestId]);
+
+        if (global.io) {
+            global.io.emit('removalStatusUpdate', { requestId, orderId: reqRows[0].order_id, status: 'rejected' });
+        }
+
+        res.json({ success: true, message: "Removal request rejected" });
+    } catch (err) {
+        console.error('Reject removal error:', err);
+        res.status(500).json({ message: "Server error" });
     }
 };

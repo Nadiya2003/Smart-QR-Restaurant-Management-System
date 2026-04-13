@@ -10,6 +10,17 @@ export const createReservation = async (req, res) => {
             return res.status(400).json({ message: 'All fields (date, time, guests, area, table) are required' });
         }
 
+        // Real-time Validation: Prevent past date/time
+        const selectedDateTime = new Date(`${date}T${time}`);
+        const now = new Date();
+        
+        if (selectedDateTime < now) {
+            return res.status(400).json({ 
+                message: 'Invalid Selection', 
+                error: 'Cannot place a reservation for a past date or time.' 
+            });
+        }
+
         // Check if table is actually available for that time
         const [existing] = await pool.query(
             `SELECT * FROM reservations 
@@ -26,8 +37,8 @@ export const createReservation = async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO reservations 
-            (customer_id, area_id, table_id, reservation_date, reservation_time, guest_count, customer_name, mobile_number, special_requests) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (customer_id, area_id, table_id, reservation_date, reservation_time, guest_count, customer_name, mobile_number, special_requests, reservation_status, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'pending')`,
             [
                 customer_id, 
                 area_id, 
@@ -94,6 +105,11 @@ export const createReservation = async (req, res) => {
                 tableId: table_id, 
                 status: 'Reserved',
                 type: 'RESERVATION_CREATED'
+            });
+            global.io.emit('newReservation', {
+                reservationId: result.insertId,
+                date,
+                time
             });
         }
 
@@ -270,6 +286,38 @@ export const cancelReservation = async (req, res) => {
         res.status(500).json({ message: 'Failed to cancel reservation' });
     } finally {
         connection.release();
+    }
+};
+
+/**
+ * PUT /api/reservations/:id/status
+ */
+export const updateReservationStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body; // e.g., 'ARRIVAL', 'COMPLETED', 'NOSHOW', 'PENDING'
+
+        if (!status) {
+            return res.status(400).json({ message: 'Status is required' });
+        }
+
+        const [result] = await pool.query(
+            "UPDATE reservations SET reservation_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [status.toUpperCase(), id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        if (global.io) {
+            global.io.emit('reservationUpdate', { reservationId: id, status: status.toUpperCase() });
+        }
+
+        res.json({ success: true, message: `Reservation status updated to ${status}` });
+    } catch (err) {
+        console.error('Update reservation status error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
 };
 

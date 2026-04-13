@@ -85,13 +85,14 @@ export const createCategory = async (req, res) => {
 };
 
 export const createMenuItem = async (req, res) => {
-    const { category_id, name, description, price, tags } = req.body;
+    const { category_id, name, description, price, tags, buying_price } = req.body;
     const image = req.file ? `/uploads/menu/${req.file.filename}` : req.body.image;
     try {
         const tagsJson = tags ? JSON.stringify(tags) : null;
+        const assignedBuyingPrice = buying_price || 0;
         const [result] = await pool.query(
-            'INSERT INTO menu_items (category_id, name, description, price, image, tags, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
-            [category_id, name, description, price, image, tagsJson]
+            'INSERT INTO menu_items (category_id, name, description, price, buying_price, image, tags, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)',
+            [category_id, name, description, price, assignedBuyingPrice, image, tagsJson]
         );
         res.status(201).json({ id: result.insertId, category_id, name, description, price, image, tags, is_active: true });
     } catch (error) {
@@ -102,13 +103,14 @@ export const createMenuItem = async (req, res) => {
 
 export const updateMenuItem = async (req, res) => {
     const { id } = req.params;
-    const { category_id, name, description, price, tags, is_active } = req.body;
+    const { category_id, name, description, price, tags, is_active, buying_price } = req.body;
     const image = req.file ? `/uploads/menu/${req.file.filename}` : req.body.image;
     try {
         const tagsJson = tags ? JSON.stringify(tags) : null;
+        const assignedBuyingPrice = buying_price || 0;
         await pool.query(
-            'UPDATE menu_items SET category_id = ?, name = ?, description = ?, price = ?, image = ?, tags = ?, is_active = ? WHERE id = ?',
-            [category_id, name, description, price, image, tagsJson, is_active, id]
+            'UPDATE menu_items SET category_id = ?, name = ?, description = ?, price = ?, buying_price = ?, image = ?, tags = ?, is_active = ? WHERE id = ?',
+            [category_id, name, description, price, assignedBuyingPrice, image, tagsJson, is_active, id]
         );
         res.json({ message: 'Menu item updated successfully' });
     } catch (error) {

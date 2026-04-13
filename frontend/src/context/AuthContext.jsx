@@ -27,7 +27,9 @@ export function AuthProvider({ children }) {
 
     const logout = () => {
         setUser(null);
-        localStorage.clear(); // Clear all: user, token, cart, etc.
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        // Do NOT use localStorage.clear() as it wipes out pending reservations, theme preferences, cart, etc.
         window.location.href = '/auth'; // Redirect to login after logout
     };
 
@@ -44,6 +46,9 @@ export function AuthProvider({ children }) {
                 const updatedUser = { ...data, token };
                 setUser(updatedUser);
                 localStorage.setItem('user', JSON.stringify(updatedUser));
+            } else if (res.status === 401) {
+                // Token expired during refresh
+                logout();
             }
         } catch (err) {
             console.error('Refresh profile error:', err);

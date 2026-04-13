@@ -4,7 +4,8 @@ import {
     getReservations, 
     cancelReservation,
     getDiningAreas,
-    getTablesWithAvailability
+    getTablesWithAvailability,
+    updateReservationStatus
 } from '../controllers/reservation.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -15,6 +16,7 @@ router.get('/availability', getTablesWithAvailability); // Publicly viewable
 router.post('/', protect, createReservation); // Only logged in users can reserve
 router.get('/all', protect, getReservations); // Admin dashboard usage
 router.put('/cancel/:id', protect, cancelReservation);
+router.put('/:id/status', protect, updateReservationStatus);
 
 export default router;
 

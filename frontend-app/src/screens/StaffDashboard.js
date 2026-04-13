@@ -5,7 +5,7 @@ import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
 
 const StaffDashboard = () => {
-    const { user, token } = useAuth();
+    const { user, token, logout } = useAuth();
     const [isCheckedIn, setIsCheckedIn] = useState(false);
     const [colleagues, setColleagues] = useState([]);
     const [loading, setLoading] = useState(true);

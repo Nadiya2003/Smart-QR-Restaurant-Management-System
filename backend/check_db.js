@@ -2,8 +2,8 @@ import pool from './src/config/db.js';
 
 async function check() {
     try {
-        const [rows] = await pool.query("SELECT * FROM order_statuses");
-        console.log("ORDER STATUSES:", JSON.stringify(rows));
+        const [rows] = await pool.query("SELECT * FROM order_types");
+        console.log("ORDER TYPES:", JSON.stringify(rows));
         process.exit(0);
     } catch (err) {
         console.error(err);

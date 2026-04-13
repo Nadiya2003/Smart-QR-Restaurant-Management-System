@@ -11,6 +11,10 @@ import {
     cancelTakeawayOrder,
     requestDineInCancellation,
     removeOrderItem,
+    requestItemRemoval,
+    getRemovalRequests,
+    approveRemovalRequest,
+    rejectRemovalRequest,
     getAllTables,
     updateOrderTable,
     endDineInSession,
@@ -38,6 +42,10 @@ router.put('/delivery/cancel/:id', protect, cancelDeliveryOrder);
 router.put('/takeaway/cancel/:id', protect, cancelTakeawayOrder);
 router.post('/dine-in/cancel-request/:id', resolveUser, requestDineInCancellation);
 router.delete('/:orderId/items/:itemId', resolveUser, removeOrderItem);
+router.post('/:orderId/items/:itemId/removal-request', resolveUser, requestItemRemoval);
+router.get('/removal-requests', protect, getRemovalRequests);
+router.put('/removal-requests/:requestId/approve', protect, approveRemovalRequest);
+router.put('/removal-requests/:requestId/reject', protect, rejectRemovalRequest);
 router.get('/tables', getUnifiedTables);
 router.post('/update-table', resolveUser, updateOrderTable);
 router.post('/dine-in/end-session', resolveUser, endDineInSession);
