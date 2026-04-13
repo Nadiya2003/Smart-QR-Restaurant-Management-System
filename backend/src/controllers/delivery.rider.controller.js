@@ -46,7 +46,8 @@ export const getOrders = async (req, res) => {
                        JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes)
                    ) FROM delivery_order_items doi JOIN menu_items mi ON doi.menu_item_id = mi.id WHERE doi.order_id = do.id) as items
             FROM delivery_orders do
-            WHERE do.order_status NOT IN ('Delivered')
+            WHERE do.order_status != 'Delivered' 
+               OR (do.order_status = 'Delivered' AND do.payment_status NOT IN ('settled', 'paid', 'Paid', 'Completed'))
             ORDER BY do.created_at DESC
         `);
 
@@ -139,38 +140,91 @@ export const updateOrderStatus = async (req, res) => {
         const { status } = req.body;
         const riderId = req.user.userId;
 
-        // If status is 'Out for Delivery', assign to this rider if not already
-        let updateQuery = 'UPDATE delivery_orders SET order_status = ?';
-        let params = [status, id];
+        // 1. Get current order state
+        const [[order]] = await pool.query(
+            "SELECT order_status, payment_status, payment_method FROM delivery_orders WHERE id = ?",
+            [id]
+        );
 
-        if (status === 'Out for Delivery') {
-            updateQuery = 'UPDATE delivery_orders SET order_status = ?, created_by = ? WHERE id = ?';
-            params = [status, riderId, id];
-        } else if (status === 'Delivered') {
-            // Mark as Paid when delivered if it was Cash on Delivery
-            updateQuery = "UPDATE delivery_orders SET order_status = ?, payment_status = 'Paid' WHERE id = ?";
-            params = [status, id];
-        } else {
-            updateQuery = 'UPDATE delivery_orders SET order_status = ? WHERE id = ?';
-            params = [status, id];
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        const statusSequence = ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+        const currentIndex = statusSequence.indexOf(order.order_status);
+        const nextIndex = statusSequence.indexOf(status);
+
+        // Validate sequence
+        if (nextIndex !== -1 && currentIndex !== -1) {
+            if (nextIndex < currentIndex) {
+                return res.status(400).json({ message: 'Cannot go back to previous status' });
+            }
+            if (nextIndex > currentIndex + 1) {
+                return res.status(400).json({ message: 'Cannot skip status steps' });
+            }
+        }
+
+        // Validate payment before delivering
+        // Allowed to deliver if payment is 'collected', 'settled', or 'paid'
+        const isNotPaid = !['collected', 'settled', 'paid', 'Completed', 'Paid'].includes(order.payment_status);
+        if (status === 'Delivered' && isNotPaid && order.payment_method !== 'online') {
+            return res.status(402).json({ 
+                message: 'Cannot mark as Delivered while payment is still Pending. Please collect cash or confirm payment first.' 
+            });
+        }
+
+        // Update queries
+        let updateQuery = 'UPDATE delivery_orders SET order_status = ?, delivery_status = ? WHERE id = ?';
+        let params = [status, status, id];
+
+        if (status === 'Accepted' || status === 'Picked Up') {
+            updateQuery = 'UPDATE delivery_orders SET order_status = ?, delivery_status = ?, created_by = ? WHERE id = ?';
+            params = [status, status, riderId, id];
         }
 
         await pool.query(updateQuery, params);
 
-        // Update Order Analytics status
+        // Update Order Analytics
         await pool.query(
             "UPDATE order_analytics SET order_status = ? WHERE order_id = ? AND order_source = 'DELIVERY'",
             [status.toLowerCase(), id]
         );
 
         // Real-time emission
-        io.emit('delivery_order_updated', { orderId: id, status });
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('delivery_order_updated', { orderId: id, status, payment_status: order.payment_status });
+            io.emit('orderUpdate', { id: parseInt(id), status: status.toUpperCase(), type: 'DELIVERY' });
+        }
 
-        // Notify relevant dashboards (simulated for now, would use Socket.io)
-        res.json({ message: `Order status updated to ${status}` });
+        res.json({ message: `Order status updated to ${status}`, status });
     } catch (error) {
         console.error('Update status error:', error);
         res.status(500).json({ message: 'Failed to update order status' });
+    }
+};
+
+/**
+ * PATCH /api/delivery-rider/orders/:id/payment-status
+ */
+export const updatePaymentStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, method } = req.body; 
+
+        await pool.query(
+            "UPDATE delivery_orders SET payment_status = ?, payment_method = ? WHERE id = ?",
+            [status, method || 'cash', id]
+        );
+
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('delivery_payment_updated', { orderId: id, payment_status: status });
+            io.emit('orderUpdate', { id: parseInt(id), payment_status: status, type: 'DELIVERY' });
+        }
+
+        res.json({ message: `Payment status updated to ${status}`, payment_status: status });
+    } catch (error) {
+        console.error('Update payment status error:', error);
+        res.status(500).json({ message: 'Failed to update payment status' });
     }
 };
 
@@ -267,7 +321,7 @@ export const getHistory = async (req, res) => {
         const riderId = req.user.userId;
         const { dateFrom, dateTo } = req.query;
 
-        let query = "SELECT * FROM delivery_orders WHERE created_by = ? AND order_status = 'Delivered'";
+        let query = "SELECT * FROM delivery_orders WHERE created_by = ? AND order_status = 'Delivered' AND payment_status IN ('settled', 'paid', 'Paid', 'Completed')";
         let params = [riderId];
 
         if (dateFrom && dateTo) {

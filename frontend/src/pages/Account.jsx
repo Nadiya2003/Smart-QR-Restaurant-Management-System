@@ -39,15 +39,30 @@ function Account() {
         const socket = io(config.API_BASE_URL);
         
         socket.on('reservationUpdate', (data) => {
-            setAccountData(prev => {
-                if (!prev.reservations) return prev;
-                return {
-                    ...prev,
-                    reservations: prev.reservations.map(res => 
-                        Number(res.id) === Number(data.id) ? { ...res, status: data.status } : res
-                    )
-                };
-            });
+            setAccountData(prev => ({
+                ...prev,
+                reservations: (prev.reservations || []).map(res => 
+                    Number(res.id) === Number(data.id) ? { ...res, status: data.status } : res
+                )
+            }));
+        });
+
+        socket.on('delivery_order_updated', (data) => {
+            setAccountData(prev => ({
+                ...prev,
+                orders: (prev.orders || []).map(order => 
+                    Number(order.id) === Number(data.orderId) ? { ...order, order_status: data.status, delivery_status: data.status } : order
+                )
+            }));
+        });
+
+        socket.on('orderUpdate', (data) => {
+            setAccountData(prev => ({
+                ...prev,
+                orders: (prev.orders || []).map(order => 
+                    Number(order.id) === Number(data.id) ? { ...order, order_status: data.status } : order
+                )
+            }));
         });
 
         return () => {
@@ -208,7 +223,7 @@ function Account() {
                             onClick={() => setActiveTab('orders')}
                             className={`w-full text-left p-4 rounded-xl transition-all flex items-center gap-4 ${activeTab === 'orders' ? 'bg-[#D4AF37] text-black font-bold shadow-lg shadow-[#D4AF37]/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
                         >
-                            <span className="text-[10px] font-black opacity-50">02</span> Order History
+                            <span className="text-[10px] font-black opacity-50">02</span> Orders
                         </button>
                         <button 
                             onClick={() => setActiveTab('reservations')}
@@ -222,6 +237,8 @@ function Account() {
                         >
                             <span className="text-[10px] font-black opacity-50">04</span> Settings
                         </button>
+
+
 
                         {/* Quick Stats sidebar card */}
                         <GlassCard className="p-6 mt-8 border-white/5 bg-white/[0.02]">
@@ -307,7 +324,7 @@ function Account() {
                         {/* Tab Content: ORDERS */}
                         {activeTab === 'orders' && (
                             <div className="space-y-6 animate-fade-in">
-                                <h3 className="text-2xl font-serif text-white mb-6">Order History</h3>
+                                <h3 className="text-2xl font-serif text-white mb-6">Your Orders</h3>
                                 {orders?.length === 0 ? (
                                     <div className="text-center py-20 bg-white/[0.02] rounded-3xl border border-dashed border-white/10">
                                         <p className="text-gray-500">No recent culinary discoveries found.</p>
@@ -315,33 +332,81 @@ function Account() {
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        {orders.map(order => (
-                                            <GlassCard key={order.id} className="p-4 hover:border-[#D4AF37]/30 transition-all border-white/5">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-[#D4AF37] border border-white/10">
-                                                            {order.type === 'DELIVERY' ? 'DLR' : order.type === 'DINE-IN' ? 'DIN' : 'TKW'}
+                                        {orders.map(order => {
+                                            const isTerminal = ['COMPLETED', 'DELIVERED', 'CANCELLED'].includes(order.order_status?.toUpperCase());
+                                            const statusSteps = ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+                                            const currentStatus = order.order_status || 'Pending';
+                                            
+                                            // Handle formatting differences
+                                            let normalizedStatus = currentStatus;
+                                            if (currentStatus.toUpperCase() === 'READY') normalizedStatus = 'Picked Up';
+                                            
+                                            const currentIdx = statusSteps.findIndex(s => s.toLowerCase() === normalizedStatus.toLowerCase());
+
+                                            return (
+                                                <GlassCard key={order.id} className={`p-6 transition-all border-white/5 ${!isTerminal ? 'border-[#10B981]/30 bg-green-500/[0.02]' : 'hover:border-[#D4AF37]/30'}`}>
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-[#D4AF37] border border-white/10">
+                                                                {order.type === 'DELIVERY' ? 'DLR' : order.type === 'DINE-IN' ? 'DIN' : 'TKW'}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-white flex items-center gap-2">
+                                                                    Order #{order.id} 
+                                                                    {!isTerminal && <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>}
+                                                                    <span className="text-[8px] bg-white/10 text-[#D4AF37] px-2 py-0.5 rounded uppercase">{order.type}</span>
+                                                                </p>
+                                                                <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()} • {new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="font-bold text-white flex items-center gap-2">
-                                                                Order #{order.id} 
-                                                                <span className="text-[8px] bg-white/10 text-[#D4AF37] px-2 py-0.5 rounded uppercase">{order.type}</span>
-                                                            </p>
-                                                            <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()} at {new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                                        <div className="text-right">
+                                                            <p className="text-lg font-black text-[#D4AF37]">Rs. {Number(order.total_price).toLocaleString()}</p>
+                                                            <span className={`text-[9px] uppercase font-bold px-3 py-1 rounded-full ${
+                                                                order.order_status === 'COMPLETED' || order.order_status === 'DELIVERED' ? 'bg-green-500/20 text-green-400' : 
+                                                                order.order_status === 'CANCELLED' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
+                                                            }`}>
+                                                                {order.order_status}
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-lg font-black text-[#D4AF37]">Rs. {Number(order.total_price).toLocaleString()}</p>
-                                                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                                                            order.order_status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : 
-                                                            order.order_status === 'CANCELLED' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
-                                                        }`}>
-                                                            {order.order_status}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </GlassCard>
-                                        ))}
+
+                                                    {/* Tracking Stepper (Only for active orders) */}
+                                                    {!isTerminal && (
+                                                        <div className="mt-8 pt-6 border-t border-white/5">
+                                                            <div className="relative flex justify-between">
+                                                                <div className="absolute top-4 left-0 w-full h-0.5 bg-white/5 -z-0">
+                                                                    <div 
+                                                                        className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-1000"
+                                                                        style={{ width: `${(Math.max(0, currentIdx) / (statusSteps.length - 1)) * 100}%` }}
+                                                                    ></div>
+                                                                </div>
+
+                                                                {statusSteps.map((step, idx) => (
+                                                                    <div key={step} className="relative z-10 flex flex-col items-center">
+                                                                        <div className={`w-7 h-7 rounded-full border-2 transition-all duration-500 flex items-center justify-center ${
+                                                                            idx < currentIdx ? 'bg-green-500 border-green-500 text-white' : 
+                                                                            idx === currentIdx ? 'bg-[#0a0a0a] border-green-500 text-green-500 scale-110' : 
+                                                                            'bg-[#0a0a0a] border-white/10 text-gray-700'
+                                                                        }`}>
+                                                                            {idx < currentIdx ? (
+                                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                                                            ) : (
+                                                                                <span className="text-[8px] font-black">{idx + 1}</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className={`mt-3 text-[7px] font-black uppercase tracking-wider text-center max-w-[50px] ${
+                                                                            idx <= currentIdx ? 'text-white' : 'text-gray-600'
+                                                                        }`}>
+                                                                            {step}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </GlassCard>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -514,6 +579,8 @@ function Account() {
                                 </GlassCard>
                             </div>
                         )}
+
+
                     </div>
                 </div>
             </div>

@@ -585,6 +585,13 @@ const CashierDashboard = () => {
                         </View>
 
                         <Text style={styles.customerNameRow}>👤 {order.customer_name || 'Guest Customer'}</Text>
+                        {order.phone ? <Text style={styles.customerNameRow}>📞 {order.phone}</Text> : null}
+                        {order.type_name?.includes('DELI') && order.address ? (
+                            <Text style={styles.customerNameRow}>📍 {order.address}</Text>
+                        ) : null}
+                        {order.payment_method_name || order.payment_status ? (
+                            <Text style={styles.customerNameRow}>💰 {order.payment_method_name || (order.payment_status === 'PAID' ? 'Paid Online' : 'Unpaid')}</Text>
+                        ) : null}
 
                         <View style={styles.splitStatusContainer}>
                             <View style={styles.splitStatusItem}>
@@ -753,6 +760,7 @@ const CashierDashboard = () => {
     const renderHome = () => {
         const activeStatuses = ['PLACED', 'CONFIRMED', 'PREPARING', 'READY_TO_SERVE', 'SERVED', 'PENDING'];
         const filteredByType = orders.filter(o => {
+            if (orderSubTab === 'ALL') return true;
             const typeMatch = (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab);
             return typeMatch;
         });
@@ -766,15 +774,19 @@ const CashierDashboard = () => {
                 !['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED'].includes(s);
         });
 
-        const getCount = (type) => orders.filter(o =>
-            (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === type &&
-            !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status_name || '').toUpperCase())
-        ).length;
+        const getCount = (type) => {
+            if (type === 'ALL') return orders.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status_name || '').toUpperCase())).length;
+            return orders.filter(o =>
+                (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === type &&
+                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status_name || '').toUpperCase())
+            ).length;
+        };
 
         return (
             <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 <View style={styles.subTabRow}>
                     {[
+                        { key: 'ALL', label: 'All', icon: '📋' },
                         { key: 'DINE-IN', label: 'Dine-In', icon: '🍽️' },
                         { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
                         { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }

@@ -359,8 +359,17 @@ export const updateKitchenOrderStatus = async (req, res) => {
             }
         } else {
             const table = type === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';
-            await pool.query(`UPDATE ${table} SET order_status = ? WHERE id = ?`, [normalized.toLowerCase(), id]);
-            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: normalized });
+            let deliveryStatus = normalized;
+            
+            // Map common kitchen statuses to delivery flow steps if needed
+            if (normalized === 'READY') deliveryStatus = 'Picked Up'; 
+
+            await pool.query(`UPDATE ${table} SET order_status = ?, delivery_status = ? WHERE id = ?`, [normalized.toLowerCase(), deliveryStatus, id]);
+            
+            if (global.io) {
+                global.io.emit('orderUpdate', { orderId: id, status: normalized, type });
+                global.io.emit('delivery_order_updated', { orderId: id, status: deliveryStatus, type });
+            }
         }
 
         res.json({ success: true, message: 'Status updated' });

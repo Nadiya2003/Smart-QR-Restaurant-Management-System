@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser } from '../middleware/unifiedAuth.js';
 import { 
     getSummary, getOrders, createOrder, 
-    updateOrderStatus, requestCancel, getHistory,
+    updateOrderStatus, updatePaymentStatus, requestCancel, getHistory,
     checkIn, checkOut, getDutyStatus, getNotifications, updateOrderItems
 } from '../controllers/delivery.rider.controller.js';
 
@@ -21,6 +21,7 @@ router.get('/notifications', authenticateUser, getNotifications);
 router.get('/orders', authenticateUser, getOrders);
 router.post('/orders', authenticateUser, createOrder);
 router.patch('/orders/:id/status', authenticateUser, updateOrderStatus);
+router.patch('/orders/:id/payment-status', authenticateUser, updatePaymentStatus);
 router.patch('/orders/:id/items', authenticateUser, updateOrderItems);
 router.post('/orders/:id/cancel-request', authenticateUser, requestCancel);
 

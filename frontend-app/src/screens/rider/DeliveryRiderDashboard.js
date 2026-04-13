@@ -12,6 +12,13 @@ import AccountSection from '../AccountSection';
 
 const { width } = Dimensions.get('window');
 
+const BUSINESS_BANK_INFO = {
+    accountName: "Melissa's Cafe & Restaurant",
+    accountNumber: "8001234567",
+    bankName: "Commercial Bank",
+    branch: "Colombo Fort"
+};
+
 // ─── Timer Component ──────────────────────────────────────────────
 const OrderTimer = ({ createdAt }) => {
     const [timeLeft, setTimeLeft] = useState(20 * 60);
@@ -80,6 +87,8 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [showCreateOrder, setShowCreateOrder] = useState(false);
+    const [showQRModal, setShowQRModal] = useState(false);
+    const [qrOrder, setQrOrder] = useState(null);
     
     // Create Order States
     const [newOrder, setNewOrder] = useState({
@@ -93,7 +102,6 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         payment_status: 'Unpaid'
     });
     const [selectedMenuCategory, setSelectedMenuCategory] = useState('');
-    const [orderSubTab, setOrderSubTab] = useState('DELIVERY');
     const soundRef = useRef(null);
 
     // Initialize Notification Sound
@@ -240,12 +248,34 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 headers,
                 body: JSON.stringify({ status })
             });
+            const data = await res.json();
             if (res.ok) {
                 Alert.alert('Success', `Order status updated to ${status}`);
                 fetchData();
+            } else {
+                Alert.alert('Action Restricted', data.message || 'Failed to update status');
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to update status');
+        }
+    };
+
+    const handleUpdatePaymentStatus = async (orderId, status, method) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/delivery-rider/orders/${orderId}/payment-status`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ status, method })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                Alert.alert('Payment Updated', `Payment marked as ${status}`);
+                fetchData();
+            } else {
+                Alert.alert('Error', data.message || 'Failed to update payment');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Connection failed');
         }
     };
 
@@ -532,146 +562,193 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             {renderStats()}
 
             <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>📦 Active Deliveries</Text>
-                <TouchableOpacity onPress={() => setActiveTab('orders')}>
-                    <Text style={styles.linkText}>View All</Text>
-                </TouchableOpacity>
+                <Text style={styles.sectionTitle}>📦 My Deliveries</Text>
             </View>
 
             {orders.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No active deliveries at the moment.</Text>
+                    <Text style={styles.emptyText}>No delivery orders found.</Text>
                 </View>
             ) : (
-                orders.filter(o => (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab))
-                    .filter(o => ['Pending', 'Ready', 'Out for Delivery'].includes(o.status))
-                    .map(order => renderOrderCard(order))
+                orders
+                .filter(o => ['PENDING', 'ACCEPTED', 'PICKED UP', 'ON THE WAY', 'DELIVERED', 'READY', 'COOKING', 'PREPARING'].includes((o.order_status || '').toUpperCase()))
+                .map(order => renderOrderCard(order))
             )}
         </ScrollView>
     );
 
-    const renderOrderCard = (order) => (
-        <View key={order.id} style={styles.orderCard}>
-            <View style={styles.orderCardHeader}>
-                <View>
-                    <Text style={styles.orderIdText}>Order #{order.id}</Text>
-                    <Text style={styles.orderTimeText}>{new Date(order.created_at).toLocaleTimeString()}</Text>
+    const renderOrderCard = (order) => {
+        const currentStatus = (order.order_status || 'Pending');
+        const statusSteps = ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+        const currentIdx = statusSteps.indexOf(currentStatus);
+        
+        const payStatus = (order.payment_status || 'pending').toLowerCase();
+        const payMethod = (order.payment_method || 'cash').toLowerCase();
+        const isPaid = ['paid', 'completed', 'settled'].includes(payStatus);
+        const isCollected = payStatus === 'collected';
+
+        return (
+            <View key={order.id} style={styles.orderCard}>
+                <View style={styles.orderCardHeader}>
+                    <View>
+                        <Text style={styles.orderIdText}>Order #{order.id}</Text>
+                        <Text style={styles.orderTimeText}>{new Date(order.created_at).toLocaleTimeString()}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, getStatusColor(order.order_status)]}>
+                        <Text style={styles.statusBadgeText}>{order.order_status}</Text>
+                    </View>
+                    <OrderTimer createdAt={order.created_at} />
                 </View>
-                <View style={[styles.statusBadge, getStatusColor(order.status)]}>
-                    <Text style={styles.statusBadgeText}>{order.status}</Text>
+
+                {/* Status Stepper */}
+                <View style={styles.stepperContainer}>
+                    {statusSteps.map((s, i) => (
+                        <View key={s} style={styles.stepWrapper}>
+                            <View style={[
+                                styles.stepCircle, 
+                                i <= currentIdx && styles.activeStepCircle,
+                                i < currentIdx && styles.completedStepCircle
+                            ]}>
+                                {i < currentIdx ? <Text style={styles.stepIcon}>✓</Text> : <Text style={styles.stepNum}>{i + 1}</Text>}
+                            </View>
+                            <Text style={[styles.stepLabel, i === currentIdx && styles.activeStepLabel]}>{s}</Text>
+                            {i < statusSteps.length - 1 && (
+                                <View style={[styles.stepConnector, i < currentIdx && styles.activeConnector]} />
+                            )}
+                        </View>
+                    ))}
                 </View>
-                <OrderTimer createdAt={order.created_at} />
-            </View>
 
-            <View style={styles.customerInfo}>
-                <Text style={styles.customerName}>{order?.customer_name || 'Guest'}</Text>
-                <Text style={styles.customerPhone}>📞 {order.phone}</Text>
-                <Text style={styles.customerAddress} numberOfLines={2}>📍 {order.address}</Text>
-            </View>
-
-            <View style={styles.orderActionRow}>
-                <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: '#3B82F6' }]}
-                    onPress={() => setSelectedOrder(order) || setShowOrderModal(true)}
-                >
-                    <Text style={styles.actionBtnText}>Details</Text>
-                </TouchableOpacity>
-
-                {order.status === 'Pending' && (
-                    <TouchableOpacity 
-                        style={[styles.actionBtn, { backgroundColor: '#8B5CF6' }]}
-                        onPress={() => setEditingOrder(order) || setIsEditing(true)}
-                    >
-                        <Text style={styles.actionBtnText}>+ Items</Text>
-                    </TouchableOpacity>
-                )}
-                
-                {order.status === 'Ready' && (
-                    <TouchableOpacity 
-                        style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
-                        onPress={() => handleUpdateStatus(order.id, 'Out for Delivery')}
-                    >
-                        <Text style={styles.actionBtnText}>Pick Up</Text>
-                    </TouchableOpacity>
-                )}
-
-                {order.status === 'Out for Delivery' && (
-                    <>
+                {/* Status Actions */}
+                <View style={styles.miniActionRow}>
+                     {currentIdx < statusSteps.length - 1 && (
                         <TouchableOpacity 
-                            style={[styles.actionBtn, { backgroundColor: '#F59E0B' }]}
+                            style={[styles.miniBtn, { backgroundColor: '#10B981' }]}
+                            onPress={() => handleUpdateStatus(order.id, statusSteps[currentIdx + 1])}
+                        >
+                            <Text style={styles.miniBtnText}>
+                                {currentIdx === 0 ? 'Accept Order' : 
+                                 currentIdx === 1 ? 'Picked from Kitchen' : 
+                                 currentIdx === 2 ? 'Start Delivery' : 'Mark Delivered'}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                <View style={styles.customerInfo}>
+                    <Text style={styles.customerName}>{order?.customer_name || 'Guest'}</Text>
+                    <Text style={styles.customerPhone}>📞 {order.phone}</Text>
+                    <Text style={styles.customerAddress} numberOfLines={2}>📍 {order.address}</Text>
+                </View>
+
+                {/* Payment Section */}
+                <View style={styles.paymentSection}>
+                    <View style={styles.paymentHeader}>
+                        <Text style={styles.paymentTitle}>Payment: {payMethod.toUpperCase()}</Text>
+                        <View style={[styles.payStatusBadge, { backgroundColor: isPaid ? '#D1FAE5' : (isCollected ? '#DBEAFE' : '#FEE2E2') }]}>
+                            <Text style={[styles.payStatusText, { color: isPaid ? '#065F46' : (isCollected ? '#1E40AF' : '#991B1B') }]}>
+                                {payStatus.toUpperCase()}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {payMethod === 'online' && (
+                        <View style={styles.bankInfoBox}>
+                            <Text style={styles.bankInfoTitle}>Transfer to Melissa's Account:</Text>
+                            <Text style={styles.bankInfoText}>{BUSINESS_BANK_INFO.accountName}</Text>
+                            <Text style={styles.bankInfoText}>{BUSINESS_BANK_INFO.bankName} - {BUSINESS_BANK_INFO.accountNumber}</Text>
+                        </View>
+                    )}
+
+                    <View style={styles.paymentInfoRow}>
+                        <Text style={styles.paymentAmount}>Total: Rs. {order.total_price}</Text>
+                    </View>
+
+                    <View style={styles.paymentActions}>
+                        {payMethod === 'cash' && !isPaid && (
+                            <>
+                                {!isCollected && (
+                                    <TouchableOpacity 
+                                        style={[styles.payActionBtn, { backgroundColor: '#3B82F6' }]}
+                                        onPress={() => handleUpdatePaymentStatus(order.id, 'collected', 'cash')}
+                                    >
+                                        <Text style={styles.payActionBtnText}>Mark as Collected</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {isCollected && (
+                                    <TouchableOpacity 
+                                        style={[styles.payActionBtn, { backgroundColor: '#8B5CF6' }]}
+                                        onPress={() => handleUpdatePaymentStatus(order.id, 'settled', 'cash')}
+                                    >
+                                        <Text style={styles.payActionBtnText}>Settled to Cashier</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
+
+                        {payMethod === 'qr' && !isPaid && (
+                            <>
+                                <TouchableOpacity 
+                                    style={styles.qrBtn} 
+                                    onPress={() => { setQrOrder(order); setShowQRModal(true); }}
+                                >
+                                    <Text style={styles.qrBtnText}>📊 Show QR</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.payActionBtn, { backgroundColor: '#10B981' }]}
+                                    onPress={() => handleUpdatePaymentStatus(order.id, 'paid', 'qr')}
+                                >
+                                    <Text style={styles.payActionBtnText}>Confirm QR Pay</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
+                        
+                        {payMethod === 'online' && payStatus === 'pending' && (
+                             <TouchableOpacity 
+                                style={[styles.payActionBtn, { backgroundColor: '#10B981', flex: 1 }]}
+                                onPress={() => handleUpdatePaymentStatus(order.id, 'paid', 'online')}
+                            >
+                                <Text style={styles.payActionBtnText}>Confirm Online Payment</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+
+                <View style={styles.orderActionRow}>
+                    <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' }]}
+                        onPress={() => { setSelectedOrder(order); setShowOrderModal(true); }}
+                    >
+                        <Text style={[styles.actionBtnText, { color: '#64748B' }]}>Details</Text>
+                    </TouchableOpacity>
+                    
+                    {currentStatus === 'On the Way' && (
+                        <TouchableOpacity 
+                            style={[styles.actionBtn, { backgroundColor: '#EFF6FF' }]}
                             onPress={() => openInMaps(order.latitude, order.longitude, order.address)}
                         >
-                            <Text style={styles.actionBtnText}>📍 Map</Text>
+                            <Text style={[styles.actionBtnText, { color: '#3B82F6' }]}>📍 Map</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.actionBtn, { backgroundColor: '#059669' }]}
-                            onPress={() => handleUpdateStatus(order.id, 'Delivered')}
-                        >
-                            <Text style={styles.actionBtnText}>Done</Text>
-                        </TouchableOpacity>
-                    </>
-                )}
+                    )}
+                </View>
             </View>
-        </View>
-    );
+        );
+    };
 
     const getStatusColor = (status) => {
-        switch(status) {
-            case 'Pending': return { backgroundColor: '#F3F4F6' };
-            case 'Preparing': return { backgroundColor: '#DBEAFE' };
-            case 'Ready': return { backgroundColor: '#D1FAE5' };
-            case 'Out for Delivery': return { backgroundColor: '#FEF3C7' };
-            case 'Delivered': return { backgroundColor: '#DEF7EC' };
+        const s = (status || '').toUpperCase();
+        switch(s) {
+            case 'PENDING': return { backgroundColor: '#F3F4F6' };
+            case 'ACCEPTED': return { backgroundColor: '#E0E7FF' };
+            case 'PICKED UP': return { backgroundColor: '#DBEAFE' };
+            case 'ON THE WAY': return { backgroundColor: '#FEF3C7' };
+            case 'DELIVERED': return { backgroundColor: '#D1FAE5' };
+            case 'CANCELLED': return { backgroundColor: '#FEE2E2' };
             default: return { backgroundColor: '#F3F4F6' };
         }
     };
 
-    const renderOrdersTab = () => {
-        const filteredByType = orders.filter(o => (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab));
-        
-        const getCount = (type) => orders.filter(o => 
-            (o.order_type || o.order_type_name || 'DELIVERY').replace('_', '-').toUpperCase() === type && 
-            !['Delivered', 'Cancelled', 'Rejected'].includes(o.status)
-        ).length;
 
-        return (
-            <ScrollView 
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                style={styles.content}
-            >
-                <View style={styles.subTabRow}>
-                    {[
-                        { key: 'DINE-IN', label: 'Dine-In', icon: '🍽️' },
-                        { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
-                        { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }
-                    ].map(tab => (
-                        <TouchableOpacity 
-                            key={tab.key} 
-                            style={[styles.subTab, orderSubTab === tab.key && styles.activeSubTab]}
-                            onPress={() => setOrderSubTab(tab.key)}
-                        >
-                            <Text style={[styles.subTabText, orderSubTab === tab.key && styles.activeSubTabText]}>
-                                {tab.icon} {tab.label} ({getCount(tab.key)})
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>📦 {orderSubTab.replace('-', ' ')} Orders</Text>
-                    <Text style={styles.orderCount}>{filteredByType.length} total</Text>
-                </View>
-
-                {filteredByType.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <Text style={styles.emptyText}>No {orderSubTab.replace('-', ' ')} orders found.</Text>
-                    </View>
-                ) : (
-                    filteredByType.map(order => renderOrderCard(order))
-                )}
-            </ScrollView>
-        );
-    };
 
     const renderCreateTab = () => {
         const categories = [...new Set(menuItems.map(item => item.category))];
@@ -785,6 +862,9 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Order Details #{selectedOrder?.id}</Text>
+                            <View style={[styles.statusBadge, getStatusColor(selectedOrder?.order_status), { marginLeft: 10 }]}>
+                                <Text style={styles.statusBadgeText}>{selectedOrder?.order_status}</Text>
+                            </View>
                             <TouchableOpacity onPress={() => setShowOrderModal(false)}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
@@ -866,6 +946,33 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     </View>
                 </View>
             </Modal>
+            {/* QR Modal */}
+            <Modal visible={showQRModal} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { alignItems: 'center', padding: 30 }]}>
+                        <Text style={styles.modalTitle}>Scan to Pay</Text>
+                        <Text style={{ marginBottom: 20, color: '#6B7280' }}>Order #{qrOrder?.id} - Rs. {qrOrder?.total_price}</Text>
+                        
+                        <View style={{ padding: 10, backgroundColor: 'white', borderRadius: 15, elevation: 5 }}>
+                            <Image 
+                                source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=REST_ORDER_${qrOrder?.id}_AMT_${qrOrder?.total_price}` }}
+                                style={{ width: 200, height: 200 }}
+                            />
+                        </View>
+
+                        <Text style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>
+                            Ask the customer to scan this QR with any banking app.
+                        </Text>
+
+                        <TouchableOpacity 
+                            style={[styles.footerBtn, { backgroundColor: '#111827', width: '100%', marginTop: 25 }]}
+                            onPress={() => setShowQRModal(false)}
+                        >
+                            <Text style={[styles.footerBtnText, { color: 'white' }]}>Close QR</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </>
     );
 
@@ -876,7 +983,6 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             
             <View style={styles.mainContainer}>
                 {activeTab === 'home' && renderHome()}
-                {activeTab === 'orders' && renderOrdersTab()}
                 {activeTab === 'create' && renderCreateTab()}
                 {activeTab === 'history' && renderHistoryTab()}
                 {activeTab === 'account' && (
@@ -925,10 +1031,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     <Text style={activeTab === 'home' ? styles.activeNavText : styles.navText}>🏠</Text>
                     <Text style={activeTab === 'home' ? styles.activeNavLabel : styles.navLabel}>Home</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
-                    <Text style={activeTab === 'orders' ? styles.activeNavText : styles.navText}>📦</Text>
-                    <Text style={activeTab === 'orders' ? styles.activeNavLabel : styles.navLabel}>Orders</Text>
-                </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => setActiveTab('create')} style={[styles.navItem, activeTab === 'create' && styles.activeNav]}>
                     <Text style={activeTab === 'create' ? styles.activeNavText : styles.navText}>➕</Text>
                     <Text style={activeTab === 'create' ? styles.activeNavLabel : styles.navLabel}>New</Text>
@@ -1085,6 +1188,43 @@ const styles = StyleSheet.create({
     activeSubTab: { backgroundColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
     subTabText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
     activeSubTabText: { color: '#0F172A' },
+
+    // NEW STYLES
+    stepperContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', marginBottom: 15 },
+    stepWrapper: { flex: 1, alignItems: 'center', position: 'relative' },
+    stepCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', zIndex: 1 },
+    activeStepCircle: { backgroundColor: '#3B82F6' },
+    completedStepCircle: { backgroundColor: '#10B981' },
+    stepNum: { fontSize: 10, fontWeight: 'bold', color: '#9CA3AF' },
+    stepIcon: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+    stepLabel: { fontSize: 8, color: '#9CA3AF', marginTop: 4, textAlign: 'center', fontWeight: '600' },
+    activeStepLabel: { color: '#3B82F6', fontWeight: 'bold' },
+    stepConnector: { position: 'absolute', top: 12, left: '50%', width: '100%', height: 2, backgroundColor: '#F3F4F6', zIndex: 0 },
+    activeConnector: { backgroundColor: '#10B981' },
+
+    paymentSection: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 15 },
+    paymentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    paymentTitle: { fontSize: 12, fontWeight: 'bold', color: '#4B5563', textTransform: 'uppercase' },
+    payStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
+    payStatusText: { fontSize: 10, fontWeight: 'bold' },
+    paymentInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    paymentMethodLabel: { fontSize: 13, color: '#6B7280' },
+    paymentAmount: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+    paymentActions: { flexDirection: 'row', gap: 8 },
+    qrBtn: { flex: 1, backgroundColor: 'white', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center' },
+    qrBtnText: { fontSize: 12, color: '#4B5563', fontWeight: 'bold' },
+    payConfirmBtn: { flex: 1, backgroundColor: '#111827', padding: 8, borderRadius: 8, alignItems: 'center' },
+    payConfirmBtnText: { fontSize: 12, color: 'white', fontWeight: 'bold' },
+    warningText: { flex: 1, textAlign: 'center', color: '#EF4444', fontSize: 12, fontWeight: 'bold' },
+
+    miniActionRow: { marginBottom: 15 },
+    miniBtn: { paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+    miniBtnText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
+    payActionBtn: { paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, flex: 1, alignItems: 'center' },
+    payActionBtnText: { color: 'white', fontWeight: 'bold', fontSize: 11 },
+    bankInfoBox: { backgroundColor: 'white', padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#3B82F6', marginBottom: 10 },
+    bankInfoTitle: { fontSize: 11, fontWeight: 'bold', color: '#3B82F6', marginBottom: 2 },
+    bankInfoText: { fontSize: 12, color: '#4B5563' }
 });
 
 export default DeliveryRiderDashboard;

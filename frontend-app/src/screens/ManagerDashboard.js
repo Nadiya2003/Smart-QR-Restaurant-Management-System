@@ -277,7 +277,7 @@ const ManagerDashboard = () => {
                 if (historyData) setInventoryHistory(historyData.history || []);
             }
 
-            if (activeTab === 'orders' || activeTab === 'reports') {
+            if (activeTab === 'orders' || activeTab === 'overview' || activeTab === 'reports') {
                 const orderData = await safeFetch(apiConfig.ADMIN.ORDERS, { headers: reqHeaders });
                 if (orderData) setOrderList(orderData.orders || []);
                 
@@ -372,8 +372,8 @@ const ManagerDashboard = () => {
                     setStats(s.stats);
                 }
 
-                // If on orders tab, poll for new orders specifically
-                if (activeTab === 'orders') {
+                // If on orders tab or overview, poll for new orders specifically
+                if (activeTab === 'orders' || activeTab === 'overview') {
                     const orderRes = await fetch(apiConfig.ADMIN.ORDERS, { headers: reqHeaders });
                     if (orderRes.ok) {
                         const o = await orderRes.json();
@@ -699,6 +699,53 @@ const ManagerDashboard = () => {
                         </View>
                     </View>
                 </View>
+
+                {/* Live Active Orders Monitor */}
+                <View style={styles.sectionHeader}>
+                    <View>
+                        <Text style={styles.sectionTitle}>👨‍🍳 Active Current Orders</Text>
+                        <Text style={styles.sectionSub}>Live monitoring of restaurant floor</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setActiveTab('orders')}>
+                        <Text style={styles.viewAllText}>View All ↗</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length === 0 ? (
+                    <View style={styles.emptyCard}>
+                        <Text style={styles.emptyText}>No active orders at the moment</Text>
+                    </View>
+                ) : (
+                    orderList
+                        .filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase()))
+                        .slice(0, 10) // Show top 10 most recent active
+                        .map(order => (
+                            <TouchableOpacity 
+                                key={`overview-order-${order.id}`} 
+                                style={[styles.listCard, { borderLeftWidth: 4, borderLeftColor: (order.status || '').toUpperCase() === 'READY' ? '#10B981' : '#F59E0B' }]}
+                                onPress={() => { setSelectedReviewOrder(order); setShowReviewModal(true); }}
+                            >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Order #{order.id}</Text>
+                                            <View style={[styles.badge, { backgroundColor: '#F3F4F6' }]}>
+                                                <Text style={{ fontSize: 10, fontWeight: 'bold' }}>{order.order_type}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>👤 {order.customer_name || 'Guest'} • {order.items_summary || 'Check Details'}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: (order.status || '').toUpperCase() === 'READY' ? '#10B981' : '#F59E0B' }}>
+                                            {(order.status || 'PENDING').toUpperCase()}
+                                        </Text>
+                                        <OrderTimer createdAt={order.created_at} />
+                                    </View>
+                                </View>
+                            </TouchableOpacity>
+                        ))
+                )}
+                <View style={{ height: 30 }} />
             </>
         );
     };
@@ -816,23 +863,23 @@ const ManagerDashboard = () => {
                                     </TouchableOpacity>
                                 </View>
                             </View>
-                        </View>
                     </View>
-                ))
-            )}
-        </>
-    );
+                </View>
+            ))
+        )}
+    </>
+);
 
-
-    // ===== ENHANCED ORDERS TAB =====
-    const renderOrders = () => (
-        <>
-            <View style={styles.subTabRow}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
-                     const count = tab === 'CANCELLATIONS' || tab === 'ITEM REMOVALS' 
-                        ? (tab === 'CANCELLATIONS' ? cancelRequestList.length : itemRemovalRequests.filter(r => r.status === 'PENDING').length)
-                        : orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
-
+const renderOrders = () => (
+    <>
+        <View style={styles.subTabRow}>
+                {['ALL', 'DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
+                    let count = 0;
+                    if (tab === 'CANCELLATIONS') count = cancelRequestList.length;
+                    else if (tab === 'ITEM REMOVALS') count = itemRemovalRequests.filter(r => r.status === 'PENDING').length;
+                    else if (tab === 'ALL') count = orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
+                    else count = orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
+                    
                     return (
                         <TouchableOpacity 
                             key={tab} 
@@ -840,7 +887,7 @@ const ManagerDashboard = () => {
                             onPress={() => setOrderSubTab(tab)}
                         >
                             <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
+                                {tab === 'ALL' ? '📋' : tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
                             </Text>
                         </TouchableOpacity>
                     );
@@ -932,13 +979,13 @@ const ManagerDashboard = () => {
                         </View>
                     ))
                 )
-            ) : orderList.filter(o => o.order_type === orderSubTab).length === 0 ? (
+            ) : (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).length === 0 ? (
                 <View style={styles.emptyState}>
                     <Text style={styles.emptyIcon}>🛍️</Text>
                     <Text style={styles.emptyText}>No {orderSubTab} orders found</Text>
                 </View>
             ) : (
-                orderList.filter(o => o.order_type === orderSubTab).map((order) => {
+                (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).map((order) => {
                     const isOngoing = ['PENDING', 'ORDER PLACED', 'PREPARING', 'READY', 'OUT FOR DELIVERY'].includes((order.status || '').toUpperCase());
                     return (
                         <TouchableOpacity 
@@ -960,8 +1007,12 @@ const ManagerDashboard = () => {
                                         <Text style={{ fontSize: 12, color: '#6B7280' }}>{order.order_type}</Text>
                                     </View>
                                     <Text style={styles.listCardSub}>Customer: {order.customer_name || 'Guest'}</Text>
-                                    <Text style={styles.listCardSub}>Items: {order.items_summary || 'Check Details'}</Text>
-                                    <Text style={styles.listCardSub}>Total: Rs. {Number(order.total_price || 0).toLocaleString()}</Text>
+                                    {order.phone ? <Text style={styles.listCardSub}>📞 {order.phone}</Text> : null}
+                                    {order.order_type === 'DELIVERY' && order.address ? (
+                                        <Text style={styles.listCardSub}>📍 {order.address}</Text>
+                                    ) : null}
+                                    <Text style={styles.listCardSub}>Items: {order.items_summary || (order.items && Array.isArray(order.items) ? order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') : 'Check Details')}</Text>
+                                    <Text style={styles.listCardSub}>Total: Rs. {Number(order.total_price || 0).toLocaleString()} ({order.payment_method || (order.payment_status === 'paid' ? 'Paid Online' : 'Unpaid')})</Text>
                                     <Text style={styles.listCardSub}>Time: {new Date(order.created_at).toLocaleTimeString()}</Text>
                                     
                                     <View style={styles.badgeRow}>
