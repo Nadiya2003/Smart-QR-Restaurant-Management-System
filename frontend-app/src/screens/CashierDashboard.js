@@ -55,6 +55,7 @@ const CashierDashboard = () => {
     const { user, token, logout } = useAuth();
     const [activeTab, setActiveTabState] = useState('home'); // home, tables, pos, reservations, stats, reports
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
+    const [resSubTab, setResSubTab] = useState('CONFIRMED');
 
     const setActiveTab = (tab) => {
         if (tab === 'home' || tab === 'stats' || tab === 'reports') {
@@ -167,7 +168,7 @@ const CashierDashboard = () => {
                 fetch(`${apiConfig.API_BASE_URL}/api/menu/categories/all`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/attendance`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/orders`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/cashier/reservations?date=${filterResDate}`, { headers }),
+                fetch(`${apiConfig.API_BASE_URL}/api/cashier/reservations`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/bookings`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/cashier/payment-methods`, { headers }),
@@ -1184,118 +1185,137 @@ const CashierDashboard = () => {
     );
 
     const renderReservations = () => {
-        const upcoming = reservations
-            .filter(res => !['CANCELLED', 'COMPLETED', 'NOSHOW'].includes((res.reservation_status || res.status || '').toUpperCase()))
-            .sort((a,b) => (a.reservation_time || a.time || '').localeCompare(b.reservation_time || b.time || ''));
+        const now = new Date();
+        
+        const confirmed = [];
+        const history = [];
 
-        const history = reservations
-            .filter(res => ['CANCELLED', 'COMPLETED', 'NOSHOW'].includes((res.reservation_status || res.status || '').toUpperCase()))
-            .sort((a,b) => (b.reservation_time || b.time || '').localeCompare(a.reservation_time || a.time || ''));
+        reservations.forEach(res => {
+            const status = (res.reservation_status || res.status || '').toUpperCase();
+            const resDateStr = res.reservation_date || res.date;
+            const resTimeStr = res.reservation_time || res.time;
+
+            let resDateTime = new Date();
+            if (resDateStr && resTimeStr) {
+                const datePart = new Date(resDateStr).toISOString().split('T')[0];
+                resDateTime = new Date(`${datePart}T${resTimeStr}`);
+            }
+
+            const isPassed = resDateTime < now;
+            const isCompleted = ['CANCELLED', 'COMPLETED', 'NOSHOW'].includes(status);
+
+            if (isCompleted || isPassed) {
+                history.push(res);
+            } else {
+                confirmed.push(res);
+            }
+        });
+
+        // Nearest upcoming on top
+        confirmed.sort((a, b) => {
+            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            return dateA - dateB;
+        });
+
+        // Most recent past right after
+        history.sort((a, b) => {
+            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            return dateB - dateA;
+        });
 
         return (
             <ScrollView style={styles.content}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                     <Text style={styles.sectionTitle}>Reservations</Text>
+                    <Text style={{ color: '#6B7280', fontSize: 12 }}>{confirmed.length + history.length} Total</Text>
+                </View>
+
+                {/* 2-Column Tab Toggles */}
+                <View style={styles.subTabRow}>
                     <TouchableOpacity
-                        style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
-                        onPress={() => {
-                            setFilterModal({
-                                show: true,
-                                title: 'Filter Date',
-                                placeholder: 'Format: YYYY-MM-DD',
-                                value: filterResDate,
-                                onSubmit: (val) => {
-                                    if (val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
-                                    else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                                }
-                            });
-                        }}
+                        style={[styles.subTab, resSubTab === 'CONFIRMED' && styles.activeSubTab]}
+                        onPress={() => setResSubTab('CONFIRMED')}
                     >
-                        <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: 'bold' }}>📅 {filterResDate}</Text>
+                        <Text style={[styles.subTabText, resSubTab === 'CONFIRMED' && styles.activeSubTabText]}>
+                            ✅ Confirmed ({confirmed.length})
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.subTab, resSubTab === 'HISTORY' && styles.activeSubTab]}
+                        onPress={() => setResSubTab('HISTORY')}
+                    >
+                        <Text style={[styles.subTabText, resSubTab === 'HISTORY' && styles.activeSubTabText]}>
+                            📜 History ({history.length})
+                        </Text>
                     </TouchableOpacity>
                 </View>
 
-                <View style={styles.groupLabel}>
-                    <View style={[styles.groupDot, { backgroundColor: '#3B82F6' }]} />
-                    <Text style={styles.groupText}>UPCOMING ({upcoming.length})</Text>
-                </View>
-                
-                {upcoming.length === 0 ? (
-                    <Text style={{ color: '#9CA3AF', textAlign: 'center', marginVertical: 20 }}>No upcoming reservations</Text>
-                ) : upcoming.map(res => (
-                    <TouchableOpacity
-                        key={`up-${res.id}`}
-                        style={styles.resvCard}
-                        onPress={() => {
-                            setSelectedRes(res);
-                            setShowResDetailModal(true);
-                        }}
-                    >
-                        <View style={styles.resvTimeBox}>
-                            <Text style={styles.resvTime}>{res.reservation_time}</Text>
-                            <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
-                        </View>
-                        <View style={styles.resvInfo}>
-                            <Text style={styles.resvCust}>{res.customer_name}</Text>
-                            <Text style={styles.resvTable}>Table {res.table_number || 'N/A'} • {res.guest_count} PPL</Text>
-                        </View>
-                        <View style={[styles.resvStatusBadge, { backgroundColor: '#ECFDF5', paddingHorizontal: 10, borderRadius: 8 }]}>
-                            <Text style={{ color: '#059669', fontSize: 9, fontWeight: 'bold' }}>{res.reservation_status}</Text>
-                        </View>
-                    </TouchableOpacity>
-                ))}
+                {resSubTab === 'CONFIRMED' && (
+                    <View>
+                        {confirmed.length === 0 ? (
+                            <Text style={{ color: '#9CA3AF', textAlign: 'center', marginVertical: 20 }}>No upcoming reservations</Text>
+                        ) : confirmed.map((res, index) => (
+                            <TouchableOpacity
+                                key={`conf-${res.id}-${index}`}
+                                style={styles.resvCard}
+                                onPress={() => {
+                                    setSelectedRes(res);
+                                    setShowResDetailModal(true);
+                                }}
+                            >
+                                <View style={styles.resvTimeBox}>
+                                    <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
+                                    <Text style={styles.resvDate}>{new Date(res.reservation_date || res.date).toLocaleDateString()}</Text>
+                                </View>
+                                <View style={styles.resvInfo}>
+                                    <Text style={styles.resvCust}>{res.customer_name}</Text>
+                                    <Text style={styles.resvTable}>Guest Count: {res.guest_count || res.guests}</Text>
+                                </View>
+                                <View style={[styles.resvStatusBadge, { backgroundColor: '#ECFDF5', paddingHorizontal: 10, borderRadius: 8 }]}>
+                                    <Text style={{ color: '#059669', fontSize: 9, fontWeight: 'bold' }}>
+                                        {(res.reservation_status || res.status || 'UNCONFIRMED').toUpperCase()}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
 
-                <View style={[styles.groupLabel, { marginTop: 30 }]}>
-                    <View style={[styles.groupDot, { backgroundColor: '#64748B' }]} />
-                    <Text style={styles.groupText}>HISTORY ({history.length})</Text>
-                </View>
-
-                {history.map(res => (
-                    <TouchableOpacity
-                        key={`hist-${res.id}`}
-                        style={[styles.resvCard, { opacity: 0.7 }]}
-                        onPress={() => {
-                            setSelectedRes(res);
-                            setShowResDetailModal(true);
-                        }}
-                    >
-                        <View style={styles.resvTimeBox}>
-                            <Text style={styles.resvTime}>{res.reservation_time}</Text>
-                            <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
-                        </View>
-                        <View style={styles.resvInfo}>
-                            <Text style={styles.resvCust}>{res.customer_name}</Text>
-                            <Text style={styles.resvTable}>Table {res.table_number || 'N/A'}</Text>
-                        </View>
-                        <View style={[styles.resvStatusBadge, { backgroundColor: '#F1F5F9', paddingHorizontal: 10, borderRadius: 8 }]}>
-                            <Text style={{ color: '#64748B', fontSize: 9, fontWeight: 'bold' }}>{res.reservation_status}</Text>
-                        </View>
-                    </TouchableOpacity>
-                ))}
+                {resSubTab === 'HISTORY' && (
+                    <View>
+                        {history.length === 0 ? (
+                            <Text style={{ color: '#9CA3AF', textAlign: 'center', marginVertical: 20 }}>No history records</Text>
+                        ) : history.map((res, index) => (
+                            <TouchableOpacity
+                                key={`hist-${res.id}-${index}`}
+                                style={[styles.resvCard, { opacity: 0.7 }]}
+                                onPress={() => {
+                                    setSelectedRes(res);
+                                    setShowResDetailModal(true);
+                                }}
+                            >
+                                <View style={styles.resvTimeBox}>
+                                    <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
+                                    <Text style={styles.resvDate}>{new Date(res.reservation_date || res.date).toLocaleDateString()}</Text>
+                                </View>
+                                <View style={styles.resvInfo}>
+                                    <Text style={styles.resvCust}>{res.customer_name}</Text>
+                                    <Text style={styles.resvTable}>Guest Count: {res.guest_count || res.guests}</Text>
+                                </View>
+                                <View style={[styles.resvStatusBadge, { backgroundColor: '#F1F5F9', paddingHorizontal: 10, borderRadius: 8 }]}>
+                                    <Text style={{ color: '#64748B', fontSize: 9, fontWeight: 'bold' }}>
+                                        {(res.reservation_status || res.status || 'COMPLETED').toUpperCase()}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
             </ScrollView>
         );
     };
-
-    const renderReservationsTab = () => (
-        <ScrollView style={styles.content}>
-            <Text style={styles.sectionTitle}>Event Reservations</Text>
-            {bookings.map(b => (
-                <View key={b.id} style={styles.resvCard}>
-                    <View style={styles.resvTimeBox}>
-                        <Text style={styles.resvTime}>{b.time}</Text>
-                        <Text style={styles.resvDate}>{new Date(b.date).toLocaleDateString()}</Text>
-                    </View>
-                    <View style={styles.resvInfo}>
-                        <Text style={styles.resvCust}>{b.customer_name}</Text>
-                        <Text style={styles.resvTable}>{b.guests} People</Text>
-                    </View>
-                    <View style={[styles.resvBadgeSmall, { backgroundColor: '#F0F9FF', paddingHorizontal: 12, borderRadius: 12 }]}>
-                        <Text style={{ color: '#0369A1', fontSize: 10, fontWeight: 'bold' }}>{b.status.toUpperCase()}</Text>
-                    </View>
-                </View>
-            ))}
-        </ScrollView>
-    );
 
     const renderStatsTab = () => {
         const activeStatuses = ['PENDING', 'CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'PLACED', 'READY_TO_SERVE', 'SERVING'];
@@ -1941,21 +1961,7 @@ const CashierDashboard = () => {
                 {activeTab === 'pos' && renderPOS()}
                 {activeTab === 'reservations' && (
                     <View style={{ flex: 1 }}>
-                        <View style={styles.subTabRow}>
-                            <TouchableOpacity
-                                style={[styles.subTab, orderSubTab === 'DINE-IN' && styles.activeSubTab]}
-                                onPress={() => setOrderSubTab('DINE-IN')}
-                            >
-                                <Text style={[styles.subTabText, orderSubTab === 'DINE-IN' && styles.activeSubTabText]}>Tables</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.subTab, orderSubTab === 'BOOKINGS' && styles.activeSubTab]}
-                                onPress={() => setOrderSubTab('BOOKINGS')}
-                            >
-                                <Text style={[styles.subTabText, orderSubTab === 'BOOKINGS' && styles.activeSubTabText]}>Events</Text>
-                            </TouchableOpacity>
-                        </View>
-                        {orderSubTab === 'DINE-IN' ? renderReservations() : renderReservationsTab()}
+                        {renderReservations()}
                     </View>
                 )}
                 {activeTab === 'stats' && renderStatsTab()}

@@ -91,6 +91,7 @@ const ManagerDashboard = () => {
     const [customerList, setCustomerList] = useState([]);
     const [orderList, setOrderList] = useState([]);
     const [reservationList, setReservationList] = useState([]);
+    const [resSubTab, setResSubTab] = useState('CONFIRMED');
     const [attendanceList, setAttendanceList] = useState([]);
     const [permissionList, setPermissionList] = useState([]);
     const [menuList, setMenuList] = useState([]);
@@ -303,7 +304,7 @@ const ManagerDashboard = () => {
             }
 
             if (activeTab === 'reservations') {
-                const resData = await safeFetch(`${apiConfig.ADMIN.RESERVATIONS}?date=${filterResDate}`, { headers: reqHeaders });
+                const resData = await safeFetch(`${apiConfig.ADMIN.RESERVATIONS}`, { headers: reqHeaders });
                 if (resData) setReservationList(resData.reservations || []);
             }
 
@@ -408,7 +409,7 @@ const ManagerDashboard = () => {
                 }
                 // If on reservations tab, poll for latest reservations
                 if (activeTab === 'reservations') {
-                    const resRes = await fetch(`${apiConfig.ADMIN.RESERVATIONS}?date=${filterResDate}`, { headers: reqHeaders });
+                    const resRes = await fetch(`${apiConfig.ADMIN.RESERVATIONS}`, { headers: reqHeaders });
                     if (resRes.ok) {
                         const r = await resRes.json();
                         setReservationList(r.reservations || []);
@@ -1839,71 +1840,100 @@ const ManagerDashboard = () => {
 
 
     // ===== RESERVATIONS TAB =====
-    const renderReservations = () => (
-        <>
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Reservations</Text>
-                <Text style={styles.headerSubtitle}>{reservationList.length} scheduled bookings</Text>
-            </View>
+    const renderReservations = () => {
+        const now = new Date();
+        
+        const confirmed = [];
+        const history = [];
 
-            {/* UPCOMING SECTION */}
-            <View style={{ marginBottom: 20 }}>
-                <View style={[styles.sectionHeader, { backgroundColor: '#F0F9FF', padding: 8, borderRadius: 8, marginBottom: 10 }]}>
-                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#0369A1' }}>📅 UPCOMING RESERVATIONS</Text>
-                </View>
-                
-                {reservationList.filter(r => !['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase())).length === 0 ? (
-                    <View style={[styles.emptyState, { paddingVertical: 20 }]}>
-                        <Text style={styles.emptyText}>No upcoming reservations for this date</Text>
+        reservationList.forEach(res => {
+            const status = (res.reservation_status || res.status || '').toUpperCase();
+            const resDateStr = res.reservation_date || res.date;
+            const resTimeStr = res.reservation_time || res.time;
+
+            let resDateTime = new Date();
+            if (resDateStr && resTimeStr) {
+                const datePart = new Date(resDateStr).toISOString().split('T')[0];
+                resDateTime = new Date(`${datePart}T${resTimeStr}`);
+            }
+
+            const isPassed = resDateTime < now;
+            const isCompleted = ['CANCELLED', 'COMPLETED', 'NOSHOW'].includes(status);
+
+            if (isCompleted || isPassed) {
+                history.push(res);
+            } else {
+                confirmed.push(res);
+            }
+        });
+
+        confirmed.sort((a, b) => {
+            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            return dateA - dateB;
+        });
+
+        history.sort((a, b) => {
+            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            return dateB - dateA;
+        });
+
+        return (
+            <>
+                <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                    <View>
+                        <Text style={styles.headerTitle}>Reservations</Text>
+                        <Text style={styles.headerSubtitle}>{confirmed.length + history.length} total bookings</Text>
                     </View>
-                ) : (
-                    reservationList
-                        .filter(r => !['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase()))
-                        .sort((a,b) => (a.reservation_time || a.time || '').localeCompare(b.reservation_time || b.time || ''))
-                        .map((res) => renderReservationCard(res))
-                )}
-            </View>
-
-            {/* HISTORY SECTION */}
-            <View style={{ marginBottom: 20 }}>
-                <View style={[styles.sectionHeader, { backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, marginBottom: 10 }]}>
-                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#4B5563' }}>📜 RESERVATION HISTORY</Text>
                 </View>
 
-                {reservationList.filter(r => ['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase())).length === 0 ? (
-                    <View style={[styles.emptyState, { paddingVertical: 20 }]}>
-                        <Text style={styles.emptyText}>No history records for this date</Text>
-                    </View>
-                ) : (
-                    reservationList
-                        .filter(r => ['COMPLETED', 'NOSHOW', 'CANCELLED'].includes((r.reservation_status || r.status || '').toUpperCase()))
-                        .sort((a,b) => (b.reservation_time || b.time || '').localeCompare(a.reservation_time || a.time || ''))
-                        .map((res) => renderReservationCard(res))
-                )}
-            </View>
+                {/* 2-Column Tab Toggles */}
+                <View style={{ flexDirection: 'row', marginBottom: 20, backgroundColor: '#F3F4F6', borderRadius: 8, padding: 4 }}>
+                    <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6, backgroundColor: resSubTab === 'CONFIRMED' ? 'white' : 'transparent', shadowColor: resSubTab === 'CONFIRMED' ? '#000' : 'transparent', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: resSubTab === 'CONFIRMED' ? 2 : 0 }}
+                        onPress={() => setResSubTab('CONFIRMED')}
+                    >
+                        <Text style={{ fontSize: 14, fontWeight: resSubTab === 'CONFIRMED' ? 'bold' : 'normal', color: resSubTab === 'CONFIRMED' ? '#059669' : '#6B7280' }}>
+                            ✅ Confirmed ({confirmed.length})
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6, backgroundColor: resSubTab === 'HISTORY' ? 'white' : 'transparent', shadowColor: resSubTab === 'HISTORY' ? '#000' : 'transparent', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: resSubTab === 'HISTORY' ? 2 : 0 }}
+                        onPress={() => setResSubTab('HISTORY')}
+                    >
+                        <Text style={{ fontSize: 14, fontWeight: resSubTab === 'HISTORY' ? 'bold' : 'normal', color: resSubTab === 'HISTORY' ? '#4F46E5' : '#6B7280' }}>
+                            📜 History ({history.length})
+                        </Text>
+                    </TouchableOpacity>
+                </View>
 
-            {/* Date Filter Row moved down */}
-            <View style={[styles.filterRow, { marginBottom: 15 }]}>
-                <Text style={styles.filterLabel}>Select Date:</Text>
-                <TouchableOpacity 
-                    style={styles.filterBtn} 
-                    onPress={() => setFilterModal({
-                        show: true,
-                        title: 'Filter by Date',
-                        placeholder: 'Format: YYYY-MM-DD',
-                        type: 'DATE',
-                        value: filterResDate,
-                        onSubmit: (val) => {
-                            if(val.match(/^\d{4}-\d{2}-\d{2}$/)) setFilterResDate(val);
-                            else Alert.alert('Invalid Format', 'Please use YYYY-MM-DD');
-                        }
-                    })}
-                >
-                    <Text style={styles.filterBtnText}>📅 {filterResDate}</Text>
-                </TouchableOpacity>
-            </View>
-        </>
-    );
+                {resSubTab === 'CONFIRMED' && (
+                    <View style={{ marginBottom: 20 }}>
+                        {confirmed.length === 0 ? (
+                            <View style={[styles.emptyState, { paddingVertical: 20 }]}>
+                                <Text style={styles.emptyText}>No upcoming reservations found</Text>
+                            </View>
+                        ) : (
+                            confirmed.map((res) => renderReservationCard(res))
+                        )}
+                    </View>
+                )}
+
+                {resSubTab === 'HISTORY' && (
+                    <View style={{ marginBottom: 20 }}>
+                        {history.length === 0 ? (
+                            <View style={[styles.emptyState, { paddingVertical: 20 }]}>
+                                <Text style={styles.emptyText}>No history records</Text>
+                            </View>
+                        ) : (
+                            history.map((res) => renderReservationCard(res))
+                        )}
+                    </View>
+                )}
+            </>
+        );
+    };
 
     const renderReservationCard = (res) => {
         const status = (res.reservation_status || res.status || 'PENDING').toUpperCase();
