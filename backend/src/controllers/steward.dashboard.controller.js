@@ -161,7 +161,7 @@ export const requestOrderCancel = async (req, res) => {
         // Notify Admin
         await pool.query(
             'INSERT INTO notifications (user_id, role_id, title, message, type) VALUES (?, ?, ?, ?, ?)',
-            [0, 1, 'Cancellation Request', `Order #${id} cancellation requested by steward. Reason: ${reason}`, 'cancellation']
+            [0, 1, 'Cancellation Request', `Order #${id} cancellation requested by steward. Reason: ${reason}`, 'ORDER']
         );
 
         res.json({ message: 'Cancellation request sent to admin' });

@@ -124,15 +124,18 @@ const StewardDashboard = () => {
 
             if (tableRes.ok) {
                 const data = await tableRes.json().catch(() => ({}));
-                setTables(data.tables || []);
+                const uniqueTables = Array.from(new Map((data.tables || []).map(t => [t.id, t])).values());
+                setTables(uniqueTables);
             }
             if (orderRes.ok) {
                 const data = await orderRes.json().catch(() => ({}));
-                setOrders(data.orders || []);
+                const uniqueOrders = Array.from(new Map((data.orders || []).map(o => [o.id, o])).values());
+                setOrders(uniqueOrders);
             }
             if (notifRes.ok) {
                 const data = await notifRes.json().catch(() => ({}));
-                setNotifications(data.notifications || []);
+                const uniqueNotifs = Array.from(new Map((data.notifications || []).map(n => [n.id || (Date.now().toString() + Math.random()), n])).values());
+                setNotifications(uniqueNotifs);
             }
             if (menuRes.ok) {
                 const menuData = await menuRes.json().catch(() => []);
@@ -150,8 +153,13 @@ const StewardDashboard = () => {
             if (statsRes.ok) setStewardStats(await statsRes.json());
 
             // Fetch dining areas for grouping
-            const areaRes = await fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers });
-            if (areaRes.ok) setDiningAreas((await areaRes.json()).areas || []);
+                const areaRes = await fetch(`${apiConfig.API_BASE_URL}/api/admin/areas`, { headers });
+                if (areaRes.ok) {
+                    const areaData = await areaRes.json();
+                    const uniqueAreasMap = new Map();
+                    (areaData.areas || []).forEach(a => uniqueAreasMap.set(a.id, a));
+                    setDiningAreas(Array.from(uniqueAreasMap.values()));
+                }
 
             // Fetch history with 'all' filter to show total completed orders correctly
             const histRes = await fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/orders/history/${user.id}?filter=all`, { headers });
@@ -392,7 +400,11 @@ const StewardDashboard = () => {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/admin/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers,
-                body: JSON.stringify({ status: 'COMPLETED', type: 'DINE-IN' })
+                body: JSON.stringify({ 
+                    status: 'COMPLETED', 
+                    type: 'DINE-IN',
+                    paymentMethod: method 
+                })
             });
 
             if (res.ok) {
@@ -1013,6 +1025,14 @@ const StewardDashboard = () => {
                             </View>
 
                             <View style={styles.actionRow}>
+                                {((order.main_status || order.status) === 'READY' || (order.main_status || order.status) === 'READY_TO_SERVE') && (
+                                    <TouchableOpacity
+                                        style={[styles.actionBtn, { backgroundColor: '#10B981', flex: 1.5 }]}
+                                        onPress={() => handleUpdateStatus(order.id, 'SERVE_ALL')}
+                                    >
+                                        <Text style={styles.actionBtnText}>Mark as Served ✓</Text>
+                                    </TouchableOpacity>
+                                )}
                                 <TouchableOpacity
                                     style={styles.actionBtn}
                                     onPress={() => {

@@ -25,7 +25,8 @@ const StaffDashboard = () => {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/staff/auth/team`, { headers });
             if (res.ok) {
                 const data = await res.json();
-                setColleagues(data.staff || []);
+                const uniqueTeam = Array.from(new Map((data.staff || []).map(m => [m.id, m])).values());
+                setColleagues(uniqueTeam);
             }
 
             // Fetch current attendance status

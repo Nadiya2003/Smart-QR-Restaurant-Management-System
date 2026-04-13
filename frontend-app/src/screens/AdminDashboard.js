@@ -229,10 +229,16 @@ const AdminDashboard = () => {
             // Fetch based on active tab
             if (activeTab === 'overview' || activeTab === 'users' || activeTab === 'activity') {
                 const staffData = await safeFetch(apiConfig.ADMIN.STAFF, { headers: reqHeaders });
-                if (staffData) setStaffList(staffData.staff || []);
+                if (staffData) {
+                    const uniqueStaff = Array.from(new Map((staffData.staff || []).map(s => [s.id, s])).values());
+                    setStaffList(uniqueStaff);
+                }
                 
                 const custData = await safeFetch(apiConfig.ADMIN.CUSTOMERS, { headers: reqHeaders });
-                if (custData) setCustomerList(custData.customers || []);
+                if (custData) {
+                    const uniqueCust = Array.from(new Map((custData.customers || []).map(c => [c.id, c])).values());
+                    setCustomerList(uniqueCust);
+                }
             }
 
             if (activeTab === 'tables' || activeTab === 'reservations') {
@@ -280,7 +286,10 @@ const AdminDashboard = () => {
 
             if (activeTab === 'orders' || activeTab === 'reports') {
                 const orderData = await safeFetch(apiConfig.ADMIN.ORDERS, { headers: reqHeaders });
-                if (orderData) setOrderList(orderData.orders || []);
+                if (orderData) {
+                    const uniqueOrders = Array.from(new Map((orderData.orders || []).map(o => [o.id, o])).values());
+                    setOrderList(uniqueOrders);
+                }
                 
                 const cancelData = await safeFetch(`${apiConfig.API_BASE_URL}/api/admin/orders/cancellation-requests`, { headers: reqHeaders });
                 if (cancelData) setCancelRequestList(cancelData.requests || []);
@@ -306,7 +315,10 @@ const AdminDashboard = () => {
 
             if (activeTab === 'reservations') {
                 const resData = await safeFetch(`${apiConfig.ADMIN.RESERVATIONS}`, { headers: reqHeaders });
-                if (resData) setReservationList(resData.reservations || []);
+                if (resData) {
+                    const uniqueRes = Array.from(new Map((resData.reservations || []).map(r => [r.id, r])).values());
+                    setReservationList(uniqueRes);
+                }
             }
 
         } catch (error) {

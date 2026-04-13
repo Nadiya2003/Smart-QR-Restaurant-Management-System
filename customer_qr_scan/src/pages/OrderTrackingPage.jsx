@@ -227,7 +227,7 @@ export function OrderTrackingPage({ onNavigate }) {
                     <div className="p-8 text-center">
                         <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-2">Order #{currentOrder.id}</p>
                         <p className="text-gray-900 font-black text-2xl uppercase tracking-tighter leading-none mb-4 italic">
-                            {currentOrder.status}
+                            {(currentOrder.status || '').replace(/_/g, ' ')}
                         </p>
                         <p className="text-gray-500 text-sm leading-relaxed mb-6">
                             Our team has updated your order status. Prepare for deliciousness!
@@ -350,7 +350,7 @@ export function OrderTrackingPage({ onNavigate }) {
             </Button>
           )}
 
-          {['SERVED', 'READY'].includes(currentOrder.status?.toUpperCase()) && (
+          {['SERVED', 'READY', 'READY_TO_SERVE'].includes(currentOrder.status?.toUpperCase()) && (
             <Button fullWidth onClick={() => onNavigate('payment')}>
               Proceed to Payment
             </Button>

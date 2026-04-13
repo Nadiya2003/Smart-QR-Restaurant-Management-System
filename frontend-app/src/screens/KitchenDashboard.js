@@ -146,10 +146,21 @@ const KitchenDashboard = () => {
 
                 prevOrderIds.current = currentIds;
                 prevItemCount.current = currentItemSum;
-                setOrders(newOrders);
+                
+                // Deduplicate orders
+                const uniqueOrders = Array.from(new Map(newOrders.map(o => [o.id, o])).values());
+                setOrders(uniqueOrders);
             }
-            if (historyRes.ok) setHistory((await historyRes.json()).history || []);
-            if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
+            if (historyRes.ok) {
+                const hData = await historyRes.json();
+                const uniqueHist = Array.from(new Map((hData.history || []).map(h => [h.id, h])).values());
+                setHistory(uniqueHist);
+            }
+            if (notifRes.ok) {
+                const nData = await notifRes.json();
+                const uniqueNotifs = Array.from(new Map((nData.notifications || []).map(n => [n.id || (Date.now().toString()+Math.random()), n])).values());
+                setNotifications(uniqueNotifs);
+            }
         } catch (error) {
             console.error('Kitchen fetch error:', error);
         } finally {

@@ -39,6 +39,11 @@ export function OrderStatusTracker({ currentOrder }) {
   if (normalizedStatus === 'READY') normalizedStatus = 'READY_TO_SERVE';
   
   let statusIndex = steps.findIndex((s) => s.id === normalizedStatus);
+  
+  // Requirement: Automatically Tick "Order Received" (Step 0) once order is placed
+  // This moves visual progression to Step 1 (Confirmed) as the active 'work in progress'
+  if (statusIndex === 0) statusIndex = 1; 
+
 
   // 3. Dynamic Override for Preparing/Ready logic (The User's specific rule map)
   const isFoodPreparing = ['preparing', 'ready'].includes((kitchenStatus || '').toLowerCase());

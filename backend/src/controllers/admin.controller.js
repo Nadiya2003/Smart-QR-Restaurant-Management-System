@@ -612,7 +612,7 @@ export const handleCancellationAction = async (req, res) => {
 export const updateOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, type } = req.body; // type: DELIVERY, TAKEAWAY, DINE-IN
+        const { status, type, paymentMethod } = req.body; // type: DELIVERY, TAKEAWAY, DINE-IN, paymentMethod: CASH/CARD/ONLINE
 
         // Reverse map user names to DB names if needed
         const dbStatusMap = {
@@ -620,13 +620,14 @@ export const updateOrderStatus = async (req, res) => {
             'CONFIRMED': 'CONFIRMED',
             'Cooking': 'PREPARING',
             'PREPARING': 'PREPARING',
-            'Ready to Serve': 'READY',
-            'READY TO SERVE': 'READY',
+            'Ready to Serve': 'READY_TO_SERVE',
+            'READY TO SERVE': 'READY_TO_SERVE',
             'Served': 'SERVED',
             'SERVED': 'SERVED',
             'Finished': 'COMPLETED',
             'COMPLETED': 'COMPLETED',
-            'Cancelled': 'CANCELLED'
+            'Cancelled': 'CANCELLED',
+            'SERVE_ALL': 'SERVED'
         };
 
         if (status === 'START_PREPARING_ALL') {
@@ -636,7 +637,18 @@ export const updateOrderStatus = async (req, res) => {
             } else {
                 await pool.query('UPDATE orders SET kitchen_status = "preparing", bar_status = "preparing", main_status = "PREPARING" WHERE id = ?', [id]);
             }
-            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: 'PREPARING' });
+
+            // Enhanced emit for bulk preparation
+            if (global.io) {
+                global.io.emit('orderUpdate', { 
+                    id: parseInt(id), 
+                    orderId: parseInt(id), 
+                    status: 'PREPARING', 
+                    mainStatus: 'PREPARING',
+                    kitchenStatus: 'preparing',
+                    barStatus: 'preparing'
+                });
+            }
             return res.json({ message: 'Order preparation started for all stations.' });
         }
 
@@ -647,8 +659,40 @@ export const updateOrderStatus = async (req, res) => {
             } else {
                 await pool.query('UPDATE orders SET kitchen_status = "ready", bar_status = "ready", main_status = "READY_TO_SERVE" WHERE id = ?', [id]);
             }
-            if (global.io) global.io.emit('orderUpdate', { orderId: id, status: 'READY_TO_SERVE' });
+
+            // Enhanced emit for bulk ready
+            if (global.io) {
+                global.io.emit('orderUpdate', { 
+                    id: parseInt(id), 
+                    orderId: parseInt(id), 
+                    status: 'READY_TO_SERVE', 
+                    mainStatus: 'READY_TO_SERVE',
+                    kitchenStatus: 'ready',
+                    barStatus: 'ready'
+                });
+            }
             return res.json({ message: 'Order marked as ready for all stations.' });
+        }
+
+        if (status === 'SERVE_ALL') {
+            const [statusRows] = await pool.query('SELECT id FROM order_statuses WHERE name = "SERVED"');
+            if (statusRows.length > 0) {
+                await pool.query('UPDATE orders SET status_id = ?, kitchen_status = "served", bar_status = "served", main_status = "SERVED" WHERE id = ?', [statusRows[0].id, id]);
+            } else {
+                await pool.query('UPDATE orders SET kitchen_status = "served", bar_status = "served", main_status = "SERVED" WHERE id = ?', [id]);
+            }
+
+            if (global.io) {
+                global.io.emit('orderUpdate', { 
+                    id: parseInt(id), 
+                    orderId: parseInt(id), 
+                    status: 'SERVED', 
+                    mainStatus: 'SERVED',
+                    kitchenStatus: 'served',
+                    barStatus: 'served'
+                });
+            }
+            return res.json({ message: 'Order marked as served to the table.' });
         }
 
         const dbStatus = dbStatusMap[status] || status.toUpperCase();
@@ -664,11 +708,33 @@ export const updateOrderStatus = async (req, res) => {
                 const statusName = statusRows[0].name;
                 // PAYMENT CHECK: If Steward clicks COMPLETED, verify payment first!
                 if (['COMPLETED', 'FINISHED'].includes(statusName)) {
-                    const [pymtRows] = await pool.query('SELECT paid_at, table_id FROM orders WHERE id = ?', [id]);
+                    const [pymtRows] = await pool.query('SELECT paid_at, table_id, customer_id, total_price FROM orders WHERE id = ?', [id]);
                     if (pymtRows.length > 0) {
                         const orderPymt = pymtRows[0];
-                        if (!orderPymt.paid_at) {
-                            // Order is UNPAID! Do not complete it yet. Trigger customer payment screen via WebSockets!
+                        
+                        // If steward is confirming manual payment
+                        if (!orderPymt.paid_at && paymentMethod) {
+                            let methodId = 1; // Default Cash
+                            const methodUpper = paymentMethod.toUpperCase();
+                            if (methodUpper === 'CARD') methodId = 2;
+                            else if (methodUpper === 'ONLINE') methodId = 3;
+
+                            await pool.query(
+                                'UPDATE orders SET payment_method_id = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ?',
+                                [methodId, id]
+                            );
+                            
+                            // Award loyalty points if registered customer
+                            if (orderPymt.customer_id) {
+                                const points = Math.floor(orderPymt.total_price / 10);
+                                if (points > 0) {
+                                    await pool.query('UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?', [points, orderPymt.customer_id]);
+                                }
+                            }
+                            console.log(`[Payment] Order #${id} manually paid via ${methodUpper} by staff.`);
+                        } 
+                        else if (!orderPymt.paid_at) {
+                            // Order is UNPAID and NO payment method provided! Do not complete it yet.
                             if (global.io) {
                                 global.io.emit('orderUpdate', { orderId: id, status: 'PAYMENT_REQUIRED', tableId: orderPymt.table_id });
                             }
@@ -687,7 +753,10 @@ export const updateOrderStatus = async (req, res) => {
                     await pool.query('UPDATE orders SET kitchen_status = "preparing", bar_status = "preparing" WHERE id = ?', [id]);
                 }
                 if (statusName === 'READY_TO_SERVE' || statusName === 'READY') {
-                    await pool.query('UPDATE orders SET kitchen_status = "ready", bar_status = "ready" WHERE id = ?', [id]);
+                    await pool.query('UPDATE orders SET kitchen_status = "ready", bar_status = "ready", main_status = "READY_TO_SERVE", status_id = (SELECT id FROM order_statuses WHERE name = "READY_TO_SERVE" LIMIT 1) WHERE id = ?', [id]);
+                }
+                if (statusName === 'SERVED') {
+                    await pool.query('UPDATE orders SET kitchen_status = "served", bar_status = "served" WHERE id = ?', [id]);
                 }
 
                 // If completed/finished/cancelled, free the table (Requirement 11)
@@ -728,40 +797,69 @@ export const updateOrderStatus = async (req, res) => {
 
         // Real-time update emit (Requirement 13)
         if (global.io) {
-            let staffId = null;
-            let tableNum = 'Counter';
             try {
-                const [orderInfo] = await pool.query(`
-                    SELECT su.id as staff_id, COALESCE(rt.table_number, 'Counter') as table_number 
-                    FROM orders o 
-                    LEFT JOIN restaurant_tables rt ON o.table_id = rt.id 
+                const [orderRows] = await pool.query(`
+                    SELECT 
+                        o.id as orderId,
+                        o.main_status,
+                        o.kitchen_status,
+                        o.bar_status,
+                        UPPER(os.name) as status,
+                        rt.table_number,
+                        su.id as staff_id,
+                        o.table_id
+                    FROM orders o
+                    LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+                    LEFT JOIN order_statuses os ON o.status_id = os.id
                     LEFT JOIN staff_users su ON o.steward_id = su.id
                     WHERE o.id = ?
                 `, [id]);
-                if (orderInfo.length > 0) {
-                    staffId = orderInfo[0].staff_id;
-                    tableNum = orderInfo[0].table_number;
+
+                if (orderRows.length > 0) {
+                    const orderInfo = orderRows[0];
+                    const emitData = {
+                        id: orderInfo.orderId,
+                        orderId: orderInfo.orderId,
+                        type: type || 'DINE-IN',
+                        status: orderInfo.status,
+                        mainStatus: orderInfo.main_status || orderInfo.status,
+                        kitchenStatus: orderInfo.kitchen_status,
+                        barStatus: orderInfo.bar_status,
+                        staffId: orderInfo.staff_id,
+                        tableNumber: orderInfo.table_number,
+                        tableId: orderInfo.table_id,
+                        updatedAt: new Date().toISOString()
+                    };
+
+                    // Broadcast globally for general dashboard synchronization
+                    global.io.emit('orderUpdate', emitData);
+                    
+                    // Specific room broadcast for table-based tracking (Customer Dashboard)
+                    if (orderInfo.table_number) {
+                        global.io.to(`table_${orderInfo.table_number}`).emit('orderUpdate', emitData);
+                    }
+
+                    global.io.emit('orderStatusUpdated', {
+                        orderId: orderInfo.orderId,
+                        mainStatus: emitData.mainStatus,
+                        kitchenStatus: emitData.kitchenStatus,
+                        barStatus: emitData.barStatus
+                    });
+
+                    // Specific notification for READY status
+                    if (['READY', 'READY_TO_SERVE'].includes(emitData.mainStatus)) {
+                        global.io.emit('orderReadyNotify', {
+                            orderId: id,
+                            tableNumber: orderInfo.table_number,
+                            staffId: orderInfo.staff_id,
+                            message: `Order #${id} for Table ${orderInfo.table_number} is ready!`
+                        });
+                    }
                 }
-            } catch (err) { }
-
-            global.io.emit('orderUpdate', {
-                id: parseInt(id),
-                orderId: parseInt(id),
-                type: type || 'DINE-IN',
-                status: dbStatus,
-                mainStatus: dbStatus,
-                staffId: staffId,
-                tableNumber: tableNum
-            });
-
-            // Specific notification for READY status
-            if (dbStatus === 'READY' || dbStatus === 'READY TO SERVE') {
-                global.io.emit('orderReadyNotify', {
-                    orderId: id,
-                    tableNumber: tableNum,
-                    staffId: staffId,
-                    message: `Order #${id} for Table ${tableNum} is ready!`
-                });
+            } catch (emitErr) {
+                console.error('Socket emit enrich error:', emitErr);
+                // Fallback emit if DB fetch fails
+                global.io.emit('orderUpdate', { id: parseInt(id), orderId: parseInt(id), status: dbStatus });
             }
         }
 

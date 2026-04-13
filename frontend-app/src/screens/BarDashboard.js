@@ -151,7 +151,10 @@ const BarDashboard = () => {
                 
                 prevOrderIds.current = currentIds;
                 prevItemCount.current = currentItemSum;
-                setOrders(newOrders);
+                
+                // Deduplicate orders
+                const uniqueOrders = Array.from(new Map(newOrders.map(o => [o.id, o])).values());
+                setOrders(uniqueOrders);
             }
             if (historyRes.ok) {
                 const histData = await historyRes.json();
@@ -164,9 +167,14 @@ const BarDashboard = () => {
                         return cat.includes('beverage') || cat.includes('drink') || cat.includes('bar');
                     });
                 });
-                setHistory(beverageHistory);
+                const uniqueHist = Array.from(new Map(beverageHistory.map(h => [h.id, h])).values());
+                setHistory(uniqueHist);
             }
-            if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
+            if (notifRes.ok) {
+                const nData = await notifRes.json();
+                const uniqueNotifs = Array.from(new Map((nData.notifications || []).map(n => [n.id || (Date.now().toString() + Math.random()), n])).values());
+                setNotifications(uniqueNotifs);
+            }
         } catch (error) {
             console.error('Bar fetch error:', error);
         } finally {
