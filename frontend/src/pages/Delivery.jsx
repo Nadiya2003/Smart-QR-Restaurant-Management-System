@@ -108,7 +108,7 @@ function Delivery() {
             // Transaction ID Mock
             const transactionId = 'TXN_' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             const endpoint = orderType === 'delivery' ? '/api/orders/delivery' : '/api/orders/takeaway';
             
             const payload = {

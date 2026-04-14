@@ -67,12 +67,12 @@ function Auth() {
                 login(data);
                 showAlert('success', 'Login successful!');
                 
-                const target = localStorage.getItem('postLoginTarget') || '/';
-                const intendedType = localStorage.getItem('intendedOrderType');
+                const target = sessionStorage.getItem('postLoginTarget') || '/';
+                const intendedType = sessionStorage.getItem('intendedOrderType');
                 if (intendedType) setOrderType(intendedType);
                 
-                localStorage.removeItem('postLoginTarget');
-                localStorage.removeItem('intendedOrderType');
+                sessionStorage.removeItem('postLoginTarget');
+                sessionStorage.removeItem('intendedOrderType');
                 
                 navigate(target);
             } else {
@@ -115,12 +115,12 @@ function Auth() {
                 showAlert('success', 'Registration successful! Automatically logging in...');
                 login(data);
                 
-                const target = localStorage.getItem('postLoginTarget') || '/';
-                const intendedType = localStorage.getItem('intendedOrderType');
+                const target = sessionStorage.getItem('postLoginTarget') || '/';
+                const intendedType = sessionStorage.getItem('intendedOrderType');
                 if (intendedType) setOrderType(intendedType);
                 
-                localStorage.removeItem('postLoginTarget');
-                localStorage.removeItem('intendedOrderType');
+                sessionStorage.removeItem('postLoginTarget');
+                sessionStorage.removeItem('intendedOrderType');
                 
                 navigate(target);
             } else {

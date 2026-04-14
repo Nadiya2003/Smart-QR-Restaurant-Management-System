@@ -72,7 +72,7 @@ function Account() {
 
     const fetchAccountData = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             if (!token) {
                 navigate('/auth');
                 return;
@@ -100,7 +100,7 @@ function Account() {
         e.preventDefault();
         setUpdateLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             const res = await fetch(`${config.API_BASE_URL}/api/customer/profile`, {
                 method: 'PUT',
                 headers: { 
@@ -129,7 +129,7 @@ function Account() {
         if (!confirmBox) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             let endpoint = '';
             if (type === 'reservation') endpoint = `${config.API_BASE_URL}/api/reservations/cancel/${id}`;
             else endpoint = `${config.API_BASE_URL}/api/orders/${type.toLowerCase()}/cancel/${id}`;
@@ -339,7 +339,10 @@ function Account() {
                                             
                                             // Handle formatting differences
                                             let normalizedStatus = currentStatus;
-                                            if (currentStatus.toUpperCase() === 'READY') normalizedStatus = 'Picked Up';
+                                            const upStatus = currentStatus.toUpperCase();
+                                            if (upStatus === 'READY' || upStatus === 'PREPARING' || upStatus === 'COOKING') {
+                                                normalizedStatus = 'Accepted';
+                                            }
                                             
                                             const currentIdx = statusSteps.findIndex(s => s.toLowerCase() === normalizedStatus.toLowerCase());
 

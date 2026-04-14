@@ -172,10 +172,18 @@ export const getAllOrders = async (req, res) => {
             ORDER BY created_at DESC
         `);
         
-        const parsedOrders = orders.map(o => ({
-            ...o,
-            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
-        }));
+        const parsedOrders = orders.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
         
         res.json({ orders: parsedOrders });
     } catch (err) {

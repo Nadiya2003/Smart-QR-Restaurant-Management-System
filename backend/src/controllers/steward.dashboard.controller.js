@@ -99,10 +99,18 @@ export const getStewardOrders = async (req, res) => {
         `, [stewardId]);
         
         // Parse items if returned as string
-        const parsedOrders = orders.map(o => ({
-            ...o,
-            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
-        }));
+        const parsedOrders = orders.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
         
         res.json({ orders: parsedOrders });
     } catch (error) {
@@ -199,10 +207,18 @@ export const getStewardHistory = async (req, res) => {
             ORDER BY o.created_at DESC
         `, [stewardId]);
 
-        const parsedOrders = orders.map(o => ({
-            ...o,
-            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
-        }));
+        const parsedOrders = orders.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
         
         res.json({ orders: parsedOrders });
     } catch (error) {

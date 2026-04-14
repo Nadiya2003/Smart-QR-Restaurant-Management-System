@@ -205,10 +205,18 @@ export const getCustomerOrders = async (req, res) => {
         );
 
         // Parse items JSON if returned as string (for Delivery/Takeaway)
-        const formatOrders = (orders) => orders.map(o => ({
-            ...o,
-            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
-        }));
+        const formatOrders = (orders) => orders.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
 
         const allOrders = [
             ...formatOrders(deliveryOrders), 

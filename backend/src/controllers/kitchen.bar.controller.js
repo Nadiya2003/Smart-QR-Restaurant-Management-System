@@ -358,17 +358,51 @@ export const updateKitchenOrderStatus = async (req, res) => {
                 });
             }
         } else {
-            const table = type === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';
+            const table = (type || '').toUpperCase() === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';
             let deliveryStatus = normalized;
             
-            // Map common kitchen statuses to delivery flow steps if needed
-            if (normalized === 'READY') deliveryStatus = 'Picked Up'; 
+            // Map kitchen READY to Picked Up (next stage for rider) if it's currently at Accepted stage
+            // Or keep it as normalized for status tracking
+            if (normalized === 'READY') deliveryStatus = 'Accepted'; // It's ready but still at restaurant
+
+            // Update items JSON to reflect status
+            const [orderRows] = await pool.query(`SELECT items FROM ${table} WHERE id = ?`, [id]);
+            if (orderRows.length > 0) {
+                let items = [];
+                try {
+                    items = typeof orderRows[0].items === 'string' ? JSON.parse(orderRows[0].items) : (orderRows[0].items || []);
+                } catch (e) {}
+                
+                const updatedItems = items.map(item => {
+                    const itemCat = (item.category || item.category_name || '').toLowerCase();
+                    const isDrink = itemCat.includes('beverage') || itemCat.includes('drink') || itemCat.includes('bar');
+                    
+                    if ((isBar && isDrink) || (!isBar && !isDrink)) {
+                        return { ...item, item_status: normalized.toLowerCase() };
+                    }
+                    return item;
+                });
+                
+                await pool.query(`UPDATE ${table} SET items = ? WHERE id = ?`, [JSON.stringify(updatedItems), id]);
+            }
 
             await pool.query(`UPDATE ${table} SET order_status = ?, delivery_status = ? WHERE id = ?`, [normalized.toLowerCase(), deliveryStatus, id]);
             
             if (global.io) {
-                global.io.emit('orderUpdate', { orderId: id, status: normalized, type });
-                global.io.emit('delivery_order_updated', { orderId: id, status: deliveryStatus, type });
+                global.io.emit('orderUpdate', { 
+                    orderId: id, 
+                    id: parseInt(id),
+                    status: normalized, 
+                    type: type,
+                    updatedBy: isBar ? 'BAR' : 'KITCHEN'
+                });
+                global.io.emit('delivery_order_updated', { 
+                    orderId: id, 
+                    id: parseInt(id),
+                    status: normalized, 
+                    delivery_status: deliveryStatus,
+                    type: type 
+                });
             }
         }
 

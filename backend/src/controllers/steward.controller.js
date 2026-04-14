@@ -51,8 +51,8 @@ export const getAllStewards = async (req, res) => {
         const [rows] = await pool.query(query);
 
         // Use env-configured public URL, or fall back to the request host
-        // req.get('host') returns 'localhost:5000' when dev server proxies — bad for LAN clients
-        const reqHost = req.get('host') || 'localhost:5000';
+        // req.get('host') returns '192.168.1.2:5000' when dev server proxies — bad for LAN clients
+        const reqHost = req.get('host') || '192.168.1.2:5000';
         const protocol = req.protocol === 'https' ? 'https' : 'http';
         const baseUrl = BACKEND_BASE_URL || `${protocol}://${reqHost}`;
 

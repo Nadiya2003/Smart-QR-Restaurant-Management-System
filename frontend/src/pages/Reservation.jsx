@@ -63,19 +63,19 @@ function Reservation() {
 
     // Check for pending reservation after login
     useEffect(() => {
-        const pending = localStorage.getItem('pendingReservation');
+        const pending = sessionStorage.getItem('pendingReservation');
         if (pending && isAuthenticated) {
             try {
                 const parsed = JSON.parse(pending);
                 setFormData(prev => ({ ...prev, ...parsed }));
-                localStorage.removeItem('pendingReservation');
+                sessionStorage.removeItem('pendingReservation');
                 setShowSuccess(false);
                 setError('Welcome back! Your reservation details have been restored. You can now confirm your booking.');
                 // Clear the info message after some time
                 setTimeout(() => setError(''), 8000);
             } catch (err) {
                 console.error('Failed to parse pending reservation:', err);
-                localStorage.removeItem('pendingReservation');
+                sessionStorage.removeItem('pendingReservation');
             }
         }
     }, [isAuthenticated]);
@@ -109,10 +109,10 @@ function Reservation() {
         e.preventDefault();
 
         if (!isAuthenticated) {
-            // Save current form state to localStorage
-            localStorage.setItem('pendingReservation', JSON.stringify(formData));
+            // Save current form state to sessionStorage
+            sessionStorage.setItem('pendingReservation', JSON.stringify(formData));
             // Set redirect target for after login
-            localStorage.setItem('postLoginTarget', '/reservation');
+            sessionStorage.setItem('postLoginTarget', '/reservation');
             
             setError('Please login to complete your reservation. Redirecting...');
             setTimeout(() => navigate('/auth'), 1500);
@@ -163,7 +163,7 @@ function Reservation() {
         setError('');
 
         try {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             const response = await fetch(`${config.API_BASE_URL}/api/reservations`, {
                 method: 'POST',
                 headers: {
@@ -206,12 +206,12 @@ function Reservation() {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 
                 // Clear old auth
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
+                sessionStorage.removeItem('token');
+                sessionStorage.removeItem('user');
                 
                 // Save current state
-                localStorage.setItem('pendingReservation', JSON.stringify(formData));
-                localStorage.setItem('postLoginTarget', '/reservation');
+                sessionStorage.setItem('pendingReservation', JSON.stringify(formData));
+                sessionStorage.setItem('postLoginTarget', '/reservation');
                 
                 setTimeout(() => {
                     window.location.href = '/auth';

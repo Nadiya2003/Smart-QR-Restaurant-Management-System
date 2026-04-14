@@ -502,7 +502,15 @@ export const handleCancellationAction = async (req, res) => {
             } else {
                 // Dine-in order cancellation
                 if (request.item_ids) {
-                    const itemIds = typeof request.item_ids === 'string' ? JSON.parse(request.item_ids) : request.item_ids;
+                    let itemIds = request.item_ids;
+                    if (typeof request.item_ids === 'string') {
+                        try {
+                            itemIds = JSON.parse(request.item_ids);
+                        } catch (e) {
+                            console.error('Invalid item_ids JSON for request:', request.id);
+                            itemIds = [];
+                        }
+                    }
 
                     // Delete specific items
                     await connection.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [request.order_id, itemIds]);

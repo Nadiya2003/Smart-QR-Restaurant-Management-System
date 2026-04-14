@@ -52,10 +52,18 @@ export const getOrders = async (req, res) => {
         `);
 
         // Parse items if returned as string
-        const parsedOrders = orders.map(o => ({
-            ...o,
-            items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || [])
-        }));
+        const parsedOrders = orders.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
 
         res.json({ orders: parsedOrders });
     } catch (error) {
@@ -91,6 +99,7 @@ export const createOrder = async (req, res) => {
             );
 
             // Add to Order Analytics for reports
+            const analyticsMethod = payment_status === 'Paid' ? 'ONLINE' : 'CASH';
             for (const item of items) {
                 await connection.query(
                     `INSERT INTO order_analytics 
@@ -98,7 +107,7 @@ export const createOrder = async (req, res) => {
                     VALUES (?, 'DELIVERY', 'pending', ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         orderId, 
-                        payment_status === 'Paid' ? 'ONLINE' : 'CASH', 
+                        analyticsMethod, 
                         item.id, 
                         item.name, 
                         item.category || 'General', 
@@ -321,17 +330,40 @@ export const getHistory = async (req, res) => {
         const riderId = req.user.userId;
         const { dateFrom, dateTo } = req.query;
 
-        let query = "SELECT * FROM delivery_orders WHERE created_by = ? AND order_status = 'Delivered' AND payment_status IN ('settled', 'paid', 'Paid', 'Completed')";
+        let baseQuery = `
+            SELECT do.*,
+                   (SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes, 'price', doi.price)
+                   ) FROM delivery_order_items doi 
+                    JOIN menu_items mi ON doi.menu_item_id = mi.id 
+                    WHERE doi.order_id = do.id) as items
+            FROM delivery_orders do
+            WHERE do.created_by = ? 
+              AND do.order_status = 'Delivered' 
+              AND do.payment_status IN ('settled', 'paid', 'Paid', 'Completed', 'collected')
+        `;
         let params = [riderId];
 
         if (dateFrom && dateTo) {
-            query += " AND DATE(created_at) BETWEEN ? AND ?";
+            baseQuery += " AND DATE(do.created_at) BETWEEN ? AND ?";
             params.push(dateFrom, dateTo);
         }
 
-        query += " ORDER BY created_at DESC";
+        baseQuery += " ORDER BY do.created_at DESC";
 
-        const [history] = await pool.query(query, params);
+        const [rawHistory] = await pool.query(baseQuery, params);
+        const history = rawHistory.map(o => {
+            let parsedItems = [];
+            try {
+                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+                console.error('Invalid items JSON for order:', o.id);
+            }
+            return {
+                ...o,
+                items: parsedItems
+            };
+        });
         res.json({ history });
     } catch (error) {
         console.error('Get history error:', error);

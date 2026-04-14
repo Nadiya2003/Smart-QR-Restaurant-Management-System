@@ -73,7 +73,7 @@ function AIChat() {
 
     const fetchDataAPI = async (endpoint) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             const res = await fetch(`${config.API_BASE_URL}${endpoint}`, {
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {}
             });
@@ -119,14 +119,15 @@ function AIChat() {
         // 4. Dynamic Responses using Live APIs
         switch (detectedIntent) {
             case 'quality':
-            case 'kitchen':
+            case 'kitchen': {
                 const menuData = await fetchDataAPI('/api/menu');
                 if (menuData && menuData.length > 0) {
                     return "Yes, food quality is excellent today! 👍 The kitchen is running smoothly with fresh ingredients. I recommend trying out our specials. Would you like to see the menu?";
                 }
                 return "Our food is prepared fresh daily. Our Kitchen is running on schedule without major delays! 👨‍🍳💯";
+            }
 
-            case 'table':
+            case 'table': {
                 const today = new Date();
                 const dDate = today.toISOString().split('T')[0];
                 const dTime = today.toTimeString().split(' ')[0].substring(0, 5); // HH:MM Output
@@ -140,9 +141,10 @@ function AIChat() {
                     return "Our tables are currently occupied or reserved, but one might clear up soon! Check the Reservation page for live tracking. ⏳";
                 }
                 return "Let me check that for you... Ah, I couldn't connect to our live table tracker. We usually have walk-in space available! 🏨";
+            }
 
-            case 'order_status':
-                const token = localStorage.getItem('token');
+            case 'order_status': {
+                const token = sessionStorage.getItem('token');
                 if (!token) return "We don't know who you are just yet! Please log in to securely track your personal order status. 🔒";
 
                 const accountData = await fetchDataAPI('/api/customer/account');
@@ -156,15 +158,17 @@ function AIChat() {
                         }
                         return `Your order #${activeOrder.id} is currently ${activeOrder.order_status} 📦. Please hang tight!`;
                     }
-                    return "You don don't have any active orders right now. Can I help you browse the menu? 🍔";
+                    return "You don't have any active orders right now. Can I help you browse the menu? 🍔";
                 }
                 return "I couldn't find any recent orders for you. Have you placed one recently? 🧐";
+            }
 
-            case 'order':
+            case 'order': {
                 if (chatContext.current.lastIntent === 'order' && text.includes('cancel')) {
                     return "To cancel an active order, please go to your Profile > My Orders section and simply hit the cancel button if it is still pending! 🚫";
                 }
                 return "I can help you place an order! You can browse the Menu page to add items to your cart, or track your existing orders from your Profile. 🍕";
+            }
 
             case 'billing':
                 return "You can pay your bill securely via the 'checkout' page online, or simply scan the QR code at your table to pay via Card or Cash directly. 💳🧾";

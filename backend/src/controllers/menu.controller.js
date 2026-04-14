@@ -10,7 +10,7 @@ export const getMenu = async (req, res) => {
         `);
 
         // Prepend base URL to images for mobile/remote access
-        const host = req.get('host') || 'localhost:5000';
+        const host = req.get('host') || '192.168.1.2:5000';
         const protocol = req.protocol === 'https' ? 'https' : 'http';
         const baseUrl = `${protocol}://${host}`;
 
@@ -52,7 +52,7 @@ export const getCategories = async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM categories');
         
-        const host = req.get('host') || 'localhost:5000';
+        const host = req.get('host') || '192.168.1.2:5000';
         const protocol = req.protocol === 'https' ? 'https' : 'http';
         const baseUrl = `${protocol}://${host}`;
 

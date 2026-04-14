@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const TARGET_IP = '192.168.1.4';
+const TARGET_IP = '192.168.1.2';
 const TARGET_PORT = '5000';
-const OLD_IPS = ['172.19.61.23', '192.168.1.3'];
+const OLD_IPS = ['172.19.61.23', '192.168.1.3', '192.168.1.4'];
 const NEW_IP = TARGET_IP;
 
 const DIRS = [
@@ -15,6 +15,8 @@ const DIRS = [
     path.join(__dirname, 'frontend/src'),
     path.join(__dirname, 'frontend-app/src'),
     path.join(__dirname, 'frontend-app/web-legacy'),
+    path.join(__dirname, 'customer_qr_scan/src'),
+    path.join(__dirname, 'customer_qr_scan'),
     path.join(__dirname, 'backend'),
 ];
 

@@ -142,7 +142,22 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             ]);
 
             if (sumRes.ok) setSummary(await sumRes.json());
-            if (orderRes.ok) setOrders((await orderRes.json()).orders || []);
+            if (orderRes.ok) {
+                const ordersData = await orderRes.json();
+                const allOrders = ordersData.orders || [];
+                
+                // Show in Home only if NOT fully completed/settled
+                const activeDeliveries = allOrders.filter(o => {
+                    const os = (o.order_status || '').toUpperCase();
+                    const ps = (o.payment_status || '').toLowerCase();
+                    const isSettled = ['paid', 'completed', 'settled'].includes(ps);
+                    
+                    // Show if not delivered yet, OR if delivered but not yet paid/settled
+                    return ['PENDING', 'ACCEPTED', 'PICKED UP', 'ON THE WAY', 'READY', 'COOKING', 'PREPARING'].includes(os) || 
+                           (os === 'DELIVERED' && !isSettled);
+                });
+                setOrders(activeDeliveries);
+            }
             const menuData = await menuRes.json();
             setMenuItems(menuData || []);
             
@@ -216,6 +231,21 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         };
         autoCheckIn();
     }, [token]); // Only run when token is ready (login)
+
+    // Fetch history whenever user switches to the history tab
+    useEffect(() => {
+        if (activeTab === 'history') {
+            const loadHistory = async () => {
+                try {
+                    const histRes = await fetch(`${apiConfig.API_BASE_URL}/api/delivery-rider/history`, { headers });
+                    if (histRes.ok) setHistory((await histRes.json()).history || []);
+                } catch (e) {
+                    console.log('History fetch error:', e);
+                }
+            };
+            loadHistory();
+        }
+    }, [activeTab]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -578,9 +608,22 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
     );
 
     const renderOrderCard = (order) => {
-        const currentStatus = (order.order_status || 'Pending');
+        const rawStatus = (order.order_status || 'Pending');
         const statusSteps = ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
-        const currentIdx = statusSteps.indexOf(currentStatus);
+        
+        // Normalize status for comparisons and stepper
+        let normStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+        
+        // Handle special cases and spaces
+        if (normStatus.toLowerCase() === 'on the way') normStatus = 'On the Way';
+        if (normStatus.toLowerCase() === 'picked up') normStatus = 'Picked Up';
+        
+        // Map kitchen/bar prep statuses to the 'Accepted' stage for rider view
+        if (['Preparing', 'Ready', 'Cooking'].includes(normStatus)) {
+            normStatus = 'Accepted';
+        }
+        
+        const currentIdx = statusSteps.indexOf(normStatus);
         
         const payStatus = (order.payment_status || 'pending').toLowerCase();
         const payMethod = (order.payment_method || 'cash').toLowerCase();
@@ -722,7 +765,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                         <Text style={[styles.actionBtnText, { color: '#64748B' }]}>Details</Text>
                     </TouchableOpacity>
                     
-                    {currentStatus === 'On the Way' && (
+                    {normStatus === 'On the Way' && (
                         <TouchableOpacity 
                             style={[styles.actionBtn, { backgroundColor: '#EFF6FF' }]}
                             onPress={() => openInMaps(order.latitude, order.longitude, order.address)}
@@ -835,22 +878,55 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             style={styles.content}
         >
-            <Text style={styles.sectionTitle}>📜 Delivery History</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <Text style={styles.sectionTitle}>📜 Delivery History</Text>
+                <Text style={{ color: '#6B7280', fontSize: 12 }}>{history.length} Orders</Text>
+            </View>
+
             {history.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No past deliveries found for today.</Text>
+                    <Text style={styles.emptyText}>No past deliveries found.</Text>
                 </View>
             ) : (
                 history.map(order => (
-                    <View key={order.id} style={styles.historyCard}>
-                        <View>
-                            <Text style={styles.historyId}>#{order?.id} - {order?.customer_name || 'Guest'}</Text>
-                            <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()}</Text>
+                    <TouchableOpacity 
+                        key={order.id} 
+                        style={[styles.historyCard, { flexDirection: 'column', alignItems: 'stretch' }]}
+                        onPress={() => {
+                            setSelectedOrder(order);
+                            setShowOrderModal(true);
+                        }}
+                    >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <View>
+                                <Text style={styles.historyId}>Order #{order.id}</Text>
+                                <Text style={styles.historyDate}>
+                                    {new Date(order.created_at).toLocaleDateString()} at {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
+                                <View style={[styles.payStatusBadge, { backgroundColor: '#D1FAE5' }]}>
+                                    <Text style={[styles.payStatusText, { color: '#065F46' }]}>
+                                        {order.payment_method || 'CASH'} • {order.payment_status}
+                                    </Text>
+                                </View>
+                            </View>
                         </View>
-                        <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
-                    </View>
+
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', pt: 10, marginTop: 5 }}>
+                            <Text style={{ fontSize: 13, color: '#111827', fontWeight: 'bold' }}>{order.customer_name}</Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }} numberOfLines={1}>{order.address}</Text>
+                            <Text style={{ fontSize: 12, color: '#3B82F6', marginTop: 2 }}>📞 {order.phone}</Text>
+                        </View>
+
+                        <Text style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'right', marginTop: 5, fontStyle: 'italic' }}>
+                            Tap for items & details
+                        </Text>
+                    </TouchableOpacity>
                 ))
             )}
+            <View style={{ height: 100 }} />
         </ScrollView>
     );
 
@@ -901,17 +977,27 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                             <View style={styles.modalSection}>
                                 <Text style={styles.modalLabel}>Payment</Text>
                                 <Text style={[styles.modalVal, { fontWeight: 'bold' }]}>Total: Rs. {selectedOrder?.total_price}</Text>
+                                <Text style={styles.modalVal}>Method: {(selectedOrder?.payment_method || 'Cash').toUpperCase()}</Text>
                                 <Text style={styles.modalVal}>Status: {selectedOrder?.payment_status}</Text>
+                            </View>
+
+                            <View style={styles.modalSection}>
+                                <Text style={styles.modalLabel}>Order Time</Text>
+                                <Text style={styles.modalVal}>
+                                    {selectedOrder?.created_at ? new Date(selectedOrder.created_at).toLocaleString() : '—'}
+                                </Text>
                             </View>
                         </ScrollView>
 
                         <View style={styles.modalFooter}>
-                            <TouchableOpacity 
-                                style={[styles.footerBtn, { backgroundColor: '#EF4444' }]} 
-                                onPress={() => setShowOrderModal(false) || setShowCancelModal(true)}
-                            >
-                                <Text style={styles.footerBtnText}>Req. Cancel</Text>
-                            </TouchableOpacity>
+                            {selectedOrder?.order_status !== 'Delivered' && (
+                                <TouchableOpacity 
+                                    style={[styles.footerBtn, { backgroundColor: '#EF4444' }]} 
+                                    onPress={() => setShowOrderModal(false) || setShowCancelModal(true)}
+                                >
+                                    <Text style={styles.footerBtnText}>Req. Cancel</Text>
+                                </TouchableOpacity>
+                            )}
                             <TouchableOpacity style={styles.footerBtn} onPress={() => setShowOrderModal(false)}>
                                 <Text style={styles.footerBtnText}>Close</Text>
                             </TouchableOpacity>
