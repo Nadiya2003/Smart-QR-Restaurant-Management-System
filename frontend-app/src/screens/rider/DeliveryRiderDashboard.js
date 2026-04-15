@@ -71,6 +71,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
     });
     const [orders, setOrders] = useState([]);
     const [history, setHistory] = useState([]);
+    const [selectedPaymentOptions, setSelectedPaymentOptions] = useState({}); // { orderId: 'QR' | 'Cash' | 'Card' }
     const [menuItems, setMenuItems] = useState([]);
     const [notifications, setNotifications] = useState([]);
     const [isOnDuty, setIsOnDuty] = useState(false);
@@ -299,7 +300,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             });
             const data = await res.json();
             if (res.ok) {
-                Alert.alert('Payment Updated', `Payment marked as ${status}`);
+                Alert.alert('Success', `Payment updated: ${method} - ${status}`);
                 fetchData();
             } else {
                 Alert.alert('Error', data.message || 'Failed to update payment');
@@ -397,7 +398,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 fetchData();
             } else {
                 const errData = await res.json();
-                Alert.alert('Error', errData.message || 'Failed to create order');
+                Alert.alert('Error', (errData.message || 'Failed to create order') + (errData.error ? `: ${errData.error}` : ''));
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to create order');
@@ -629,6 +630,7 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
         const payMethod = (order.payment_method || 'cash').toLowerCase();
         const isPaid = ['paid', 'completed', 'settled'].includes(payStatus);
         const isCollected = payStatus === 'collected';
+        const isOnlineOrder = order.order_type === 'online' || payMethod === 'online';
 
         return (
             <View key={order.id} style={styles.orderCard}>
@@ -684,77 +686,96 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     <Text style={styles.customerAddress} numberOfLines={2}>📍 {order.address}</Text>
                 </View>
 
-                {/* Payment Section */}
+                {/* Payment Section - Requirement: QR/Cash/Card Options */}
                 <View style={styles.paymentSection}>
                     <View style={styles.paymentHeader}>
-                        <Text style={styles.paymentTitle}>Payment: {payMethod.toUpperCase()}</Text>
+                        <Text style={styles.paymentTitle}>Payment: {isOnlineOrder ? 'PAID ONLINE' : 'COLLECT AT DELIVERY'}</Text>
                         <View style={[styles.payStatusBadge, { backgroundColor: isPaid ? '#D1FAE5' : (isCollected ? '#DBEAFE' : '#FEE2E2') }]}>
                             <Text style={[styles.payStatusText, { color: isPaid ? '#065F46' : (isCollected ? '#1E40AF' : '#991B1B') }]}>
-                                {payStatus.toUpperCase()}
+                                {order.payment_status?.toUpperCase() || 'UNPAID'}
                             </Text>
                         </View>
                     </View>
-
-                    {payMethod === 'online' && (
-                        <View style={styles.bankInfoBox}>
-                            <Text style={styles.bankInfoTitle}>Transfer to Melissa's Account:</Text>
-                            <Text style={styles.bankInfoText}>{BUSINESS_BANK_INFO.accountName}</Text>
-                            <Text style={styles.bankInfoText}>{BUSINESS_BANK_INFO.bankName} - {BUSINESS_BANK_INFO.accountNumber}</Text>
-                        </View>
-                    )}
 
                     <View style={styles.paymentInfoRow}>
                         <Text style={styles.paymentAmount}>Total: Rs. {order.total_price}</Text>
                     </View>
 
-                    <View style={styles.paymentActions}>
-                        {payMethod === 'cash' && !isPaid && (
-                            <>
-                                {!isCollected && (
+                    {/* Rider Payment Actions */}
+                    {!isOnlineOrder && order.payment_status !== 'Completed' && (
+                        <View style={styles.paymentActionsContainer}>
+                            <Text style={styles.paymentSelectLabel}>Choose Payment Method:</Text>
+                            <View style={styles.paymentOptionRow}>
+                                {['QR', 'Cash', 'Card'].map(opt => (
                                     <TouchableOpacity 
-                                        style={[styles.payActionBtn, { backgroundColor: '#3B82F6' }]}
-                                        onPress={() => handleUpdatePaymentStatus(order.id, 'collected', 'cash')}
+                                        key={opt}
+                                        style={[
+                                            styles.paymentOptionBtn, 
+                                            selectedPaymentOptions[order.id] === opt && styles.activePaymentOptionBtn
+                                        ]}
+                                        onPress={() => setSelectedPaymentOptions({ ...selectedPaymentOptions, [order.id]: opt })}
                                     >
-                                        <Text style={styles.payActionBtnText}>Mark as Collected</Text>
+                                        <Text style={[
+                                            styles.paymentOptionText,
+                                            selectedPaymentOptions[order.id] === opt && styles.activePaymentOptionText
+                                        ]}>{opt}</Text>
                                     </TouchableOpacity>
-                                )}
-                                {isCollected && (
-                                    <TouchableOpacity 
-                                        style={[styles.payActionBtn, { backgroundColor: '#8B5CF6' }]}
-                                        onPress={() => handleUpdatePaymentStatus(order.id, 'settled', 'cash')}
-                                    >
-                                        <Text style={styles.payActionBtnText}>Settled to Cashier</Text>
-                                    </TouchableOpacity>
-                                )}
-                            </>
-                        )}
+                                ))}
+                            </View>
 
-                        {payMethod === 'qr' && !isPaid && (
-                            <>
-                                <TouchableOpacity 
-                                    style={styles.qrBtn} 
-                                    onPress={() => { setQrOrder(order); setShowQRModal(true); }}
-                                >
-                                    <Text style={styles.qrBtnText}>📊 Show QR</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity 
-                                    style={[styles.payActionBtn, { backgroundColor: '#10B981' }]}
-                                    onPress={() => handleUpdatePaymentStatus(order.id, 'paid', 'qr')}
-                                >
-                                    <Text style={styles.payActionBtnText}>Confirm QR Pay</Text>
-                                </TouchableOpacity>
-                            </>
-                        )}
-                        
-                        {payMethod === 'online' && payStatus === 'pending' && (
-                             <TouchableOpacity 
-                                style={[styles.payActionBtn, { backgroundColor: '#10B981', flex: 1 }]}
-                                onPress={() => handleUpdatePaymentStatus(order.id, 'paid', 'online')}
-                            >
-                                <Text style={styles.payActionBtnText}>Confirm Online Payment</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
+                            {/* Dynamic QR Display */}
+                            {selectedPaymentOptions[order.id] === 'QR' && (
+                                <View style={styles.inlineQrBox}>
+                                    <View style={styles.qrPlaceholder}>
+                                        <Text style={{ fontSize: 40 }}>📱</Text>
+                                        <Image 
+                                            source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Melissa-Pay-${order.id}` }}
+                                            style={{ width: 140, height: 140, marginTop: 10 }}
+                                        />
+                                        <Text style={styles.qrHelpText}>Customer Scan & Pay</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Confirmation Buttons */}
+                            <View style={styles.confirmationActionBox}>
+                                {selectedPaymentOptions[order.id] === 'QR' && order.payment_status !== 'Paid' && (
+                                    <TouchableOpacity 
+                                        style={[styles.confirmPayBtn, { backgroundColor: '#10B981' }]}
+                                        onPress={() => handleUpdatePaymentStatus(order.id, 'Paid', 'QR')}
+                                    >
+                                        <Text style={styles.confirmPayText}>Mark as Paid</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {selectedPaymentOptions[order.id] === 'Cash' && order.payment_status !== 'Pending Settlement' && (
+                                    <TouchableOpacity 
+                                        style={[styles.confirmPayBtn, { backgroundColor: '#3B82F6' }]}
+                                        onPress={() => handleUpdatePaymentStatus(order.id, 'Pending Settlement', 'Cash')}
+                                    >
+                                        <Text style={styles.confirmPayText}>Mark as Cash Collected</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {selectedPaymentOptions[order.id] === 'Card' && order.payment_status !== 'Paid' && (
+                                    <TouchableOpacity 
+                                        style={[styles.confirmPayBtn, { backgroundColor: '#8B5CF6' }]}
+                                        onPress={() => handleUpdatePaymentStatus(order.id, 'Paid', 'Card')}
+                                    >
+                                        <Text style={styles.confirmPayText}>Mark as Paid (Card)</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Completion Action - ONLY after payment is marked */}
+                    {(isPaid || isCollected || isOnlineOrder) && order.order_status !== 'Pending Final Closure' && (
+                        <TouchableOpacity 
+                            style={styles.completeDeliveryBtn}
+                            onPress={() => handleUpdateStatus(order.id, 'Delivered')}
+                        >
+                            <Text style={styles.completeDeliveryText}>Complete Delivery</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 <View style={styles.orderActionRow}>
@@ -1310,7 +1331,24 @@ const styles = StyleSheet.create({
     payActionBtnText: { color: 'white', fontWeight: 'bold', fontSize: 11 },
     bankInfoBox: { backgroundColor: 'white', padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#3B82F6', marginBottom: 10 },
     bankInfoTitle: { fontSize: 11, fontWeight: 'bold', color: '#3B82F6', marginBottom: 2 },
-    bankInfoText: { fontSize: 12, color: '#4B5563' }
+    bankInfoText: { fontSize: 12, color: '#4B5563' },
+
+    // NEW PAYMENT STYLES
+    paymentActionsContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 12 },
+    paymentSelectLabel: { fontSize: 11, fontWeight: '600', color: '#6B7280', marginBottom: 8 },
+    paymentOptionRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    paymentOptionBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center' },
+    activePaymentOptionBtn: { backgroundColor: '#111827', borderColor: '#111827' },
+    paymentOptionText: { fontSize: 13, fontWeight: 'bold', color: '#4B5563' },
+    activePaymentOptionText: { color: 'white' },
+    inlineQrBox: { backgroundColor: 'white', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+    qrPlaceholder: { alignItems: 'center' },
+    qrHelpText: { fontSize: 11, color: '#6B7280', marginTop: 8, fontStyle: 'italic' },
+    confirmationActionBox: { marginTop: 5 },
+    confirmPayBtn: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+    confirmPayText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+    completeDeliveryBtn: { marginTop: 15, backgroundColor: '#111827', paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+    completeDeliveryText: { color: 'white', fontWeight: 'bold', fontSize: 15 }
 });
 
 export default DeliveryRiderDashboard;

@@ -363,6 +363,12 @@ const ManagerDashboard = () => {
             fetchData(true);
         });
 
+        socket.on('paymentRequest', (data) => {
+            playNotificationSound();
+            Alert.alert('Payment Requested! 💰', `Order #${data.orderId} (Table ${data.tableNumber || '?'}) is ready to settle via ${data.method}. Amount: Rs. ${data.total}`);
+            fetchData(true);
+        });
+
         const interval = setInterval(async () => {
             try {
                 const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -1011,7 +1017,6 @@ const renderOrders = () => (
                                     {order.order_type === 'DELIVERY' && order.address ? (
                                         <Text style={styles.listCardSub}>📍 {order.address}</Text>
                                     ) : null}
-                                    <Text style={styles.listCardSub}>Items: {order.items_summary || (order.items && Array.isArray(order.items) ? order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') : 'Check Details')}</Text>
                                     <Text style={styles.listCardSub}>Total: Rs. {Number(order.total_price || 0).toLocaleString()} ({order.payment_method || (order.payment_status === 'paid' ? 'Paid Online' : 'Unpaid')})</Text>
                                     <Text style={styles.listCardSub}>Time: {new Date(order.created_at).toLocaleTimeString()}</Text>
                                     
@@ -1035,6 +1040,15 @@ const renderOrders = () => (
                                                 <Text style={styles.statusBtnText}>Done</Text>
                                             </TouchableOpacity>
                                         </View>
+                                    )}
+
+                                    {order.status === 'Pending Final Closure' && (
+                                        <TouchableOpacity 
+                                            onPress={() => handleCloseOrder(order.id)} 
+                                            style={[styles.statusBtn_done, { marginTop: 10, backgroundColor: '#10B981', width: '100%' }]}
+                                        >
+                                            <Text style={styles.statusBtnText}>✅ Close & Finalize Order</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
                             </View>
@@ -2255,6 +2269,27 @@ const renderOrders = () => (
             }
         } catch (error) {
             Alert.alert('Error', 'Connection failed');
+        }
+    };
+
+    const handleCloseOrder = async (orderId) => {
+        try {
+            setLoading(true);
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/delivery-rider/orders/${orderId}/close`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                Alert.alert('✅ Success', 'Order has been finalized and closed.');
+                fetchData(true);
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to close order');
+            }
+        } catch (error) {
+            Alert.alert('Connection Error', 'Failed to reach the server.');
+        } finally {
+            setLoading(false);
         }
     };
 

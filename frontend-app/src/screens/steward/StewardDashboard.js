@@ -78,6 +78,7 @@ const StewardDashboard = () => {
     const [readyAlerts, setReadyAlerts] = useState([]);
     const notifiedIds = useRef(new Set());        // dedup ready-order voice alerts
     const seenOrderIds = useRef(new Set());        // dedup newOrder popup (prevents double popup)
+    const seenStatusKeys = useRef(new Set());     // dedup duplicate status update notifications
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
@@ -91,13 +92,11 @@ const StewardDashboard = () => {
 
     const playNotificationSound = async () => {
         try {
-            // Short notification buzzer
+            // Updated clear alert-style notification for Steward
             const sound = createAudioPlayer(
-                { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
+                { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' } // Modern clear chime
             );
             sound.play();
-            // In expo-audio, we don't need to manually unload for brief sounds usually, 
-            // but we can manage instances if needed.
         } catch (error) {
             console.warn('Sound play error:', error);
         }
@@ -219,9 +218,20 @@ const StewardDashboard = () => {
                 playNotificationSound();
 
                 if (data.action === 'ITEM_REMOVED') {
+                    const removeKey = `remove-${data.orderId}`;
+                    if (seenStatusKeys.current.has(removeKey)) return;
+                    seenStatusKeys.current.add(removeKey);
+                    setTimeout(() => seenStatusKeys.current.delete(removeKey), 30000);
+
                     pushToQueue('UPDATE', { ...data, title: 'Item Removed!', message: `A customer dropped an item from Order #${data.orderId}`, color: '#FCD34D' });
                     appendNotification('Item Removed 🗑️', `Order #${data.orderId} item altered.`);
                 } else if (data.status && data.status !== 'SESSION_ENDED') {
+                    // Deduplicate status updates
+                    const statusKey = `${data.orderId}-${data.status}`;
+                    if (seenStatusKeys.current.has(statusKey)) return;
+                    seenStatusKeys.current.add(statusKey);
+                    setTimeout(() => seenStatusKeys.current.delete(statusKey), 30000);
+
                     // Only show popup for status changes initiated externally (kitchen ready, etc.)
                     pushToQueue('UPDATE', {
                         ...data,
@@ -259,16 +269,17 @@ const StewardDashboard = () => {
             playNotificationSound();
 
             const title = data.isUpdate ? '🍽️ ITEMS ADDED TO ORDER!' : '🥗 NEW ORDER RECEIVED!';
+            const displayLoc = data.displayLocation || `Table ${data.tableNumber || (data.isUpdate ? '?' : 'Counter')}`;
             const notifMsg = data.isUpdate
-                ? `Table ${data.tableNumber || '?'} added more items to Order #${data.orderId}`
-                : `Table ${data.tableNumber || 'Counter'} placed Order #${data.orderId}`;
+                ? `${displayLoc} added more items to Order #${data.orderId}`
+                : `${displayLoc} placed Order #${data.orderId}`;
 
             appendNotification(title, notifMsg, { type: 'NEW_ORDER', refId: data.orderId });
             pushToQueue('NEW_ORDER', {
                 ...data,
                 title,
                 orderId: data.orderId || 'NEW',
-                tableNumber: data.tableNumber || 'Counter',
+                tableNumber: data.displayLocation || data.tableNumber || 'Counter',
                 customerName: data.customerName || 'Guest'
             });
             fetchData(true);
@@ -278,23 +289,53 @@ const StewardDashboard = () => {
             if (!data.staffId || data.staffId === user.id) {
                 Vibration && Vibration.vibrate([100, 50, 100, 50, 100]);
                 if (data.playSound || true) playNotificationSound();
-                appendNotification('Payment Pending 💰', `Table ${data.tableNumber} is ready to settle. Amount: Rs. ${data.total}`, { type: 'PAYMENT_REQ', method: data.method });
-                pushToQueue('PAYMENT', data);
+                
+                let title = '💰 PAYMENT REQUEST';
+                if (data.method === 'CASH') title = '💰 CASH PAYMENT';
+                else if (data.method === 'CARD') title = '💳 CARD PAYMENT';
+                else if (data.method === 'ONLINE') title = '📱 ONLINE TRANSFER';
+                else if (data.method === 'QR') title = '🤳 QR PAYMENT';
+
+                appendNotification(title, `Table ${data.tableNumber || '?'} is ready to settle. Amount: Rs. ${data.total}`, { type: 'PAYMENT_REQ', method: data.method });
+                pushToQueue('PAYMENT', {
+                    ...data,
+                    title,
+                    message: `Table ${data.tableNumber || '?'} requested ${data.method} payment for Order #${data.orderId}.`
+                });
                 fetchData(true);
             }
         });
 
         socket.on('cancelRequest', (data) => {
-            // Show to ALL stewards (customers send this, not staff)
             Vibration && Vibration.vibrate([300, 150, 300]);
             playNotificationSound();
-            appendNotification('Cancel Request 🚫', `Table ${data.tableNumber} wants to cancel: "${data.reason || 'No reason given'}".`, { type: 'CANCEL_REQ', refId: data.orderId });
-            pushToQueue('CANCEL', {
-                ...data,
-                title: '🚫 CANCEL REQUEST',
-                message: `Table ${data.tableNumber || '?'} - Order #${data.orderId} wants to cancel.\nReason: ${data.reason || 'No reason provided'}`,
-                color: '#EF4444'
-            });
+            
+            if (data.status === 'APPROVED') {
+                appendNotification('Cancellation Approved ✅', `Order #${data.orderId} cancellation was approved.`);
+                pushToQueue('UPDATE', {
+                    ...data,
+                    title: '✅ CANCELLATION APPROVED',
+                    message: `Order #${data.orderId} cancellation approved by management.`,
+                    color: '#10B981'
+                });
+            } else if (data.status === 'REJECTED') {
+                appendNotification('Cancellation Rejected ❌', `Order #${data.orderId} cancellation was declined.`);
+                pushToQueue('UPDATE', {
+                    ...data,
+                    title: '❌ CANCELLATION DECLINED',
+                    message: `Order #${data.orderId} cancellation request was rejected.`,
+                    color: '#EF4444'
+                });
+            } else {
+                appendNotification('Cancel Request 🚫', `Table ${data.tableNumber || '?'} wants to cancel: "${data.reason || 'No reason given'}".`, { type: 'CANCEL_REQ', refId: data.orderId });
+                pushToQueue('CANCEL', {
+                    ...data,
+                    title: '🚫 CANCEL REQUEST',
+                    message: `Table ${data.tableNumber || '?'} - Order #${data.orderId} wants to cancel.\nReason: ${data.reason || 'No reason provided'}`,
+                    color: '#EF4444'
+                });
+            }
+            
             fetchData(true);
         });
 
@@ -1052,15 +1093,17 @@ const StewardDashboard = () => {
                                 >
                                     <Text style={styles.actionBtnText}>Status</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
-                                    onPress={() => {
-                                        setOrderDetail(order);
-                                        setShowCancelModal(true);
-                                    }}
-                                >
-                                    <Text style={styles.actionBtnText}>Cancel</Text>
-                                </TouchableOpacity>
+                                {!['PREPARING', 'READY', 'READY TO SERVE', 'SERVED', 'COMPLETED', 'CANCELLED'].includes((order.main_status || order.status || '').toUpperCase()) && (
+                                    <TouchableOpacity
+                                        style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
+                                        onPress={() => {
+                                            setOrderDetail(order);
+                                            setShowCancelModal(true);
+                                        }}
+                                    >
+                                        <Text style={styles.actionBtnText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     );
@@ -1334,21 +1377,12 @@ const StewardDashboard = () => {
                             </View>
 
                             <View style={{ width: '100%', gap: 10 }}>
-                                {activeModal?.type === 'PAYMENT' ? (
-                                    <TouchableOpacity
-                                        style={{ backgroundColor: '#10B981', paddingVertical: 16, borderRadius: 20, alignItems: 'center' }}
-                                        onPress={() => handleProcessPayment(activeModal.data.orderId, activeModal.data.method)}
-                                    >
-                                        <Text style={{ color: 'white', fontWeight: '900' }}>Confirm Payment & Close Order ✓</Text>
-                                    </TouchableOpacity>
-                                ) : (
-                                    <TouchableOpacity
-                                        style={{ backgroundColor: '#111827', paddingVertical: 18, borderRadius: 20, alignItems: 'center' }}
-                                        onPress={() => { nextModal(); if (activeModal?.type === 'NEW_ORDER') setActiveTab('orders'); }}
-                                    >
-                                        <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>OKAY</Text>
-                                    </TouchableOpacity>
-                                )}
+                                <TouchableOpacity
+                                    style={{ backgroundColor: '#111827', paddingVertical: 18, borderRadius: 20, alignItems: 'center' }}
+                                    onPress={() => { nextModal(); if (activeModal?.type === 'NEW_ORDER') setActiveTab('orders'); }}
+                                >
+                                    <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>OKAY</Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
                     </View>

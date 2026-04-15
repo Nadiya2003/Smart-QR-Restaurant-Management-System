@@ -17,8 +17,8 @@ export const createDeliveryOrder = async (req, res) => {
 
             const [result] = await connection.query(
                 `INSERT INTO delivery_orders 
-                (customer_id, customer_name, phone, address, items, total_price, notes, payment_method, payment_status, transaction_id, order_status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending')`,
+                (customer_id, customer_name, phone, address, items, total_price, notes, payment_method, payment_status, transaction_id, order_status, order_type) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending', 'online')`,
                 [customer_id || null, customer_name, phone, address, JSON.stringify(items), total_price, notes || '', transaction_id]
             );
 
@@ -480,19 +480,29 @@ export const createDineInOrder = async (req, res) => {
 
         await connection.commit();
         
-        // Notify all dashboards of table status change (Requirement #5)
+        // Fetch table and area info for notification
+        const [tableInfo] = await connection.query(`
+            SELECT rt.table_number, da.area_name 
+            FROM restaurant_tables rt 
+            JOIN dining_areas da ON rt.area_id = da.id 
+            WHERE rt.id = ?
+        `, [tableId]);
+        const areaName = tableInfo[0]?.area_name || 'Rest';
+        const tableNum = tableInfo[0]?.table_number || table_number;
+
+        await connection.commit();
+        
+        // Notify all dashboards of table status change
         if (global.io && tableId) {
             global.io.emit('tableUpdate', { 
                 tableId, 
-                tableNumber: tableRows && tableRows.length > 0 ? tableRows[0].table_number : table_number,
+                tableNumber: tableNum,
                 status: 'Occupied',
                 type: 'ORDER_PLACED'
             });
         }
 
         // Emit for Real-time update (Requirement 13)
-        // NOTE: Only emit 'newOrder' — do NOT also emit 'orderUpdate' here.
-        // Emitting both for the same event causes duplicate popups on steward dashboards.
         if (global.io) {
             global.io.emit('newOrder', { 
                 orderId: targetOrderId, 
@@ -500,11 +510,14 @@ export const createDineInOrder = async (req, res) => {
                 isUpdate,
                 stewardId: resolvedStewardId,
                 staffId: steward_id,
-                tableNumber: table_number,
+                tableNumber: tableNum,
+                displayLocation: `${areaName} T-${tableNum}`, // Format: "Italian Area T-101"
                 customerName,
                 customerType,
                 totalPrice: inclusiveNewTotal,
-                items: fullDetailedItems
+                items: fullDetailedItems,
+                playSound: true,
+                role: 'steward'
             });
         }
 
@@ -582,13 +595,14 @@ export const requestDineInCancellation = async (req, res) => {
             return res.status(400).json({ message: `Order is already ${statusName}. Cannot cancel now.` });
         }
 
-        // --- DIRECT CANCELLATION FOR EARLY ORDERS ---
-        if (['PENDING', 'ACCEPTED', 'RECEIVED', 'ORDER PLACED', 'CONFIRMED'].includes(statusName)) {
+        // --- DIRECT CANCELLATION FOR EARLY ORDERS (Before Preparing) ---
+        const earlyStatuses = ['PENDING', 'ACCEPTED', 'RECEIVED', 'ORDER PLACED', 'CONFIRMED', 'PLACED'];
+        if (earlyStatuses.includes(statusName)) {
             const isPartial = itemIds && Array.isArray(itemIds) && itemIds.length > 0;
             
             if (isPartial) {
                 // PARTIAL DIRECT CANCELLATION
-                // Delete selected items
+                // Delete selected items - Ensure itemIds is passed as a single parameter for the IN (?)
                 await pool.query('DELETE FROM order_items WHERE order_id = ? AND id IN (?)', [id, itemIds]);
                 
                 // Recalculate Total
@@ -1132,14 +1146,16 @@ export const requestPayment = async (req, res) => {
         const { orderId, method, total } = req.body;
         const slip = req.file ? `/uploads/${req.file.filename}` : null;
 
-        if (!orderId) return res.status(400).json({ message: 'Order ID is required' });
+        if (!orderId) return res.status(400).json({ success: false, message: 'Order ID is required' });
+        const targetTotal = total || 0;
 
         // 1. Get order details for notification
         const [orderDetails] = await pool.query(`
-            SELECT o.table_id, rt.table_number, o.steward_id, s.staff_id,
+            SELECT o.table_id, rt.table_number, da.area_name, o.steward_id, s.staff_id,
                    o.customer_name, o.customer_id
             FROM orders o
             LEFT JOIN restaurant_tables rt ON o.table_id = rt.id
+            LEFT JOIN dining_areas da ON rt.area_id = da.id
             LEFT JOIN stewards s ON o.steward_id = s.id
             WHERE o.id = ?
         `, [orderId]);
@@ -1147,43 +1163,39 @@ export const requestPayment = async (req, res) => {
         if (orderDetails.length === 0) return res.status(404).json({ message: 'Order not found' });
         const od = orderDetails[0];
 
-        // 2. Automatically resolve payment and forcefully close the order (Requirement: steward order closed immediately upon customer payment)
         let methodId = 1; // Default Cash
-        if (method === 'online') methodId = 3;
-        if (method === 'card') methodId = 2;
+        const lowerMethod = (method || '').toLowerCase();
+        if (lowerMethod === 'online') methodId = 3;
+        else if (lowerMethod === 'card') methodId = 2;
+        else if (lowerMethod === 'qr' || lowerMethod === 'qr payment') methodId = 4;
         
-        await pool.query('UPDATE orders SET payment_method_id = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ?', [methodId, orderId]);
+        // Update payment method but NOT paid_at yet (Cashier will verify and close)
+        await pool.query('UPDATE orders SET payment_method_id = ?, slip_image = ? WHERE id = ?', [methodId, slip, orderId]);
 
-        // Instantly flip to COMPLETED
-        const [compStatus] = await pool.query('SELECT id, name FROM order_statuses WHERE name = "COMPLETED"');
-        if (compStatus.length > 0) {
-             await pool.query('UPDATE orders SET status_id = ?, main_status = ? WHERE id = ?', [compStatus[0].id, compStatus[0].name, orderId]);
-        }
-
-        // 3. Notify Steward/Cashier via Socket (Requirement 13)
+        // 3. Notify Steward/Cashier via Socket
         if (global.io) {
-            // Emitting COMPLETED triggers dashboard removals directly
-            global.io.emit('orderUpdate', { orderId: parseInt(orderId), status: 'COMPLETED' });
+            const location = `${od.area_name} T-${od.table_number}`;
             
-            global.io.emit('paymentRequest', {
+            const payload = {
                 orderId: parseInt(orderId),
                 tableNumber: od.table_number,
+                displayLocation: location,
                 staffId: od.staff_id, 
-                method: method.toUpperCase(),
-                total: total,
+                method: lowerMethod.toUpperCase(),
+                total: targetTotal,
                 slip: slip,
                 customerName: od.customer_name || 'Guest',
                 playSound: true
-            });
+            };
+
+            global.io.emit('paymentRequest', payload);
+            global.io.to('cashier_room').emit('paymentRequest', payload);
             
-            // Also notify cashier room
-            global.io.to('cashier_room').emit('paymentRequest', {
-                orderId: parseInt(orderId),
-                tableNumber: od.table_number,
-                method: method.toUpperCase(),
-                total: total,
-                slip: slip,
-                playSound: true
+            // Also update the order status to "PAYMENT_REQUESTED" or similar if you want
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(orderId), 
+                status: 'PAYMENT_PENDING',
+                paymentMethod: method.toUpperCase()
             });
         }
 
@@ -1191,6 +1203,65 @@ export const requestPayment = async (req, res) => {
     } catch (err) {
         console.error('Request payment error:', err);
         res.status(500).json({ message: 'Server error' });
+    }
+};
+
+/**
+ * Close Order (Process Payment) - Restricted to Cashier/Admin/Manager
+ */
+export const closeOrder = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { orderId } = req.params;
+        const { role } = req.user; // Assuming auth middleware adds role
+
+        // 1. Authorization check
+        const allowedRoles = ['cashier', 'admin', 'manager'];
+        if (!allowedRoles.includes(role?.toLowerCase())) {
+            return res.status(403).json({ message: 'Only Cashier, Admin, or Manager can close orders' });
+        }
+
+        await connection.beginTransaction();
+
+        // 2. Get order info
+        const [orders] = await connection.query('SELECT table_id, status_id FROM orders WHERE id = ?', [orderId]);
+        if (orders.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Order not found' });
+        }
+        const { table_id: tableId } = orders[0];
+
+        // 3. Update status to COMPLETED and mark as paid
+        const [compStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "COMPLETED"');
+        const completedId = compStatus[0]?.id || 5;
+
+        await connection.query(
+            'UPDATE orders SET status_id = ?, main_status = "COMPLETED", paid_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [completedId, orderId]
+        );
+
+        // 4. Free the table
+        if (tableId) {
+            await connection.query('UPDATE restaurant_tables SET status = "available" WHERE id = ?', [tableId]);
+        }
+
+        await connection.commit();
+
+        // 5. Notify all
+        if (global.io) {
+            global.io.emit('orderUpdate', { orderId: parseInt(orderId), status: 'COMPLETED', action: 'ORDER_CLOSED' });
+            if (tableId) {
+                global.io.emit('tableUpdate', { tableId: tableId, status: 'Available' });
+            }
+        }
+
+        res.json({ success: true, message: 'Order closed and table freed successfully' });
+    } catch (err) {
+        await connection.rollback();
+        console.error('Close order error:', err);
+        res.status(500).json({ message: 'Failed to close order' });
+    } finally {
+        connection.release();
     }
 };
 

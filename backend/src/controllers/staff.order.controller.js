@@ -81,6 +81,18 @@ export const updateOrderStatus = async (req, res) => {
             [statusId, targetStatus, orderId]
         );
 
+        if (global.io) {
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(orderId), 
+                status: targetStatus,
+                mainStatus: targetStatus 
+            });
+            global.io.emit('orderStatusUpdated', { 
+                orderId: parseInt(orderId), 
+                mainStatus: targetStatus 
+            });
+        }
+
         // Notify relevant staff based on new status
         const { notifyRoles } = await import('./staff.notification.controller.js');
         if (targetStatus === 'PREPARING') {

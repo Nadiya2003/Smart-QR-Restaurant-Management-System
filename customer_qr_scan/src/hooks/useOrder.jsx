@@ -99,7 +99,7 @@ export function OrderProvider({ children }) {
             // Update local state immediately for visual feedback
             setCurrentOrder(prev => {
                 if (!prev) return prev;
-                return { 
+                const updated = { 
                     ...prev, 
                     status: rawStatus,
                     main_status: rawStatus,
@@ -107,6 +107,10 @@ export function OrderProvider({ children }) {
                     bar_status: data.barStatus || prev.bar_status,
                     isAutoClosed: data.isAutoClosed || prev.isAutoClosed
                 };
+                if (data.cancellationStatus) {
+                    updated.cancellation_status = data.cancellationStatus;
+                }
+                return updated;
             });
 
             // Refetch full object to ensure data consistency
@@ -121,9 +125,32 @@ export function OrderProvider({ children }) {
         
         if (orderIdFromData === activeId) {
             playStatusSound();
-            setCurrentOrder(prev => prev ? { ...prev, status: 'CANCELLED', main_status: 'CANCELLED' } : prev);
-            if (user) fetchOrderHistory();
-            else fetchGuestOrder();
+            
+            if (data.isPartial) {
+                if (user) fetchOrderHistory();
+                else fetchGuestOrder();
+            } else {
+                setCurrentOrder(prev => prev ? { 
+                    ...prev, 
+                    status: 'CANCELLED', 
+                    main_status: 'CANCELLED',
+                    cancellation_status: 'APPROVED'
+                } : prev);
+                if (user) fetchOrderHistory();
+                else fetchGuestOrder();
+            }
+        }
+    });
+
+    socket.on('cancelRequest', (data) => {
+        const activeId = localStorage.getItem('activeOrderId');
+        const orderIdFromData = (data.orderId || data.id)?.toString();
+        
+        if (orderIdFromData === activeId && data.status) {
+            setCurrentOrder(prev => prev ? { 
+                ...prev, 
+                cancellation_status: data.status.toUpperCase() 
+            } : prev);
         }
     });
 

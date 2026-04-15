@@ -25,8 +25,7 @@ function Auth() {
         email: '',
         password: '',
         confirmPassword: '',
-        otp: '',
-        profile_image: ''
+        otp: ''
     });
 
     const [selectedFile, setSelectedFile] = useState(null);
@@ -102,8 +101,6 @@ function Auth() {
             fd.append('password', formData.password);
             if (selectedFile) {
                 fd.append('profile_image', selectedFile);
-            } else if (formData.profile_image) {
-                fd.append('profile_image', formData.profile_image);
             }
 
             const res = await fetch(`${config.API_BASE_URL}/api/auth/register`, {
@@ -233,23 +230,13 @@ function Auth() {
                         <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required autoComplete="off" />
                         
                         <div className="space-y-2">
-                            <label className="text-xs text-gray-400 pl-1 uppercase tracking-widest font-bold">Profile Image</label>
+                            <label className="text-xs text-gray-400 pl-1 uppercase tracking-widest font-bold">Profile Image (Optional)</label>
                             <input 
                                 type="file" 
                                 name="profile_image_file" 
                                 onChange={handleFileChange} 
                                 className="input-glass w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#D4AF37]/20 file:text-[#D4AF37] hover:file:bg-[#D4AF37]/30" 
                                 accept="image/*"
-                            />
-                            <p className="text-[10px] text-gray-500 pl-1 italic">Or provide an image URL below</p>
-                            <input 
-                                type="text" 
-                                name="profile_image" 
-                                value={formData.profile_image} 
-                                onChange={handleChange} 
-                                className="input-glass w-full text-xs" 
-                                placeholder="https://example.com/avatar.jpg" 
-                                autoComplete="off"
                             />
                         </div>
 

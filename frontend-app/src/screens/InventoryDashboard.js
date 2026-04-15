@@ -8,10 +8,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
+import InventoryReports from './InventoryReports';
 
 const { width } = Dimensions.get('window');
 
-const InventoryDashboard = () => {
+const InventoryDashboard = ({ onLogout }) => {
     const { user, token, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('inventory');
     const [loading, setLoading] = useState(false);
@@ -61,7 +62,13 @@ const InventoryDashboard = () => {
     const handleLogout = () => {
         Alert.alert('Logout', 'Are you sure you want to logout?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', onPress: logout }
+            { 
+                text: 'Logout', 
+                onPress: async () => {
+                    await logout();
+                    if (onLogout) onLogout();
+                } 
+            }
         ]);
     };
 
@@ -74,13 +81,13 @@ const InventoryDashboard = () => {
                 status: selectedStatus
             }).toString();
 
-            const [invRes, supRes, reqRes, histRes, notifRes, repoRes, orderRes] = await Promise.all([
+            // 1. Fetch Inventory & Core Data (Parallel)
+            const [invRes, supRes, reqRes, histRes, notifRes, orderRes] = await Promise.all([
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory?${params}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/suppliers`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/history`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/report?startDate=${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}&endDate=${new Date().toISOString().split('T')[0]}`, { headers }),
                 fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders`, { headers })
             ]);
 
@@ -89,13 +96,16 @@ const InventoryDashboard = () => {
             if (reqRes.ok) setRestockRequests((await reqRes.json()).requests || []);
             if (histRes.ok) setStockHistory((await histRes.json()).history || []);
             if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
-            if (repoRes.ok) setReportData(await repoRes.json());
             if (orderRes.ok) setSupplierOrders((await orderRes.json()).orders || []);
 
-            // Vibration for Low Stock Alerts (if any new ones)
-            const lowStockCount = inventory.filter(i => i.status === 'Low Stock' || i.status === 'Out of Stock').length;
-            if (lowStockCount > 0 && isSilent) {
-                // Subtle alert
+            // 2. Fetch Reports Separately (Don't let it block core inventory if it fails)
+            try {
+                const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+                const end = new Date().toISOString().split('T')[0];
+                const repoRes = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/report?startDate=${start}&endDate=${end}`, { headers });
+                if (repoRes.ok) setReportData(await repoRes.json());
+            } catch (repoErr) {
+                console.warn('Report fetch failed:', repoErr.message);
             }
 
         } catch (error) {
@@ -238,66 +248,66 @@ const InventoryDashboard = () => {
     const renderHeader = () => (
         <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity 
-                    onPress={() => setActiveTab('account')}
-                    style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
-                >
-                    {user?.profile_image || user?.image ? (
-                        <Image 
-                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
-                            style={styles.profileImg}
-                        />
-                    ) : (
-                        <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
-                    )}
-                </TouchableOpacity>
-                <View style={{ marginLeft: 12 }}>
-                    <Text style={styles.greeting}>Inventory Portal</Text>
-                    <Text style={styles.roleTitle}>{user?.name} · Manager</Text>
+                    <TouchableOpacity 
+                        onPress={() => setActiveTab('account')}
+                        style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
+                    >
+                        {user?.profile_image || user?.image ? (
+                            <Image 
+                                source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                                style={styles.profileImg}
+                            />
+                        ) : (
+                            <Text style={styles.profileInitial}>{user?.name?.charAt(0)}</Text>
+                        )}
+                    </TouchableOpacity>
+                    <View style={{ marginLeft: 12 }}>
+                        <Text style={styles.greeting}>Inventory Portal</Text>
+                        <Text style={styles.roleTitle}>{user?.name} · Manager</Text>
+                    </View>
                 </View>
-            </View>
-            <View style={styles.headerActions}>
-                {(activeTab === 'inventory' || activeTab === 'orders') && (
-                    <TouchableOpacity 
-                        onPress={() => {
-                            setSelectedItem(null);
-                            setRequestQty('');
-                            setSelectedSupplierId('');
-                            setShowRequestModal(true);
-                        }} 
-                        style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
-                    >
-                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Order</Text>
+                <View style={styles.headerActions}>
+                    {(activeTab === 'inventory' || activeTab === 'orders') && (
+                        <TouchableOpacity 
+                            onPress={() => {
+                                setSelectedItem(null);
+                                setRequestQty('');
+                                setSelectedSupplierId('');
+                                setShowRequestModal(true);
+                            }} 
+                            style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
+                        >
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Order</Text>
+                        </TouchableOpacity>
+                    )}
+                    {activeTab === 'inventory' && (
+                        <TouchableOpacity 
+                            onPress={() => {
+                                setEditingItem(null);
+                                setInventoryForm({ item_name: '', category: 'Kitchen', unit: 'kg', quantity: '0', min_level: '5', supplier_id: '' });
+                                setShowInventoryModal(true);
+                            }} 
+                            style={[styles.headerActionBtn, { backgroundColor: '#10B981', marginRight: 10 }]}
+                        >
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Item</Text>
+                        </TouchableOpacity>
+                    )}
+                    {activeTab === 'requests' && (
+                        <TouchableOpacity 
+                            onPress={() => {
+                                setSelectedItem(null);
+                                setRequestQty('');
+                                setSelectedSupplierId('');
+                                setShowRequestModal(true);
+                            }} 
+                            style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
+                        >
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Request</Text>
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+                        <Text style={{ fontSize: 18 }}>🚪</Text>
                     </TouchableOpacity>
-                )}
-                {activeTab === 'inventory' && (
-                    <TouchableOpacity 
-                        onPress={() => {
-                            setEditingItem(null);
-                            setInventoryForm({ item_name: '', category: 'Kitchen', unit: 'kg', quantity: '0', min_level: '5', supplier_id: '' });
-                            setShowInventoryModal(true);
-                        }} 
-                        style={[styles.headerActionBtn, { backgroundColor: '#10B981', marginRight: 10 }]}
-                    >
-                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Item</Text>
-                    </TouchableOpacity>
-                )}
-                {activeTab === 'requests' && (
-                    <TouchableOpacity 
-                        onPress={() => {
-                            setSelectedItem(null);
-                            setRequestQty('');
-                            setSelectedSupplierId('');
-                            setShowRequestModal(true);
-                        }} 
-                        style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
-                    >
-                        <Text style={{ color: 'white', fontWeight: 'bold' }}>+ Request</Text>
-                    </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-                    <Text style={{ fontSize: 18 }}>🚪</Text>
-                </TouchableOpacity>
             </View>
         </View>
     );
@@ -585,100 +595,229 @@ const InventoryDashboard = () => {
         </ScrollView>
     );
 
-    const handleGenerateReport = () => {
-        Alert.alert('Generating Report', 'Downloading PDF Report...', [{ text: 'OK' }]);
-    };
-
     const renderReport = () => {
-        if (!reportData) return (
-            <View style={styles.emptyState}>
-                <ActivityIndicator size="large" color="#111827" />
-                <Text>Loading stats...</Text>
-            </View>
-        );
+        // Derive quick stats from already-loaded inventory state
+        const totalItems     = inventory.length;
+        const availableItems = inventory.filter(i => i.status === 'Available').length;
+        const lowStockItems  = inventory.filter(i => i.status === 'Low Stock').length;
+        const outItems       = inventory.filter(i => i.status === 'Out of Stock').length;
+        const criticalPct    = totalItems > 0 ? Math.round(((lowStockItems + outItems) / totalItems) * 100) : 0;
+
+        const now   = new Date();
+        const month = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+        const statCards = [
+            { icon: '📦', label: 'Total Items',   value: totalItems,     color: '#3B82F6', bg: '#EFF6FF' },
+            { icon: '✅', label: 'In Stock',       value: availableItems, color: '#10B981', bg: '#ECFDF5' },
+            { icon: '⚠️', label: 'Low Stock',     value: lowStockItems,  color: '#F59E0B', bg: '#FFFBEB' },
+            { icon: '🚨', label: 'Out of Stock',  value: outItems,       color: '#EF4444', bg: '#FEF2F2' },
+        ];
+
+        const quickActions = [
+            { icon: '📊', label: 'Full Reports',      desc: 'Analytics & charts',  onPress: () => setActiveTab('fullreport'), isReport: true },
+            { icon: '📋', label: 'All Items',          desc: 'Browse inventory',     onPress: () => setActiveTab('inventory') },
+            { icon: '⚠️', label: 'Low Stock',         desc: `${lowStockItems} items`, onPress: () => setActiveTab('inventory'), warn: lowStockItems > 0 },
+            { icon: '🚚', label: 'Restock Requests',  desc: 'Pending requests',     onPress: () => setActiveTab('requests') },
+        ];
+
+        const recentLow = inventory.filter(i => i.status !== 'Available').slice(0, 5);
+
         return (
-            <ScrollView style={styles.content}>
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Inventory Analytics</Text>
-                    <TouchableOpacity onPress={handleGenerateReport} style={[styles.headerActionBtn, { backgroundColor: '#4F46E5' }]}>
-                        <Text style={{ color: 'white', fontWeight: 'bold' }}>Download PDF</Text>
-                    </TouchableOpacity>
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+
+                {/* ── Hero welcome banner ── */}
+                <View style={statsS.hero}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={statsS.heroGreeting}>Good {now.getHours() < 12 ? 'Morning' : now.getHours() < 17 ? 'Afternoon' : 'Evening'} 👋</Text>
+                        <Text style={statsS.heroName}>{user?.name?.split(' ')[0] || 'Manager'}</Text>
+                        <Text style={statsS.heroPeriod}>{month} · Inventory Overview</Text>
+                    </View>
+                    <View style={[statsS.healthBadge, { backgroundColor: criticalPct > 20 ? '#FEE2E2' : '#DCFCE7' }]}>
+                        <Text style={{ fontSize: 20 }}>{criticalPct > 20 ? '⚠️' : '✅'}</Text>
+                        <Text style={[statsS.healthPct, { color: criticalPct > 20 ? '#DC2626' : '#16A34A' }]}>{100 - criticalPct}%</Text>
+                        <Text style={[statsS.healthLbl, { color: criticalPct > 20 ? '#DC2626' : '#16A34A' }]}>Healthy</Text>
+                    </View>
                 </View>
 
-                {/* Status Stats */}
-                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>Current Stock Status</Text>
-                <View style={[styles.statsRow, { flexDirection: 'row', gap: 10 }]}>
-                    {reportData.statusStats?.map(s => (
-                        <View key={s.status} style={[styles.statBox, { flex: 1, padding: 15, borderRadius: 12, alignItems: 'center', backgroundColor: s.status === 'Available' ? '#D1FAE5' : s.status === 'Low Stock' ? '#FEF3C7' : '#FEE2E2' }]}>
-                            <Text style={[{ fontSize: 24, fontWeight: 'bold' }, { color: s.status === 'Available' ? '#065F46' : s.status === 'Low Stock' ? '#D97706' : '#DC2626' }]}>{s.count}</Text>
-                            <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 4 }}>{s.status}</Text>
+                {/* ── KPI Grid ── */}
+                <Text style={statsS.sectionLbl}>📈 STOCK SNAPSHOT</Text>
+                <View style={statsS.kpiGrid}>
+                    {statCards.map((c, idx) => (
+                        <View key={`kc-${idx}`} style={[statsS.kpiCard, { backgroundColor: c.bg, borderLeftColor: c.color }]}>
+                            <Text style={statsS.kpiIcon}>{c.icon}</Text>
+                            <Text style={[statsS.kpiVal, { color: c.color }]}>{c.value}</Text>
+                            <Text style={statsS.kpiLbl}>{c.label}</Text>
                         </View>
                     ))}
                 </View>
 
-                {/* Most Used Items */}
-                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, marginTop: 20 }}>Most Used Items</Text>
-                {reportData.usageStats?.length > 0 ? (
-                    reportData.usageStats.map(u => (
-                        <View key={u.item_name} style={[styles.itemCard, { padding: 12, marginBottom: 8 }]}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={styles.itemName}>{u.item_name}</Text>
-                                <Text style={styles.statusTextOk}>{u.used_quantity} units used</Text>
-                            </View>
+                {/* ── Visual health bar ── */}
+                <View style={statsS.healthBar}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={statsS.healthBarTitle}>Stock Health Overview</Text>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>{totalItems} total items</Text>
+                    </View>
+                    <View style={statsS.barTrack}>
+                        {availableItems > 0 && <View style={[statsS.barFill, { flex: availableItems, backgroundColor: '#10B981' }]} />}
+                        {lowStockItems  > 0 && <View style={[statsS.barFill, { flex: lowStockItems,  backgroundColor: '#F59E0B' }]} />}
+                        {outItems       > 0 && <View style={[statsS.barFill, { flex: outItems,       backgroundColor: '#EF4444' }]} />}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' }} />
+                            <Text style={{ fontSize: 10, color: '#64748B' }}>In Stock ({availableItems})</Text>
                         </View>
-                    ))
-                ) : (
-                    <Text style={styles.subText}>No usage data available for this period.</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#F59E0B' }} />
+                            <Text style={{ fontSize: 10, color: '#64748B' }}>Low ({lowStockItems})</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />
+                            <Text style={{ fontSize: 10, color: '#64748B' }}>Out ({outItems})</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* ── Quick Actions ── */}
+                <Text style={statsS.sectionLbl}>⚡ QUICK ACTIONS</Text>
+                <View style={statsS.qaGrid}>
+                    {quickActions.map((q, idx) => (
+                        <TouchableOpacity
+                            key={`qa-${idx}`}
+                            onPress={q.onPress}
+                            activeOpacity={0.7}
+                            style={[statsS.qaCard, q.isReport && statsS.qaCardReport, q.warn && statsS.qaCardWarn]}
+                        >
+                            <Text style={statsS.qaIcon}>{q.icon}</Text>
+                            <Text style={[statsS.qaLabel, q.isReport && { color: '#FFF' }]}>{q.label}</Text>
+                            <Text style={[statsS.qaDesc, q.isReport && { color: '#BFDBFE' }, q.warn && { color: '#DC2626' }]}>{q.desc}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {/* ── Launch Full Reports CTA ── */}
+                <TouchableOpacity onPress={() => setActiveTab('fullreport')} activeOpacity={0.85} style={statsS.reportCTA}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={statsS.ctaTitle}>📊 Advanced Inventory Reports</Text>
+                        <Text style={statsS.ctaDesc}>Area-wise breakdowns · Usage trends · Export PDF</Text>
+                    </View>
+                    <Text style={{ fontSize: 22, color: '#BFDBFE' }}>→</Text>
+                </TouchableOpacity>
+
+                {/* ── Items needing attention ── */}
+                {recentLow.length > 0 && (
+                    <>
+                        <Text style={statsS.sectionLbl}>🚨 NEEDS ATTENTION</Text>
+                        {recentLow.map((item, idx) => {
+                            const isOut = item.status === 'Out of Stock';
+                            const color = isOut ? '#EF4444' : '#F59E0B';
+                            const bg    = isOut ? '#FEF2F2' : '#FFFBEB';
+                            return (
+                                <View key={`att-${idx}`} style={[statsS.attRow, { borderLeftColor: color }]}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={statsS.attName}>{item.item_name}</Text>
+                                        <Text style={statsS.attSub}>{item.category} · Min: {item.min_level} {item.unit}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={[statsS.attQty, { color }]}>{item.quantity} {item.unit}</Text>
+                                        <View style={[statsS.attBadge, { backgroundColor: bg }]}>
+                                            <Text style={[statsS.attBadgeTxt, { color }]}>{isOut ? 'OUT' : 'LOW'}</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </>
                 )}
-                <View style={{ height: 100 }} />
+
+                {/* ── Recent History ── */}
+                {stockHistory.length > 0 && (
+                    <>
+                        <Text style={statsS.sectionLbl}>🕐 RECENT ACTIVITY</Text>
+                        {stockHistory.slice(0, 4).map((h, idx) => {
+                            const typeColor = h.action_type === 'ADD' ? '#10B981' : h.action_type === 'REDUCE' ? '#EF4444' : h.action_type === 'RESTOCK' ? '#3B82F6' : '#F59E0B';
+                            const typeIcon  = h.action_type === 'ADD' ? '➕' : h.action_type === 'REDUCE' ? '➖' : h.action_type === 'RESTOCK' ? '📦' : '✏️';
+                            return (
+                                <View key={`hist-${idx}`} style={statsS.histRow}>
+                                    <View style={[statsS.histDot, { backgroundColor: typeColor + '22' }]}>
+                                        <Text style={{ fontSize: 13 }}>{typeIcon}</Text>
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: 10 }}>
+                                        <Text style={statsS.histItem}>{h.item_name || 'Inventory Item'}</Text>
+                                        <Text style={statsS.histReason}>{h.reason || h.action_type}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={[statsS.histQty, { color: typeColor }]}>{h.action_type === 'REDUCE' ? '-' : '+'}{h.quantity}</Text>
+                                        <Text style={statsS.histTime}>{new Date(h.created_at).toLocaleDateString()}</Text>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </>
+                )}
+
+                <View style={{ height: 30 }} />
             </ScrollView>
         );
     };
 
+    /* Full-screen reports — renders without dashboard chrome (no header/footer) */
+    if (activeTab === 'fullreport') {
+        return (
+            <InventoryReports
+                token={token}
+                onBack={() => setActiveTab('stats')}
+            />
+        );
+    }
+
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
+            <SafeAreaView edges={['top']} style={{ flex: 0, backgroundColor: 'white' }} />
             {renderHeader()}
 
             <View style={styles.mainContainer}>
                 {activeTab === 'inventory' && renderInventory()}
-                {activeTab === 'requests' && renderRequests()}
-                {activeTab === 'orders' && renderOrders()}
-                {activeTab === 'history' && renderHistory()}
-                {activeTab === 'report' && renderReport()}
-                {activeTab === 'account' && (
+                {activeTab === 'requests'  && renderRequests()}
+                {activeTab === 'orders'    && renderOrders()}
+                {activeTab === 'history'   && renderHistory()}
+                {activeTab === 'stats'     && renderReport()}
+                {activeTab === 'account'   && (
                     <View style={{ flex: 1, padding: 15 }}>
                         <AccountSection />
                     </View>
                 )}
             </View>
 
-            {/* Bottom Nav */}
-            <View style={styles.bottomNav}>
-                <TouchableOpacity onPress={() => setActiveTab('inventory')} style={[styles.navItem, activeTab === 'inventory' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>📦</Text>
-                    <Text style={[styles.navLabel, activeTab === 'inventory' && styles.activeNavLabel]}>Stock</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('requests')} style={[styles.navItem, activeTab === 'requests' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>🚚</Text>
-                    <Text style={[styles.navLabel, activeTab === 'requests' && styles.activeNavLabel]}>Requests</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>📤</Text>
-                    <Text style={[styles.navLabel, activeTab === 'orders' && styles.activeNavLabel]}>Orders</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>📜</Text>
-                    <Text style={[styles.navLabel, activeTab === 'history' && styles.activeNavLabel]}>Logs</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('report')} style={[styles.navItem, activeTab === 'report' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>📊</Text>
-                    <Text style={[styles.navLabel, activeTab === 'report' && styles.activeNavLabel]}>Stats</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
-                    <Text style={styles.navIcon}>👤</Text>
-                    <Text style={[styles.navLabel, activeTab === 'account' && styles.activeNavLabel]}>Profile</Text>
-                </TouchableOpacity>
-            </View>
+            {/* Bottom Navigation */}
+            <SafeAreaView edges={['bottom']} style={{ backgroundColor: 'white' }}>
+                <View style={styles.bottomNav}>
+                    <TouchableOpacity onPress={() => setActiveTab('inventory')} style={[styles.navItem, activeTab === 'inventory' && styles.activeNav]}>
+                        <Text style={styles.navIcon}>📦</Text>
+                        <Text style={[styles.navLabel, activeTab === 'inventory' && styles.activeNavLabel]}>Stock</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('requests')} style={[styles.navItem, activeTab === 'requests' && styles.activeNav]}>
+                        <Text style={styles.navIcon}>🚚</Text>
+                        <Text style={[styles.navLabel, activeTab === 'requests' && styles.activeNavLabel]}>Requests</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.navItem, activeTab === 'orders' && styles.activeNav]}>
+                        <Text style={styles.navIcon}>📤</Text>
+                        <Text style={[styles.navLabel, activeTab === 'orders' && styles.activeNavLabel]}>Orders</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('history')} style={[styles.navItem, activeTab === 'history' && styles.activeNav]}>
+                        <Text style={styles.navIcon}>📜</Text>
+                        <Text style={[styles.navLabel, activeTab === 'history' && styles.activeNavLabel]}>Logs</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('stats')} style={[styles.navItem, (activeTab === 'stats' || activeTab === 'fullreport') && styles.activeNav]}>
+                        <Text style={styles.navIcon}>📊</Text>
+                        <Text style={[styles.navLabel, (activeTab === 'stats' || activeTab === 'fullreport') && styles.activeNavLabel]}>Stats</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.navItem, activeTab === 'account' && styles.activeNav]}>
+                        <Text style={styles.navIcon}>👤</Text>
+                        <Text style={[styles.navLabel, activeTab === 'account' && styles.activeNavLabel]}>Profile</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
 
             {/* Inventory CRUD Modal */}
             <Modal visible={showInventoryModal} transparent animationType="slide">
@@ -883,7 +1022,7 @@ const InventoryDashboard = () => {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 };
 
@@ -983,6 +1122,7 @@ const styles = StyleSheet.create({
     badgePENDING: { backgroundColor: '#FEF3C7' },
     badgeAPPROVED: { backgroundColor: '#DBEAFE' },
     badgeCOMPLETED: { backgroundColor: '#D1FAE5' },
+    badgeREJECTED: { backgroundColor: '#FEE2E2' },
     reqBadgeText: { fontSize: 10, fontWeight: 'bold' },
     reqDetails: { fontSize: 13, color: '#4B5563' },
     reqDate: { fontSize: 10, color: '#9CA3AF', marginTop: 4 },
@@ -1030,6 +1170,97 @@ const styles = StyleSheet.create({
     emptyState: { padding: 40, alignItems: 'center' },
     emptyText: { color: '#9CA3AF', textAlign: 'center' },
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
+
+    // Analytics Styles
+    analyticsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    analyticsTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+    analyticsDate: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+    downloadBtn: { backgroundColor: '#F3F4F6', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    downloadBtnText: { fontSize: 13, fontWeight: '700', color: '#374151' },
+    statGrid: { flexDirection: 'row', gap: 12, marginBottom: 25 },
+    statKpiCard: { flex: 1, backgroundColor: 'white', padding: 15, borderRadius: 16, alignItems: 'center', borderTopWidth: 4, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 },
+    statKpiVal: { fontSize: 24, fontWeight: '800' },
+    statKpiLabel: { fontSize: 11, color: '#6B7280', marginTop: 4, fontWeight: '600' },
+    chartWrapper: { backgroundColor: 'white', padding: 20, borderRadius: 20, marginBottom: 20, elevation: 2 },
+    chartTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 15 },
+    usageRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 12 },
+    usageName: { fontSize: 14, color: '#374151', marginBottom: 4, fontWeight: '500' },
+    usageBarContainer: { height: 8, backgroundColor: '#F3F4F6', borderRadius: 4, overflow: 'hidden' },
+    usageBar: { height: '100%', borderRadius: 4 },
+    usageVal: { fontSize: 13, fontWeight: '700', color: '#111827', width: 70, textAlign: 'right' },
+    activitySummary: { backgroundColor: 'white', padding: 20, borderRadius: 20, marginBottom: 20 },
+    summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    summaryBox: { flex: 1, minWidth: '45%', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12, alignItems: 'center' },
+    summaryVal: { fontSize: 18, fontWeight: '800', color: '#111827' },
+    summaryLabel: { fontSize: 11, color: '#6B7280', marginTop: 2 },
+    emptySmall: { padding: 20, alignItems: 'center' },
+    emptySmallText: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' },
+
+    // Bottom navigation bar
+    bottomNav:      { flexDirection: 'row', backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 8, paddingBottom: 4 },
+    navItem:        { flex: 1, alignItems: 'center', paddingVertical: 4 },
+    activeNav:      { borderTopWidth: 2, borderTopColor: '#111827', marginTop: -1 },
+    navIcon:        { fontSize: 20, marginBottom: 2 },
+    navLabel:       { fontSize: 9, color: '#9CA3AF', fontWeight: '600' },
+    activeNavLabel: { color: '#111827', fontWeight: '800' },
+});
+
+// ── Stats tab dedicated styles ────────────────────────────────
+const statsS = StyleSheet.create({
+    // Hero banner
+    hero:         { backgroundColor: '#0F172A', borderRadius: 18, padding: 18, flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: 4 },
+    heroGreeting: { fontSize: 12, color: '#94A3B8', marginBottom: 2 },
+    heroName:     { fontSize: 22, fontWeight: '800', color: '#FFF', marginBottom: 2 },
+    heroPeriod:   { fontSize: 11, color: '#64748B' },
+    healthBadge:  { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+    healthPct:    { fontSize: 16, fontWeight: '800', lineHeight: 18 },
+    healthLbl:    { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+
+    // Section label
+    sectionLbl: { fontSize: 10, fontWeight: '800', color: '#94A3B8', letterSpacing: 1, marginBottom: 10, marginTop: 4 },
+
+    // KPI grid — 2×2
+    kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+    kpiCard: { flex: 1, minWidth: '47%', borderRadius: 14, padding: 14, borderLeftWidth: 4 },
+    kpiIcon: { fontSize: 20, marginBottom: 6 },
+    kpiVal:  { fontSize: 28, fontWeight: '800', lineHeight: 30 },
+    kpiLbl:  { fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 2 },
+
+    // Health bar
+    healthBar:      { backgroundColor: '#FFF', borderRadius: 14, padding: 16, marginBottom: 16, elevation: 1 },
+    healthBarTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+    barTrack:       { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: '#E2E8F0' },
+    barFill:        { height: '100%' },
+
+    // Quick actions — 2×2 grid
+    qaGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+    qaCard:       { flex: 1, minWidth: '47%', backgroundColor: '#FFF', borderRadius: 14, padding: 14, elevation: 1 },
+    qaCardReport: { backgroundColor: '#1D4ED8' },
+    qaCardWarn:   { borderWidth: 1.5, borderColor: '#FEF3C7', backgroundColor: '#FFFBEB' },
+    qaIcon:       { fontSize: 22, marginBottom: 6 },
+    qaLabel:      { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
+    qaDesc:       { fontSize: 10, color: '#64748B' },
+
+    // Reports CTA button
+    reportCTA:  { backgroundColor: '#1E40AF', borderRadius: 16, padding: 18, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    ctaTitle:   { fontSize: 15, fontWeight: '800', color: '#FFF', marginBottom: 3 },
+    ctaDesc:    { fontSize: 11, color: '#93C5FD' },
+
+    // Attention rows
+    attRow:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 8, borderLeftWidth: 4, elevation: 1 },
+    attName:    { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+    attSub:     { fontSize: 10, color: '#94A3B8', marginTop: 2 },
+    attQty:     { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+    attBadge:   { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+    attBadgeTxt:{ fontSize: 9, fontWeight: '800' },
+
+    // Recent history rows
+    histRow:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8, elevation: 1 },
+    histDot:    { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+    histItem:   { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+    histReason: { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+    histQty:    { fontSize: 14, fontWeight: '800' },
+    histTime:   { fontSize: 9, color: '#CBD5E1', marginTop: 2 },
 });
 
 export default InventoryDashboard;

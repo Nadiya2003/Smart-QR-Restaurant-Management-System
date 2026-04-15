@@ -8,7 +8,7 @@ export const getSummary = async (req, res) => {
     try {
         const userId = req.user.userId;
         const [[activeDeliveries]] = await pool.query(
-            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND order_status = 'Out for Delivery'",
+            "SELECT COUNT(*) as count FROM delivery_orders WHERE created_by = ? AND order_status IN ('Accepted', 'Picked Up', 'On the Way')",
             [userId]
         );
         const [[pendingOrders]] = await pool.query(
@@ -40,22 +40,27 @@ export const getSummary = async (req, res) => {
  */
 export const getOrders = async (req, res) => {
     try {
+        const userId = req.user.userId;
         const [orders] = await pool.query(`
             SELECT do.*, 
                    (SELECT JSON_ARRAYAGG(
                        JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes)
-                   ) FROM delivery_order_items doi JOIN menu_items mi ON doi.menu_item_id = mi.id WHERE doi.order_id = do.id) as items
+                   ) FROM delivery_order_items doi JOIN menu_items mi ON doi.menu_item_id = mi.id WHERE doi.order_id = do.id) as items_detailed
             FROM delivery_orders do
-            WHERE do.order_status != 'Delivered' 
-               OR (do.order_status = 'Delivered' AND do.payment_status NOT IN ('settled', 'paid', 'Paid', 'Completed'))
+            WHERE (do.order_status = 'Pending' OR do.created_by = ?)
+              AND do.order_status NOT IN ('Pending Final Closure', 'Closed', 'Cancelled')
             ORDER BY do.created_at DESC
-        `);
+        `, [userId]);
 
         // Parse items if returned as string
         const parsedOrders = orders.map(o => {
             let parsedItems = [];
             try {
-                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+                // Use items_detailed if available, otherwise fallback to JSON column 'items'
+                parsedItems = typeof o.items_detailed === 'string' ? JSON.parse(o.items_detailed) : (o.items_detailed || []);
+                if (parsedItems.length === 0 && o.items) {
+                    parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+                }
             } catch (e) {
                 console.error('Invalid items JSON for order:', o.id);
             }
@@ -82,11 +87,12 @@ export const createOrder = async (req, res) => {
         const riderId = req.user.userId;
 
         await connection.beginTransaction();
+        const itemsJson = items ? JSON.stringify(items) : null;
 
         const [result] = await connection.query(
-            `INSERT INTO delivery_orders (customer_name, phone, address, latitude, longitude, order_type, order_status, payment_status, total_price, created_by, customer_id) 
-             VALUES (?, ?, ?, ?, ?, 'rider', 'Pending', ?, ?, ?, ?)`,
-            [customer_name, phone, address, latitude, longitude, payment_status || 'Unpaid', total_price, riderId, null]
+            `INSERT INTO delivery_orders (customer_name, phone, address, latitude, longitude, order_type, order_status, payment_status, total_price, created_by, customer_id, items) 
+             VALUES (?, ?, ?, ?, ?, 'rider', 'Pending', ?, ?, ?, ?, ?)`,
+            [customer_name, phone, address, latitude, longitude, payment_status || 'pending', total_price, riderId, null, itemsJson]
         );
 
         const orderId = result.insertId;
@@ -101,42 +107,65 @@ export const createOrder = async (req, res) => {
             // Add to Order Analytics for reports
             const analyticsMethod = payment_status === 'Paid' ? 'ONLINE' : 'CASH';
             for (const item of items) {
+                const buyPrice = Number(item.buying_price) || 0;
+                const sellPrice = Number(item.price) || 0;
+                const qty = Number(item.quantity) || 1;
+                const profit = (sellPrice - buyPrice) * qty;
+
                 await connection.query(
                     `INSERT INTO order_analytics 
-                    (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) 
-                    VALUES (?, 'DELIVERY', 'pending', ?, ?, ?, ?, ?, ?, ?)`,
+                    (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) 
+                    VALUES (?, 'DELIVERY', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         orderId, 
                         analyticsMethod, 
                         item.id, 
                         item.name, 
                         item.category || 'General', 
-                        item.quantity, 
-                        item.price, 
-                        item.price * item.quantity
+                        qty, 
+                        sellPrice, 
+                        sellPrice * qty,
+                        buyPrice,
+                        profit
                     ]
                 );
             }
         }
 
-        // Notify Admin/Cashier/Kitchen
+        // Notify Admin/Cashier (Role ID 1)
+        // Set user_id to NULL to avoid foreign key issues with ID 0
         await connection.query(
-            "INSERT INTO notifications (user_id, role_id, title, message, type) VALUES (?, ?, ?, ?, ?)",
-            [0, 1, 'New Delivery Order', `New order #${orderId} created by rider ${customer_name}`, 'delivery_order']
+            "INSERT INTO notifications (user_id, role_id, title, message, type, target_audience) VALUES (?, ?, ?, ?, ?, ?)",
+            [null, 1, 'New Delivery Order', `New order #${orderId} created by rider ${customer_name}`, 'ORDER', 'Staff']
         );
 
         await connection.commit();
         
-        // Real-time emission
-        io.emit('new_delivery_order', { orderId, customer_name, total_price });
+        // Real-time emission to all dashboards
+        if (global.io) {
+            global.io.emit('newOrder', {
+                orderId: orderId,
+                type: 'DELIVERY',
+                customerName: customer_name,
+                totalPrice: total_price,
+                items: items
+            });
+        }
         
-        res.json({ message: 'Delivery order created successfully', orderId });
+        res.json({ 
+            success: true,
+            message: 'Delivery order created successfully', 
+            orderId: orderId 
+        });
     } catch (error) {
-        await connection.rollback();
-        console.error('Create order error:', error);
-        res.status(500).json({ message: 'Failed to create order', error: error.message });
+        if (connection) await connection.rollback();
+        console.error('Create delivery order error:', error);
+        res.status(500).json({ 
+            message: 'Failed to create order', 
+            error: error.message 
+        });
     } finally {
-        connection.release();
+        if (connection) connection.release();
     }
 };
 
@@ -172,11 +201,11 @@ export const updateOrderStatus = async (req, res) => {
         }
 
         // Validate payment before delivering
-        // Allowed to deliver if payment is 'collected', 'settled', or 'paid'
-        const isNotPaid = !['collected', 'settled', 'paid', 'Completed', 'Paid'].includes(order.payment_status);
+        // Allowed to deliver if payment is 'Paid' or 'Pending Settlement'
+        const isNotPaid = !['Paid', 'Pending Settlement', 'Completed'].includes(order.payment_status);
         if (status === 'Delivered' && isNotPaid && order.payment_method !== 'online') {
             return res.status(402).json({ 
-                message: 'Cannot mark as Delivered while payment is still Pending. Please collect cash or confirm payment first.' 
+                message: 'Cannot mark as Delivered while payment is still Pending. Please collect payment first.' 
             });
         }
 
@@ -184,7 +213,11 @@ export const updateOrderStatus = async (req, res) => {
         let updateQuery = 'UPDATE delivery_orders SET order_status = ?, delivery_status = ? WHERE id = ?';
         let params = [status, status, id];
 
-        if (status === 'Accepted' || status === 'Picked Up') {
+        // Specific behavior for "Complete Delivery" (status 'Delivered')
+        if (status === 'Delivered') {
+            updateQuery = 'UPDATE delivery_orders SET order_status = ?, delivery_status = ? WHERE id = ?';
+            params = ['Pending Final Closure', 'Delivered', id];
+        } else if (status === 'Accepted' || status === 'Picked Up') {
             updateQuery = 'UPDATE delivery_orders SET order_status = ?, delivery_status = ?, created_by = ? WHERE id = ?';
             params = [status, status, riderId, id];
         }
@@ -211,22 +244,21 @@ export const updateOrderStatus = async (req, res) => {
     }
 };
 
-/**
- * PATCH /api/delivery-rider/orders/:id/payment-status
- */
 export const updatePaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { status, method } = req.body; 
 
+        // Map status to ensure consistency with requirements
+        // payment_status: "Unpaid" | "Paid" | "Pending Settlement" | "Completed"
         await pool.query(
             "UPDATE delivery_orders SET payment_status = ?, payment_method = ? WHERE id = ?",
-            [status, method || 'cash', id]
+            [status, method, id]
         );
 
         const io = req.app.get('io') || global.io;
         if (io) {
-            io.emit('delivery_payment_updated', { orderId: id, payment_status: status });
+            io.emit('delivery_payment_updated', { orderId: id, payment_status: status, payment_method: method });
             io.emit('orderUpdate', { id: parseInt(id), payment_status: status, type: 'DELIVERY' });
         }
 
@@ -234,6 +266,44 @@ export const updatePaymentStatus = async (req, res) => {
     } catch (error) {
         console.error('Update payment status error:', error);
         res.status(500).json({ message: 'Failed to update payment status' });
+    }
+};
+
+/**
+ * PATCH /api/delivery-rider/orders/:id/close
+ * Final closure by Admin/Manager/Cashier
+ */
+export const closeOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Ensure only Admin, Manager, or Cashier can call this
+        if (!['ADMIN', 'MANAGER', 'CASHIER'].includes(req.user.role)) {
+            return res.status(403).json({ message: 'Forbidden. Only staff can close orders.' });
+        }
+
+        // Update delivery_orders
+        await pool.query(
+            "UPDATE delivery_orders SET order_status = 'Closed', payment_status = 'Completed' WHERE id = ?",
+            [id]
+        );
+
+        // Update order_analytics
+        await pool.query(
+            "UPDATE order_analytics SET order_status = 'closed' WHERE order_id = ? AND order_source = 'DELIVERY'",
+            [id]
+        );
+
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('order_closed', { orderId: id, type: 'DELIVERY' });
+            io.emit('orderUpdate', { id: parseInt(id), status: 'CLOSED', type: 'DELIVERY' });
+        }
+
+        res.json({ message: 'Order closed successfully' });
+    } catch (error) {
+        console.error('Close order error:', error);
+        res.status(500).json({ message: 'Failed to close order' });
     }
 };
 
@@ -333,14 +403,13 @@ export const getHistory = async (req, res) => {
         let baseQuery = `
             SELECT do.*,
                    (SELECT JSON_ARRAYAGG(
-                       JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes, 'price', doi.price)
+                       JSON_OBJECT('id', doi.id, 'name', mi.name, 'quantity', doi.quantity, 'notes', doi.notes, 'price', mi.price)
                    ) FROM delivery_order_items doi 
                     JOIN menu_items mi ON doi.menu_item_id = mi.id 
-                    WHERE doi.order_id = do.id) as items
+                    WHERE doi.order_id = do.id) as items_detailed
             FROM delivery_orders do
             WHERE do.created_by = ? 
-              AND do.order_status = 'Delivered' 
-              AND do.payment_status IN ('settled', 'paid', 'Paid', 'Completed', 'collected')
+              AND do.order_status IN ('Closed', 'Cancelled')
         `;
         let params = [riderId];
 
@@ -355,7 +424,10 @@ export const getHistory = async (req, res) => {
         const history = rawHistory.map(o => {
             let parsedItems = [];
             try {
-                parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+                parsedItems = typeof o.items_detailed === 'string' ? JSON.parse(o.items_detailed) : (o.items_detailed || []);
+                if (parsedItems.length === 0 && o.items) {
+                    parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+                }
             } catch (e) {
                 console.error('Invalid items JSON for order:', o.id);
             }

@@ -19,7 +19,8 @@ import {
     updateOrderTable,
     endDineInSession,
     syncGuestOrder,
-    requestPayment
+    requestPayment,
+    closeOrder
 } from '../controllers/order.controller.js';
 import { getUnifiedTables } from '../controllers/table.controller.js';
 import { protect, resolveUser } from '../middleware/authMiddleware.js';
@@ -51,5 +52,6 @@ router.post('/update-table', resolveUser, updateOrderTable);
 router.post('/dine-in/end-session', resolveUser, endDineInSession);
 router.post('/sync-guest', protect, syncGuestOrder);
 router.post('/request-payment', resolveUser, upload.single('slip'), requestPayment);
+router.put('/:orderId/close', protect, closeOrder);
 
 export default router;

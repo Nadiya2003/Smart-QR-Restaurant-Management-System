@@ -368,7 +368,7 @@ export const createOrder = async (req, res) => {
 
         } else if (order_type === 'DELIVERY') {
             const [result] = await connection.query(
-                'INSERT INTO delivery_orders (customer_name, phone, address, items, total_price, notes, order_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, "pending", "paid")',
+                'INSERT INTO delivery_orders (customer_name, phone, address, items, total_price, notes, order_status, payment_status, order_type) VALUES (?, ?, ?, ?, ?, ?, "pending", "pending", "rider")',
                 [customer_name, phone, address || '', JSON.stringify(items), total_price, notes || '']
             );
 

@@ -109,7 +109,7 @@ const AdminDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const [userSubTab, setUserSubTab] = useState('customers');
+    const [userSubTab, setUserSubTab] = useState('staff');
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
     const [inventorySubTab, setInventorySubTab] = useState('ITEMS');
     const [selectedCategory, setSelectedCategory] = useState('');
@@ -369,6 +369,12 @@ const AdminDashboard = () => {
             fetchData(true);
         });
 
+        socket.on('paymentRequest', (data) => {
+            playNotificationSound();
+            Alert.alert('Payment Requested! 💰', `Order #${data.orderId} (Table ${data.tableNumber || '?'}) is ready to settle via ${data.method}. Amount: Rs. ${data.total}`);
+            fetchData(true);
+        });
+
         const interval = setInterval(async () => {
             try {
                 const reqHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -605,6 +611,27 @@ const AdminDashboard = () => {
         ]);
     };
 
+    const handleCloseOrder = async (orderId) => {
+        try {
+            setLoading(true);
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/delivery-rider/orders/${orderId}/close`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                Alert.alert('✅ Success', 'Order has been finalized and closed.');
+                fetchData(true);
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to close order');
+            }
+        } catch (error) {
+            Alert.alert('Connection Error', 'Failed to reach the server.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const tabs = [
         { key: 'overview', label: 'Dashboard', icon: '📊' },
         { key: 'tables', label: 'Tables', icon: '🪑' },
@@ -676,51 +703,6 @@ const AdminDashboard = () => {
                     </View>
                 </View>
 
-                {/* Live Active Orders Monitor */}
-                <View style={styles.sectionHeader}>
-                    <View>
-                        <Text style={styles.sectionTitle}>👨‍🍳 Active Current Orders</Text>
-                        <Text style={styles.sectionSub}>Live monitoring of restaurant floor</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setActiveTab('orders')}>
-                        <Text style={styles.viewAllText}>View All ↗</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length === 0 ? (
-                    <View style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>No active orders at the moment</Text>
-                    </View>
-                ) : (
-                    orderList
-                        .filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase()))
-                        .slice(0, 5) // Show top 5 for Admin
-                        .map(order => (
-                            <TouchableOpacity 
-                                key={`overview-order-${order.id}`} 
-                                style={[styles.listCard, { borderLeftWidth: 4, borderLeftColor: (order.status || '').toUpperCase() === 'READY' ? '#10B981' : '#F59E0B' }]}
-                                onPress={() => { setSelectedReviewOrder(order); setShowReviewModal(true); }}
-                            >
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Order #{order.id}</Text>
-                                            <View style={[styles.badge, { backgroundColor: '#F3F4F6' }]}>
-                                                <Text style={{ fontSize: 10, fontWeight: 'bold' }}>{order.order_type}</Text>
-                                            </View>
-                                        </View>
-                                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>👤 {order.customer_name || 'Guest'} • {order.items_summary || (Array.isArray(order.items) ? order.items.map(i => i.name).join(', ') : 'Details')}</Text>
-                                    </View>
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: (order.status || '').toUpperCase() === 'READY' ? '#10B981' : '#F59E0B' }}>
-                                            {(order.status || 'PENDING').toUpperCase()}
-                                        </Text>
-                                        <OrderTimer createdAt={order.created_at} />
-                                    </View>
-                                </View>
-                            </TouchableOpacity>
-                        ))
-                )}
                 <View style={{ height: 20 }} />
             </>
         );
@@ -731,19 +713,19 @@ const AdminDashboard = () => {
     const renderUsers = () => (
         <>
             <View style={styles.subTabRow}>
-                {['customers', 'staff'].map(tab => (
+                {['staff', 'customers'].map(tab => (
                     <TouchableOpacity 
                         key={tab} 
-                        style={[styles.subTab, userSubTab === tab.toLowerCase() && styles.activeSubTab]}
-                        onPress={() => setUserSubTab(tab.toLowerCase())}
+                        style={[styles.subTab, userSubTab === tab && styles.activeSubTab]}
+                        onPress={() => setUserSubTab(tab)}
                     >
-                        <Text style={[styles.subTabText, userSubTab === tab.toLowerCase() && styles.activeSubTabText]}>
+                        <Text style={[styles.subTabText, userSubTab === tab && styles.activeSubTabText]}>
                             {tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </Text>
                     </TouchableOpacity>
                 ))}
             </View>
-            {userSubTab === 'customers' ? renderCustomers() : renderStaff()}
+            {userSubTab === 'staff' ? renderStaff() : renderCustomers()}
         </>
     );
 
@@ -851,21 +833,20 @@ const AdminDashboard = () => {
     const renderOrders = () => (
         <>
             <View style={styles.subTabRow}>
-                {['ALL', 'DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
+                {['ALL', 'DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => {
                     let count = 0;
                     if (tab === 'CANCELLATIONS') count = cancelRequestList.length;
-                    else if (tab === 'ITEM REMOVALS') count = itemRemovalRequests.filter(r => r.status === 'PENDING').length;
                     else if (tab === 'ALL') count = orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
                     else count = orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
                     
                     return (
                         <TouchableOpacity 
                             key={tab} 
-                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
+                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab, { paddingHorizontal: 15 }]}
                             onPress={() => setOrderSubTab(tab)}
                         >
                             <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'ALL' ? '📋' : tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
+                                {tab === 'ALL' ? '📋' : tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : '🚨'} {tab} ({count})
                             </Text>
                         </TouchableOpacity>
                     );
@@ -1013,6 +994,15 @@ const AdminDashboard = () => {
                                                 <Text style={styles.statusBtnText}>Done</Text>
                                             </TouchableOpacity>
                                         </View>
+                                    )}
+
+                                    {order.status === 'Pending Final Closure' && (
+                                        <TouchableOpacity 
+                                            onPress={() => handleCloseOrder(order.id)} 
+                                            style={[styles.statusBtn_done, { marginTop: 10, backgroundColor: '#10B981', width: '100%' }]}
+                                        >
+                                            <Text style={styles.statusBtnText}>✅ Close & Finalize Order</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
                             </View>
@@ -1454,7 +1444,7 @@ const AdminDashboard = () => {
                                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
                                     <TouchableOpacity 
                                         style={[styles.editBtn, { backgroundColor: '#10B981', flex: 1 }]} 
-                                        onPress={() => handleRestockAction(req.id, req.origin === 'SUPPLIER' ? 'APPROVED' : 'APPROVED')}
+                                        onPress={() => handleRestockAction(req.id, 'APPROVED', req.origin)}
                                     >
                                         <Text style={[styles.editBtnText, { color: 'white' }]}>
                                             {req.origin === 'SUPPLIER' ? 'Approve Offer' : 'Approve Request'}
@@ -1462,7 +1452,7 @@ const AdminDashboard = () => {
                                     </TouchableOpacity>
                                     <TouchableOpacity 
                                         style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
-                                        onPress={() => handleRestockAction(req.id, 'REJECTED')}
+                                        onPress={() => handleRestockAction(req.id, 'REJECTED', req.origin)}
                                     >
                                         <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
                                     </TouchableOpacity>
@@ -1472,7 +1462,7 @@ const AdminDashboard = () => {
                             {req.status === 'APPROVED' && req.origin === 'RETAILER' && (
                                 <TouchableOpacity 
                                     style={[styles.saveBtn, { backgroundColor: '#3B82F6', marginTop: 15 }]} 
-                                    onPress={() => handleRestockAction(req.id, 'COMPLETED')}
+                                    onPress={() => handleRestockAction(req.id, 'COMPLETED', req.origin)}
                                 >
                                     <Text style={styles.saveBtnText}>Mark as Received & Update Stock</Text>
                                 </TouchableOpacity>
@@ -1584,12 +1574,12 @@ const AdminDashboard = () => {
         ]);
     };
 
-    const handleRestockAction = async (id, status) => {
+    const handleRestockAction = async (id, status, origin = 'RETAILER') => {
         try {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests/${id}/status`, {
                 method: 'PUT',
                 headers,
-                body: JSON.stringify({ status })
+                body: JSON.stringify({ status, origin })
             });
             if (res.ok) {
                 Alert.alert('Success', `Request marked as ${status}`);
@@ -1681,27 +1671,7 @@ const AdminDashboard = () => {
             Linking.openURL(pdfUrl).catch(err => Alert.alert('Error', 'Could not open PDF: ' + err.message));
         };
 
-        // Derived KPIs from generated report
-        let kpiRevenue = 0, kpiEntries = 0;
-        if (generatedReport) {
-            if (reportType === 'Revenue' && generatedReport.trend) {
-                kpiRevenue = generatedReport.trend.reduce((a, d) => a + Number(d.revenue || 0), 0);
-                kpiEntries = generatedReport.trend.reduce((a, d) => a + Number(d.orders || 0), 0);
-            } else if (reportType === 'Food Wise' && generatedReport.items) {
-                kpiRevenue = generatedReport.items.reduce((a, i) => a + Number(i.revenue || 0), 0);
-                kpiEntries = generatedReport.items.reduce((a, i) => a + Number(i.total_sold || 0), 0);
-            } else if (reportType === 'Orders' && generatedReport.byStatus) {
-                kpiRevenue = generatedReport.byStatus.reduce((a, s) => a + Number(s.revenue || 0), 0);
-                kpiEntries = generatedReport.byStatus.reduce((a, s) => a + Number(s.count || 0), 0);
-            } else if (reportType === 'Customers' && generatedReport.summary) {
-                kpiEntries = generatedReport.summary.total || 0;
-            } else if (reportType === 'Staff' && generatedReport.attendance) {
-                kpiEntries = generatedReport.attendance.length;
-            } else if (reportType === 'Cancellations') {
-                kpiEntries = (generatedReport.deliveryCancels || []).reduce((a,c) => a+Number(c.count||0),0) +
-                             (generatedReport.takeawayCancels || []).reduce((a,c) => a+Number(c.count||0),0);
-            }
-        }
+        // KPIs are now provided directly in generatedReport.summary by the backend.
 
         return (
             <>
@@ -1793,198 +1763,94 @@ const AdminDashboard = () => {
                 {/* ── KPI Summary Cards ── */}
                 {generatedReport && (
                     <>
-                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#ECFDF5' }]}>
-                                <Text style={{ fontSize: 10, color: '#065F46', fontWeight: 'bold' }}>TOTAL REVENUE</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#065F46' }}>Rs.{Number(kpiRevenue).toLocaleString()}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+                            <View style={[styles.chartCard, { flex: 1, minWidth: '45%', padding: 12, backgroundColor: '#F0FDF4' }]}>
+                                <Text style={{ fontSize: 9, color: '#166534', fontWeight: 'bold' }}>REVENUE / VALUE</Text>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#166534' }}>Rs.{Number(generatedReport.summary.revenue || generatedReport.summary.totalValue || 0).toLocaleString()}</Text>
                             </View>
-                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#EFF6FF' }]}>
-                                <Text style={{ fontSize: 10, color: '#1E40AF', fontWeight: 'bold' }}>TOTAL ENTRIES</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E40AF' }}>{kpiEntries}</Text>
+                            <View style={[styles.chartCard, { flex: 1, minWidth: '45%', padding: 12, backgroundColor: '#EFF6FF' }]}>
+                                <Text style={{ fontSize: 9, color: '#1E40AF', fontWeight: 'bold' }}>RECORDS COUNT</Text>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E40AF' }}>{generatedReport.summary.recordsCount}</Text>
+                            </View>
+                            <View style={[styles.chartCard, { flex: 1, minWidth: '45%', padding: 12, backgroundColor: '#ECFDF5' }]}>
+                                <Text style={{ fontSize: 9, color: '#065F46', fontWeight: 'bold' }}>SUCCESSFUL</Text>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#065F46' }}>{generatedReport.summary.successful}</Text>
+                            </View>
+                            <View style={[styles.chartCard, { flex: 1, minWidth: '45%', padding: 12, backgroundColor: '#FEF2F2' }]}>
+                                <Text style={{ fontSize: 9, color: '#991B1B', fontWeight: 'bold' }}>FAILED / OUT</Text>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#991B1B' }}>{generatedReport.summary.failed}</Text>
                             </View>
                         </View>
 
-                        {/* ── Report Detail Card ── */}
-                        <View style={styles.chartCard}>
-                            <View style={[styles.modalHeader, { marginBottom: 15 }]}>
-                                <Text style={styles.chartTitle}>{reportType} — {reportFilters.startDate} to {reportFilters.endDate}</Text>
+                        {/* ── Visual Analytics (Mini Charts) ── */}
+                        {generatedReport.visuals && (generatedReport.visuals.bar.labels.length > 0 || generatedReport.visuals.line.labels.length > 0) && (
+                            <View style={[styles.chartCard, { marginBottom: 15 }]}>
+                                <Text style={styles.summaryLabel}>Trend / Distribution Analysis</Text>
+                                <View style={styles.barChartContainer}>
+                                    {(generatedReport.visuals.bar.labels.length > 0 ? generatedReport.visuals.bar : generatedReport.visuals.line).labels.slice(0, 10).map((label, idx) => {
+                                        const data = (generatedReport.visuals.bar.labels.length > 0 ? generatedReport.visuals.bar : generatedReport.visuals.line).datasets[0].data;
+                                        const max = Math.max(...data.map(v => Number(v) || 1), 1);
+                                        const val = Number(data[idx]);
+                                        return (
+                                            <View key={idx} style={styles.barColumn}>
+                                                <View style={[styles.bar, { height: (val / max) * 70 + 2, backgroundColor: '#3B82F6' }]} />
+                                                <Text style={[styles.barLabel, { fontSize: 8 }]}>{label.substring(0, 5)}</Text>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
                             </View>
+                        )}
 
-                            {/* Food Wise */}
-                            {reportType === 'Food Wise' && generatedReport.items && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Top Selling Items</Text>
-                                    {generatedReport.items.slice(0, 6).map((item, idx) => (
-                                        <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
-                                            <Text style={styles.permItemText}>#{idx+1} {item.item_name}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={[styles.summaryValue, { color: '#10B981' }]}>{item.total_sold} sold</Text>
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(item.revenue||0).toLocaleString()}</Text>
-                                            </View>
-                                        </View>
-                                    ))}
-                                    <View style={styles.barChartContainer}>
-                                        {generatedReport.items.slice(0, 6).map((item, idx) => {
-                                            const maxSold = Math.max(...generatedReport.items.map(i => Number(i.total_sold) || 1), 1);
-                                            return (
-                                                <View key={idx} style={styles.barColumn}>
-                                                    <View style={[styles.bar, { height: (Number(item.total_sold) / maxSold) * 80 + 5, backgroundColor: '#10B981' }]} />
-                                                    <Text style={styles.barLabel}>{item.item_name.substring(0, 5)}</Text>
-                                                </View>
-                                            );
-                                        })}
+                        {/* ── Insights & Recommendations ── */}
+                        {generatedReport.insights && (generatedReport.insights.length > 0 || generatedReport.recommendations.length > 0) && (
+                            <View style={[styles.chartCard, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', marginBottom: 15 }]}>
+                                <Text style={[styles.summaryLabel, { color: '#0369A1' }]}>💡 Insights & Recommendations</Text>
+                                {[...(generatedReport.insights || []), ...(generatedReport.recommendations || [])].map((item, idx) => (
+                                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 }}>
+                                        <Text style={{ color: '#0369A1', marginRight: 5 }}>•</Text>
+                                        <Text style={{ fontSize: 12, color: '#0C4A6E', flex: 1, lineHeight: 18 }}>{item}</Text>
                                     </View>
-                                    {generatedReport.categories && (
-                                        <View style={{ marginTop: 15 }}>
-                                            <Text style={styles.summaryLabel}>Sales by Category</Text>
-                                            {generatedReport.categories.map((cat, idx) => (
-                                                <View key={idx} style={styles.summaryRow}>
-                                                    <Text style={styles.summaryLabel}>{cat.category_name}</Text>
-                                                    <Text style={styles.summaryValue}>Rs.{Number(cat.revenue||0).toLocaleString()}</Text>
-                                                </View>
+                                ))}
+                            </View>
+                        )}
+
+                        {/* ── Alerts & Exceptions ── */}
+                        {generatedReport.alerts && generatedReport.alerts.length > 0 && (
+                            <View style={[styles.chartCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA', marginBottom: 15 }]}>
+                                <Text style={[styles.summaryLabel, { color: '#B91C1C' }]}>⚠️ Alerts & Attention Needed</Text>
+                                {generatedReport.alerts.map((item, idx) => (
+                                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 }}>
+                                        <Text style={{ color: '#B91C1C', marginRight: 5 }}>•</Text>
+                                        <Text style={{ fontSize: 12, color: '#7F1D1D', flex: 1, fontWeight: '600' }}>{item}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+
+                        {/* ── Detailed Table ── */}
+                        <View style={styles.chartCard}>
+                            <View style={{ marginBottom: 15 }}>
+                                <Text style={styles.chartTitle}>Detailed Records Table</Text>
+                            </View>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <View>
+                                    {/* Headers */}
+                                    <View style={{ flexDirection: 'row', backgroundColor: '#F3F4F6', padding: 10, borderRadius: 6 }}>
+                                        {generatedReport.table.headers.map((h, i) => (
+                                            <Text key={i} style={{ width: 100, fontSize: 10, fontWeight: 'bold', color: '#4B5563' }}>{h.toUpperCase()}</Text>
+                                        ))}
+                                    </View>
+                                    {/* Rows */}
+                                    {generatedReport.table.rows.map((row, idx) => (
+                                        <View key={idx} style={{ flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                                            {row.map((cell, i) => (
+                                                <Text key={i} style={{ width: 100, fontSize: 11, color: '#374151' }} numberOfLines={1}>{cell}</Text>
                                             ))}
                                         </View>
-                                    )}
-                                </>
-                            )}
-
-                            {/* Revenue */}
-                            {reportType === 'Revenue' && generatedReport.trend && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Revenue Trend</Text>
-                                    <View style={styles.barChartContainer}>
-                                        {generatedReport.trend.map((day, idx) => {
-                                            const dateLabel = day.date ? (new Date(day.date).getDate() + '/' + (new Date(day.date).getMonth() + 1)) : '??';
-                                            const maxRev = Math.max(...generatedReport.trend.map(d => Number(d.revenue) || 1), 1);
-                                            return (
-                                                <View key={idx} style={styles.barColumn}>
-                                                    <View style={[styles.bar, { height: Math.min(80, (Number(day.revenue) / maxRev) * 80), backgroundColor: '#3B82F6' }]} />
-                                                    <Text style={styles.barLabel}>{dateLabel}</Text>
-                                                </View>
-                                            );
-                                        })}
-                                    </View>
-                                    {generatedReport.trend.slice(0, 5).map((day, idx) => (
-                                        <View key={idx} style={[styles.summaryRow, { alignItems: 'flex-start' }]}>
-                                            <Text style={[styles.summaryLabel, { marginTop: 2 }]}>{day.date ? new Date(day.date).toLocaleDateString() : 'N/A'}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={styles.summaryValue}>Rs. {Number(day.revenue||0).toLocaleString()}</Text>
-                                                <Text style={{ fontSize: 12, color: '#10B981', fontWeight: '600', marginTop: 2 }}>+ Profit: Rs. {Number(day.profit||0).toLocaleString()}</Text>
-                                                {Number(day.lost) > 0 && <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 2 }}>- Lost: Rs. {Number(day.lost).toLocaleString()}</Text>}
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{day.orders} successful orders</Text>
-                                            </View>
-                                        </View>
                                     ))}
-                                    {generatedReport.bySource && (
-                                        <View style={{ marginTop: 15 }}>
-                                            <Text style={[styles.summaryLabel, { marginBottom: 8 }]}>By Order Type</Text>
-                                            {generatedReport.bySource.map((src, idx) => (
-                                                <View key={idx} style={styles.summaryRow}>
-                                                    <Text style={styles.summaryLabel}>{src.type}</Text>
-                                                    <Text style={styles.summaryValue}>Rs.{Number(src.revenue||0).toLocaleString()} ({src.count})</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    )}
-                                </>
-                            )}
-
-                            {/* Orders */}
-                            {reportType === 'Orders' && generatedReport.byStatus && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Orders by Status</Text>
-                                    {generatedReport.byStatus.map((s, idx) => (
-                                        <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
-                                            <Text style={styles.permItemText}>{s.status}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={[styles.summaryValue, { color: '#3B82F6' }]}>{s.count} orders</Text>
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(s.revenue||0).toLocaleString()}</Text>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </>
-                            )}
-
-                            {/* Customers */}
-                            {reportType === 'Customers' && generatedReport.summary && (
-                                <>
-                                    <View style={styles.summaryRow}>
-                                        <Text style={styles.summaryLabel}>Total Customers</Text>
-                                        <Text style={styles.summaryValue}>{generatedReport.summary.total}</Text>
-                                    </View>
-                                    <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                        <Text style={styles.summaryLabel}>New This Week</Text>
-                                        <Text style={[styles.summaryValue, { color: '#10B981' }]}>+{generatedReport.summary.newThisWeek}</Text>
-                                    </View>
-                                    {generatedReport.loyal && (
-                                        <View style={{ marginTop: 15 }}>
-                                            <Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Loyal Customers</Text>
-                                            {generatedReport.loyal.slice(0, 5).map((c, idx) => (
-                                                <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
-                                                    <Text style={styles.permItemText}>{c.name}</Text>
-                                                    <View style={{ alignItems: 'flex-end' }}>
-                                                        <Text style={styles.summaryValue}>{c.order_count} orders</Text>
-                                                        <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(c.total_spent||0).toLocaleString()}</Text>
-                                                    </View>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    )}
-                                </>
-                            )}
-
-                            {/* Staff */}
-                            {reportType === 'Staff' && generatedReport.attendance && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Staff Performance</Text>
-                                    {generatedReport.attendance.map((s, idx) => (
-                                        <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
-                                            <Text style={styles.permItemText}>{s.full_name}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={styles.summaryValue}>{s.days_present} days</Text>
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF' }}>{Number(s.avg_hours||0).toFixed(1)}h avg</Text>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </>
-                            )}
-
-                            {/* Cancellations */}
-                            {reportType === 'Cancellations' && (
-                                <>
-                                    <View style={styles.summaryRow}>
-                                        <Text style={styles.summaryLabel}>Delivery Cancellations</Text>
-                                        <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
-                                            {(generatedReport.deliveryCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}
-                                        </Text>
-                                    </View>
-                                    <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                                        <Text style={styles.summaryLabel}>Takeaway Cancellations</Text>
-                                        <Text style={[styles.summaryValue, { color: '#EF4444' }]}>
-                                            {(generatedReport.takeawayCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}
-                                        </Text>
-                                    </View>
-                                    {([...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])]).length > 0 && (
-                                        <View style={{ marginTop: 15 }}>
-                                            <Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Cancellation Reasons</Text>
-                                            {[...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])].sort((a,b)=>b.count-a.count).slice(0,5).map((c,i)=>(
-                                                <View key={i} style={styles.permItem}>
-                                                    <Text style={styles.permItemText}>{c.cancellation_reason || 'Unknown'}</Text>
-                                                    <Text style={styles.summaryValue}>{c.count}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    )}
-                                </>
-                            )}
-
-                            {/* ── Download Button ── */}
-                            <TouchableOpacity
-                                style={[styles.exportBtn, { marginTop: 20, backgroundColor: '#DC2626', flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
-                                onPress={handleDownloadPDF}
-                            >
-                                <Text style={styles.exportBtnText}>📄 Download PDF Report</Text>
-                            </TouchableOpacity>
+                                </View>
+                            </ScrollView>
                         </View>
                     </>
                 )}

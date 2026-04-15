@@ -70,7 +70,21 @@ export const updateStaffOrderStatus = async (req, res) => {
         if (statusRows.length === 0) return res.status(400).json({ message: "Invalid status" });
         const statusId = statusRows[0].id;
 
-        await pool.query("UPDATE orders SET status_id = ? WHERE id = ?", [statusId, id]);
+        await pool.query("UPDATE orders SET status_id = ?, main_status = ? WHERE id = ?", [statusId, targetStatus, id]);
+        
+        if (global.io) {
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(id), 
+                status: targetStatus,
+                mainStatus: targetStatus,
+                updatedAt: new Date()
+            });
+            global.io.emit('orderStatusUpdated', { 
+                orderId: parseInt(id), 
+                mainStatus: targetStatus 
+            });
+        }
+
         res.json({ message: `Order #${id} set to ${status}` });
     } catch (err) {
         console.error(err);
@@ -113,7 +127,16 @@ export const processStewardAction = async (req, res) => {
         // const staffId = req.user.userId;
         // await pool.query("UPDATE orders SET status_id = ?, steward_id = ? WHERE id = ?", [statusId, staffId, orderId]);
 
-        await pool.query("UPDATE orders SET status_id = ? WHERE id = ?", [statusId, orderId]);
+        await pool.query("UPDATE orders SET status_id = ?, main_status = ? WHERE id = ?", [statusId, status, orderId]);
+        
+        if (global.io) {
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(orderId), 
+                status: status,
+                mainStatus: status
+            });
+        }
+
         res.json({ message: `Order ${action}ED` });
     } catch (err) {
         console.error(err);

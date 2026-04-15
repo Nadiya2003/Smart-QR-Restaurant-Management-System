@@ -16,18 +16,8 @@ const pool = mysql.createPool({
 
 async function checkTables() {
     try {
-        const [tables] = await pool.query('SELECT * FROM restaurant_tables');
-        console.log('Tables:', tables);
-        const [areas] = await pool.query('SELECT * FROM dining_areas');
-        console.log('Areas:', areas);
-        
-        const [joined] = await pool.query(`
-            SELECT t.*, a.area_name 
-            FROM restaurant_tables t
-            JOIN dining_areas a ON t.area_id = a.id
-        `);
-        console.log('Joined:', joined);
-        
+        const [desc] = await pool.query('DESCRIBE delivery_orders');
+        console.log('delivery_orders schema:', JSON.stringify(desc, null, 2));
         process.exit(0);
     } catch (err) {
         console.error(err);

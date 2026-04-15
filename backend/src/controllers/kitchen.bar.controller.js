@@ -116,27 +116,33 @@ export const updateOrderItemStatus = async (req, res) => {
 
         // 3. Check if all "Food" items are ready or all "Beverage" items are ready to update main station status
         const [items] = await pool.query(`
-            SELECT oi.item_status, cat.name as category 
+            SELECT oi.item_status, COALESCE(cat.name, 'Food') as category 
             FROM order_items oi
             JOIN menu_items mi ON oi.menu_item_id = mi.id
-            JOIN categories cat ON mi.category_id = cat.id
+            LEFT JOIN categories cat ON mi.category_id = cat.id
             WHERE oi.order_id = ?
         `, [orderId]);
 
-        const foodItems = items.filter(i => !i.category.toLowerCase().includes('beverage'));
-        const bevItems = items.filter(i => i.category.toLowerCase().includes('beverage'));
+        const isDrink = (cat) => {
+            const c = (cat || '').toLowerCase();
+            return c.includes('beverage') || c.includes('drink') || c.includes('bar');
+        };
+
+        const foodItems = items.filter(i => !isDrink(i.category));
+        const bevItems = items.filter(i => isDrink(i.category));
 
         const allFoodReady = foodItems.length > 0 && foodItems.every(i => i.item_status === 'ready');
         const allBevReady = bevItems.length > 0 && bevItems.every(i => i.item_status === 'ready');
         
-        const anyFoodPreparing = foodItems.some(i => i.item_status === 'preparing');
-        const anyBevPreparing = bevItems.some(i => i.item_status === 'preparing');
+        const anyFoodInProgress = foodItems.some(i => i.item_status === 'preparing' || i.item_status === 'ready');
+        const anyBevInProgress = bevItems.some(i => i.item_status === 'preparing' || i.item_status === 'ready');
 
         if (allFoodReady) await pool.query('UPDATE orders SET kitchen_status = "ready" WHERE id = ?', [orderId]);
-        else if (anyFoodPreparing) await pool.query('UPDATE orders SET kitchen_status = "preparing" WHERE id = ?', [orderId]);
+        else if (anyFoodInProgress) await pool.query('UPDATE orders SET kitchen_status = "preparing" WHERE id = ?', [orderId]);
         
         if (allBevReady) await pool.query('UPDATE orders SET bar_status = "ready" WHERE id = ?', [orderId]);
-        else if (anyBevPreparing) await pool.query('UPDATE orders SET bar_status = "preparing" WHERE id = ?', [orderId]);
+        else if (anyBevInProgress) await pool.query('UPDATE orders SET bar_status = "preparing" WHERE id = ?', [orderId]);
+
         const [orderRows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [orderId]);
         const { kitchen_status, bar_status } = orderRows[0];
 
@@ -148,7 +154,7 @@ export const updateOrderItemStatus = async (req, res) => {
             if (sr.length > 0) {
                 await pool.query('UPDATE orders SET status_id = ?, main_status = "READY_TO_SERVE" WHERE id = ?', [sr[0].id, orderId]);
             }
-        } else if (kitchen_status === 'preparing' || bar_status === 'preparing') {
+        } else if (kitchen_status === 'preparing' || bar_status === 'preparing' || kitchen_status === 'ready' || bar_status === 'ready') {
             const [sp] = await pool.query('SELECT id FROM order_statuses WHERE name = "PREPARING"');
             if (sp.length > 0) {
                 await pool.query('UPDATE orders SET status_id = ?, main_status = "PREPARING" WHERE id = ?', [sp[0].id, orderId]);
@@ -307,19 +313,25 @@ export const updateKitchenOrderStatus = async (req, res) => {
             }
             
             // Fetch current statuses and item composition
-            const [rows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [id]);
-            const { kitchen_status, bar_status } = rows[0];
-
             const [items] = await pool.query(`
-                SELECT cat.name as category 
+                SELECT COALESCE(cat.name, 'Food') as category 
                 FROM order_items oi
                 JOIN menu_items mi ON oi.menu_item_id = mi.id
-                JOIN categories cat ON mi.category_id = cat.id
+                LEFT JOIN categories cat ON mi.category_id = cat.id
                 WHERE oi.order_id = ?
             `, [id]);
             
-            const hasFood = items.some(i => !(i.category || '').toLowerCase().includes('beverage') && !(i.category || '').toLowerCase().includes('bar'));
-            const hasBev = items.some(i => (i.category || '').toLowerCase().includes('beverage') || (i.category || '').toLowerCase().includes('bar'));
+            const isDrink = (cat) => {
+                const c = (cat || '').toLowerCase();
+                return c.includes('beverage') || c.includes('drink') || c.includes('bar');
+            };
+
+            const hasFood = items.some(i => !isDrink(i.category));
+            const hasBev = items.some(i => isDrink(i.category));
+
+            // Fetch current station statuses from DB
+            const [rows] = await pool.query('SELECT kitchen_status, bar_status FROM orders WHERE id = ?', [id]);
+            const { kitchen_status, bar_status } = rows[0];
 
             const isFoodReady = !hasFood || kitchen_status === 'ready';
             const isBevReady = !hasBev || bar_status === 'ready';
@@ -329,7 +341,7 @@ export const updateKitchenOrderStatus = async (req, res) => {
                 if (sr.length > 0) {
                     await pool.query('UPDATE orders SET status_id = ?, main_status = "READY_TO_SERVE" WHERE id = ?', [sr[0].id, id]);
                 }
-            } else {
+            } else if (kitchen_status === 'preparing' || bar_status === 'preparing' || kitchen_status === 'ready' || bar_status === 'ready') {
                 const [sp] = await pool.query('SELECT id FROM order_statuses WHERE name = "PREPARING"');
                 if (sp.length > 0) {
                     await pool.query('UPDATE orders SET status_id = ?, main_status = "PREPARING" WHERE id = ?', [sp[0].id, id]);
@@ -359,48 +371,62 @@ export const updateKitchenOrderStatus = async (req, res) => {
             }
         } else {
             const table = (type || '').toUpperCase() === 'TAKEAWAY' ? 'takeaway_orders' : 'delivery_orders';
-            let deliveryStatus = normalized;
             
-            // Map kitchen READY to Picked Up (next stage for rider) if it's currently at Accepted stage
-            // Or keep it as normalized for status tracking
-            if (normalized === 'READY') deliveryStatus = 'Accepted'; // It's ready but still at restaurant
-
             // Update items JSON to reflect status
             const [orderRows] = await pool.query(`SELECT items FROM ${table} WHERE id = ?`, [id]);
-            if (orderRows.length > 0) {
-                let items = [];
-                try {
-                    items = typeof orderRows[0].items === 'string' ? JSON.parse(orderRows[0].items) : (orderRows[0].items || []);
-                } catch (e) {}
+            if (orderRows.length === 0) return res.status(404).json({ message: 'Order not found' });
+
+            let items = [];
+            try {
+                items = typeof orderRows[0].items === 'string' ? JSON.parse(orderRows[0].items) : (orderRows[0].items || []);
+            } catch (e) { items = []; }
+            
+            const updatedItems = items.map(item => {
+                const itemCat = (item.category || item.category_name || item.categoryName || '').toLowerCase();
+                const isDrink = itemCat.includes('beverage') || itemCat.includes('drink') || itemCat.includes('bar');
                 
-                const updatedItems = items.map(item => {
-                    const itemCat = (item.category || item.category_name || '').toLowerCase();
-                    const isDrink = itemCat.includes('beverage') || itemCat.includes('drink') || itemCat.includes('bar');
-                    
-                    if ((isBar && isDrink) || (!isBar && !isDrink)) {
-                        return { ...item, item_status: normalized.toLowerCase() };
-                    }
-                    return item;
-                });
-                
-                await pool.query(`UPDATE ${table} SET items = ? WHERE id = ?`, [JSON.stringify(updatedItems), id]);
+                if ((isBar && isDrink) || (!isBar && !isDrink)) {
+                    return { ...item, item_status: normalized.toLowerCase() };
+                }
+                return item;
+            });
+
+            // Decide the OVERALL order status based on all items
+            const allItemsReady = updatedItems.every(item => (item.item_status || '').toLowerCase() === 'ready');
+            const anyItemInProgress = updatedItems.some(item => 
+                (item.item_status || '').toLowerCase() === 'preparing' || 
+                (item.item_status || '').toLowerCase() === 'ready'
+            );
+
+            let finalOrderStatus = 'pending';
+            if (allItemsReady) {
+                finalOrderStatus = 'ready';
+            } else if (anyItemInProgress) {
+                finalOrderStatus = 'preparing';
+            } else {
+                finalOrderStatus = normalized.toLowerCase();
             }
 
-            await pool.query(`UPDATE ${table} SET order_status = ?, delivery_status = ? WHERE id = ?`, [normalized.toLowerCase(), deliveryStatus, id]);
+            // Map for delivery rider
+            let finalDeliveryStatus = finalOrderStatus === 'ready' ? 'Accepted' : finalOrderStatus;
+            if (finalOrderStatus === 'ready') finalDeliveryStatus = 'Accepted'; // Rider sees it as Accepted for pickup
+
+            await pool.query(`UPDATE ${table} SET items = ?, order_status = ?, delivery_status = ? WHERE id = ?`, 
+                [JSON.stringify(updatedItems), finalOrderStatus, finalDeliveryStatus, id]);
             
             if (global.io) {
                 global.io.emit('orderUpdate', { 
                     orderId: id, 
                     id: parseInt(id),
-                    status: normalized, 
+                    status: finalOrderStatus, 
                     type: type,
                     updatedBy: isBar ? 'BAR' : 'KITCHEN'
                 });
                 global.io.emit('delivery_order_updated', { 
                     orderId: id, 
                     id: parseInt(id),
-                    status: normalized, 
-                    delivery_status: deliveryStatus,
+                    status: finalOrderStatus, 
+                    delivery_status: finalDeliveryStatus,
                     type: type 
                 });
             }

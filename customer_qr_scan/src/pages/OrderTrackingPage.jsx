@@ -40,7 +40,7 @@ export function OrderTrackingPage({ onNavigate }) {
         if (status !== 'PENDING') {
             setStatusAlertVisible(true);
             // Non-blocking sound feedback
-            try { new Audio('/status-update.mp3').play().catch(() => {}); } catch(e) {}
+            try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(() => {}); } catch(e) {}
         }
     }
 

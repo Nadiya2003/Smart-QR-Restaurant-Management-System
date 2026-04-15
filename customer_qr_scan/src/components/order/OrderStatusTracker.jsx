@@ -35,15 +35,24 @@ export function OrderStatusTracker({ currentOrder }) {
 
   // 2. Normalize Status
   let normalizedStatus = currentStatus?.toUpperCase() || 'PLACED';
-  if (normalizedStatus === 'PENDING') normalizedStatus = 'PLACED';
-  if (normalizedStatus === 'READY') normalizedStatus = 'READY_TO_SERVE';
+  if (normalizedStatus === 'PENDING' || normalizedStatus === 'ORDER PLACED') normalizedStatus = 'PLACED';
+  if (normalizedStatus === 'READY' || normalizedStatus === 'READY TO SERVE') normalizedStatus = 'READY_TO_SERVE';
   
-  let statusIndex = steps.findIndex((s) => s.id === normalizedStatus);
+  let statusIndex = 0;
   
-  // Requirement: Automatically Tick "Order Received" (Step 0) once order is placed
-  // This moves visual progression to Step 1 (Confirmed) as the active 'work in progress'
-  if (statusIndex === 0) statusIndex = 1; 
-
+  if (['PLACED', 'RECEIVED', 'ORDER PLACED', 'PENDING'].includes(normalizedStatus)) {
+      statusIndex = 1; // "Order Received" ticked, "Order Confirmed" active
+  } else if (['CONFIRMED', 'ACCEPTED'].includes(normalizedStatus)) {
+      statusIndex = 2; // "Order Confirmed" ticked, "Preparing" active
+  } else if (normalizedStatus === 'PREPARING') {
+      statusIndex = 2; // Same visual state initially, dynamic overrides apply below
+  } else if (['READY', 'READY_TO_SERVE'].includes(normalizedStatus)) {
+      statusIndex = 3; // "Preparing" ticked, "Ready to Serve" active
+  } else if (normalizedStatus === 'SERVED') {
+      statusIndex = 5; // "Served" ticked, "Completed" active
+  } else if (['COMPLETED', 'FINISHED'].includes(normalizedStatus)) {
+      statusIndex = steps.length - 1;
+  }
 
   // 3. Dynamic Override for Preparing/Ready logic (The User's specific rule map)
   const isFoodPreparing = ['preparing', 'ready'].includes((kitchenStatus || '').toLowerCase());
@@ -63,17 +72,18 @@ export function OrderStatusTracker({ currentOrder }) {
       (!hasFood && hasBeverage && isBevReady);
 
   // If the backend has reached at least PREPARING, manually control the UI visual progression based on item statuses
-  if (statusIndex >= 2 && statusIndex < 4) {
+  // However, ensure it doesn't downgrade below the main status if confirmed
+  if (['PREPARING', 'READY_TO_SERVE', 'CONFIRMED'].includes(normalizedStatus)) {
       if (bothReadySatisfied) {
-          statusIndex = 4; // Ticks "Ready to Serve", moves to SERVED active step
+          statusIndex = 4; // Ticks "Ready to Serve", moves to SERVED active step waiting for staff to serve
       } else if (bothPreparingSatisfied) {
-          statusIndex = 3; // Ticks "Preparing", moves to READY_TO_SERVE active step
+          statusIndex = 3; // Ticks "Preparing", moves to READY_TO_SERVE active step waiting for completion
       } else {
-          statusIndex = 2; // PREPARING is active
+          statusIndex = 2; // PREPARING is active Wait for preparation to start
       }
   }
 
-  const isAllDone = ['COMPLETED', 'FINISHED'].includes(currentStatus?.toUpperCase());
+  const isAllDone = ['COMPLETED', 'FINISHED'].includes(normalizedStatus);
   if (isAllDone) statusIndex = steps.length - 1;
 
   return (

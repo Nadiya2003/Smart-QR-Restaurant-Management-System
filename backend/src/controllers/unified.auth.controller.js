@@ -236,7 +236,8 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
     try {
         const { userId, role } = req.user;
-        const { name, email, phone } = req.body;
+        const { fullName, email, phone } = req.body;
+        const name = fullName || req.body.name; // Support both naming conventions from frontend
 
         if (role === 'ADMIN' && userId === 0) {
             return res.status(403).json({ message: 'Admin profile cannot be updated via this endpoint' });
@@ -251,10 +252,20 @@ export const updateProfile = async (req, res) => {
             return res.status(400).json({ message: 'Email is already in use by another account' });
         }
 
-        await pool.query(
-            `UPDATE ${table} SET ${nameField} = ?, email = ?, phone = ? WHERE id = ?`,
-            [name, email, phone || null, userId]
-        );
+        let updateQuery = `UPDATE ${table} SET ${nameField} = ?, email = ?, phone = ?`;
+        let queryParams = [name, email, phone || null];
+
+        // Handle profile image update if provided
+        if (req.file) {
+            const profileImagePath = `/uploads/profile-images/${req.file.filename}`;
+            updateQuery += `, profile_image = ?`;
+            queryParams.push(profileImagePath);
+        }
+
+        updateQuery += ` WHERE id = ?`;
+        queryParams.push(userId);
+
+        await pool.query(updateQuery, queryParams);
 
         res.json({ message: 'Profile updated successfully' });
     } catch (error) {

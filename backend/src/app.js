@@ -96,6 +96,10 @@ app.use('/api/staff-notifications', staffNotificationRoutes);
 import supplierRoutes from './routes/supplier.routes.js';
 app.use('/api/supplier', supplierRoutes);
 
+// AI Assistant (Public - no auth required for customer chat)
+import { aiAssistantChat } from './controllers/inventory.analytics.controller.js';
+app.post('/api/ai-assistant/chat', aiAssistantChat);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);

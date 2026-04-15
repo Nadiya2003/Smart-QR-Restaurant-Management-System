@@ -150,24 +150,32 @@ export const getAllOrders = async (req, res) => {
                        JSON_OBJECT('id', oi.id, 'name', mi.name, 'quantity', oi.quantity, 'price', oi.price)
                    ) FROM order_items oi 
                    JOIN menu_items mi ON oi.menu_item_id = mi.id 
-                   WHERE oi.order_id = o.id) as items
+                   WHERE oi.order_id = o.id) as items,
+                   NULL as payment_status, pm.name as payment_method_name, NULL as order_type,
+                   o.slip_image
             FROM orders o 
             LEFT JOIN order_types ot ON o.order_type_id = ot.id 
             LEFT JOIN order_statuses os ON o.status_id = os.id 
+            LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id 
             
             UNION ALL
 
             SELECT to_ord.id, to_ord.total_price, to_ord.created_at, 'TAKEAWAY' as type_name, to_ord.order_status as status_name,
                    'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name, to_ord.needed_time,
-                   to_ord.items as items
+                   to_ord.items as items,
+                   to_ord.payment_status as payment_status, to_ord.payment_method as payment_method_name, NULL as order_type,
+                   NULL as slip_image
             FROM takeaway_orders to_ord
 
             UNION ALL
 
             SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.order_status as status_name,
                    'delivery_orders' as source_table, do.phone, do.customer_name, do.needed_time,
-                   do.items as items
+                   do.items as items,
+                   do.payment_status as payment_status, do.payment_method as payment_method_name, do.order_type as order_type,
+                   NULL as slip_image
             FROM delivery_orders do
+            WHERE do.order_status != 'Closed'
             
             ORDER BY created_at DESC
         `);

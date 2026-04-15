@@ -13,6 +13,10 @@ import {
     getInventoryReport,
     getSupplierOrders
 } from '../controllers/inventory.controller.js';
+import {
+    getAdvancedInventoryReport,
+    getAIInventoryInsights
+} from '../controllers/inventory.analytics.controller.js';
 import { protect, isStaff } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -39,5 +43,9 @@ router.put('/restock-requests/:id/status', updateRestockStatus);
 router.get('/history', getStockHistory);
 router.get('/report', getInventoryReport);
 router.get('/supplier-orders', getSupplierOrders);
+
+// Advanced Analytics & AI
+router.get('/analytics/advanced', getAdvancedInventoryReport);
+router.get('/analytics/ai-insights', getAIInventoryInsights);
 
 export default router;

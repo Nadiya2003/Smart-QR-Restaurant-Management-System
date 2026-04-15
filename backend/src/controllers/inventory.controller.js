@@ -369,16 +369,16 @@ export const getInventoryReport = async (req, res) => {
             GROUP BY action_type
         `, [startDate, endDate]);
 
-        // Item Usage from Orders (for linked menu items)
+        // Item Usage from Order Analytics (Resilient join on item_name)
         const [usageStats] = await pool.query(`
-            SELECT i.item_name, SUM(oi.quantity) as used_quantity
-            FROM order_items oi
-            JOIN inventory i ON oi.menu_item_id = i.menu_item_id
-            WHERE oi.created_at BETWEEN ? AND ?
+            SELECT i.item_name, SUM(oa.quantity) as used_quantity
+            FROM order_analytics oa
+            JOIN inventory i ON oa.item_name = i.item_name
+            WHERE oa.created_at >= ? AND oa.created_at <= ?
             GROUP BY i.id
             ORDER BY used_quantity DESC
             LIMIT 10
-        `, [startDate, endDate]);
+        `, [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
 
         res.json({ statusStats, historyStats, usageStats });
     } catch (error) {

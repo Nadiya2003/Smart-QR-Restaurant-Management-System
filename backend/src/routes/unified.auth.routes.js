@@ -11,7 +11,7 @@ router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOTP);
 router.post('/reset-password', resetPassword);
 router.get('/profile', protect, getProfile);
-router.put('/profile', protect, updateProfile);
+router.put('/profile', protect, uploadProfile.single('profile_image'), updateProfile);
 router.put('/change-password', protect, changePassword);
 
 export default router;
