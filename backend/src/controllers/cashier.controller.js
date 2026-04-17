@@ -199,6 +199,47 @@ export const getAllOrders = async (req, res) => {
     }
 };
 
+export const updateOrderStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, source_table = 'orders' } = req.body;
+
+        const tableMap = {
+            'orders': { table: 'orders', statusCol: 'status_id' },
+            'takeaway_orders': { table: 'takeaway_orders', statusCol: 'order_status' },
+            'delivery_orders': { table: 'delivery_orders', statusCol: 'order_status' }
+        };
+
+        const config = tableMap[source_table];
+        if (!config) return res.status(400).json({ message: "Invalid source table" });
+
+        let statusToSet = status;
+        if (config.statusCol === 'status_id') {
+            const [statusRows] = await pool.query("SELECT id FROM order_statuses WHERE name = ?", [status]);
+            if (statusRows.length === 0) return res.status(400).json({ message: "Invalid status name" });
+            statusToSet = statusRows[0].id;
+        }
+
+        await pool.query(
+            `UPDATE ${config.table} SET ${config.statusCol} = ? WHERE id = ?`,
+            [statusToSet, id]
+        );
+
+        if (global.io) {
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(id), 
+                status: status,
+                source: source_table
+            });
+        }
+
+        res.json({ success: true, message: "Order status updated" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to update status" });
+    }
+};
+
 // --- RESERVATIONS ---
 export const createReservation = async (req, res) => {
     try {
@@ -315,45 +356,79 @@ export const settleOrder = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { id } = req.params;
-        const { payment_method_id, email } = req.body;
+        const { payment_method_id, email, source_table = 'orders' } = req.body;
 
-        // 1. Fetch order details for validation
-        const [orderRows] = await connection.query(
-            "SELECT o.table_id, o.total_price, o.customer_name, o.customer_id, os.name as status_name FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE o.id = ?", 
-            [id]
-        );
-        
-        if (orderRows.length === 0) throw new Error("Order not found");
-        const order = orderRows[0];
+        let order = null;
+        let updateQuery = "";
+        let updateParams = [];
+        let statusName = "";
 
-        // REQUIREMENT: Payment allowed ONLY IF order is fully served
-        if (order.status_name !== 'SERVED' && order.status_name !== 'COMPLETED') {
-            await connection.rollback();
-            return res.status(400).json({ 
-                success: false, 
-                message: "Payment restricted: Order must be fully SERVED by steward before settlement." 
-            });
+        // 1. Fetch order details based on source table
+        if (source_table === 'orders') {
+            const [rows] = await connection.query(
+                "SELECT o.table_id, o.total_price, o.customer_name, o.customer_id, os.name as status_name FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE o.id = ?",
+                [id]
+            );
+            if (rows.length === 0) throw new Error("Order not found in orders table");
+            order = rows[0];
+            statusName = order.status_name;
+
+            // REQUIREMENT: Dine-in allowed ONLY IF order is fully served
+            if (statusName !== 'SERVED' && statusName !== 'COMPLETED') {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: "Payment restricted: Order must be fully SERVED by steward before settlement."
+                });
+            }
+
+            const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['PAYMENT_COMPLETED']);
+            const completedStatusId = statusRows[0].id;
+
+            updateQuery = "UPDATE orders SET status_id = ?, payment_method_id = ?, paid_at = NOW(), main_status = 'COMPLETED' WHERE id = ?";
+            updateParams = [completedStatusId, payment_method_id, id];
+
+        } else if (source_table === 'takeaway_orders') {
+            const [rows] = await connection.query(
+                "SELECT items, total_price, customer_name, customer_id, order_status FROM takeaway_orders WHERE id = ?",
+                [id]
+            );
+            if (rows.length === 0) throw new Error("Order not found in takeaway_orders table");
+            order = rows[0];
+            
+            const [pmRows] = await connection.query("SELECT name FROM payment_methods WHERE id = ?", [payment_method_id]);
+            const pmName = pmRows.length > 0 ? pmRows[0].name : 'Cash';
+
+            updateQuery = "UPDATE takeaway_orders SET order_status = 'PAYMENT_COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
+            updateParams = [pmName, id];
+
+        } else if (source_table === 'delivery_orders') {
+            const [rows] = await connection.query(
+                "SELECT items, total_price, customer_name, customer_id, order_status FROM delivery_orders WHERE id = ?",
+                [id]
+            );
+            if (rows.length === 0) throw new Error("Order not found in delivery_orders table");
+            order = rows[0];
+
+            const [pmRows] = await connection.query("SELECT name FROM payment_methods WHERE id = ?", [payment_method_id]);
+            const pmName = pmRows.length > 0 ? pmRows[0].name : 'Cash';
+
+            updateQuery = "UPDATE delivery_orders SET order_status = 'PAYMENT_COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
+            updateParams = [pmName, id];
+        } else {
+            throw new Error(`Invalid source table: ${source_table}`);
         }
 
-        const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['COMPLETED']);
-        const completedStatusId = statusRows[0].id;
+        // 2. Perform the update
+        const [resUpdate] = await connection.query(updateQuery, updateParams);
+        if (resUpdate.affectedRows === 0) throw new Error("Order already settled or failed to update");
 
-        // 2. Update order status and payment
-        const [resUpdate] = await connection.query(
-            "UPDATE orders SET status_id = ?, payment_method_id = ?, paid_at = NOW(), main_status = 'COMPLETED' WHERE id = ?",
-            [completedStatusId, payment_method_id, id]
-        );
-
-        if (resUpdate.affectedRows === 0) throw new Error("Order not found or already settled");
-
-        // 3. Set table status to 'cleaning' with a 5-minute delay (Requirement #3)
-        if (order.table_id) {
+        // 3. Set table status to 'cleaning' ONLY for Dine-In (orders table)
+        if (source_table === 'orders' && order.table_id) {
             await connection.query("UPDATE restaurant_tables SET status = 'cleaning' WHERE id = ?", [order.table_id]);
             
-            // Broadcast the 'cleaning' status immediately
             if (global.io) {
                 global.io.emit('tableUpdate', { tableId: order.table_id, status: 'cleaning' });
-                // Requirement: Notify COMPLETED status across all dashboards
                 global.io.emit('orderUpdate', { 
                     orderId: parseInt(id), 
                     status: 'COMPLETED',
@@ -362,82 +437,73 @@ export const settleOrder = async (req, res) => {
                 });
             }
 
-            // Auto-reset to 'available' after 5 minutes
             setTimeout(async () => {
                 try {
                     await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
                     if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'available' });
-                    console.log(`[Table] Table #${order.table_id} auto-reset to available after 5m cleaning.`);
                 } catch (e) {
                     console.error("Delayed table reset failed:", e);
                 }
             }, 5 * 60 * 1000); 
+        } else if (global.io) {
+            // Emit update for Takeaway/Delivery too
+            global.io.emit('orderUpdate', { 
+                orderId: parseInt(id), 
+                status: 'COMPLETED',
+                source: source_table
+            });
         }
 
         // 4. Grant Loyalty Points if registered customer
         if (order.customer_id) {
             const totalPrice = order.total_price || 0;
-            // Basic: 1 pt per 100
             let pointsEarned = Math.floor(totalPrice / 100);
             
-            // Item-based Bonus Points
-            const [bonusRows] = await connection.query(`
-                SELECT SUM(mi.bonus_points * oi.quantity) as bonus
-                FROM order_items oi
-                JOIN menu_items mi ON oi.menu_item_id = mi.id
-                WHERE oi.order_id = ?
-            `, [id]);
-            
-            const itemBonus = parseInt(bonusRows[0]?.bonus || 0);
-            pointsEarned += itemBonus;
+            // Item-based Bonus Points (Only for orders table since takeaway/delivery items are JSON)
+            if (source_table === 'orders') {
+                const [bonusRows] = await connection.query(`
+                    SELECT SUM(mi.bonus_points * oi.quantity) as bonus
+                    FROM order_items oi
+                    JOIN menu_items mi ON oi.menu_item_id = mi.id
+                    WHERE oi.order_id = ?
+                `, [id]);
+                pointsEarned += parseInt(bonusRows[0]?.bonus || 0);
+            }
 
             if (pointsEarned > 0) {
                 await connection.query(
                     'UPDATE online_customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
                     [pointsEarned, order.customer_id]
                 );
-                console.log(`[Loyalty] Granted ${pointsEarned} points (Basic: ${Math.floor(totalPrice/100)}, Item Bonus: ${itemBonus}) to CUSTOMER#${order.customer_id}`);
-
-                // --- MILESTONE REWARD GENERATION ---
-                // If they reach milestones (5th, 10th, 20th order), grant special coupons
-                const [orderCountRows] = await connection.query(
-                    "SELECT COUNT(*) as count FROM orders WHERE customer_id = ?",
-                    [order.customer_id]
-                );
-                const count = orderCountRows[0].count;
-                
-                if ([5, 10, 20, 50].includes(count)) {
-                    const couponCode = `MIL-${count}-` + Math.random().toString(36).substring(2, 6).toUpperCase();
-                    // Just take the first reward for now as a gift
-                    const [defRows] = await connection.query('SELECT id FROM loyalty_reward_definitions LIMIT 1');
-                    if (defRows.length > 0) {
-                        await connection.query(
-                            'INSERT INTO customer_rewards (customer_id, reward_id, coupon_code, expiry_date) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 14 DAY))',
-                            [order.customer_id, defRows[0].id, couponCode]
-                        );
-                        console.log(`[Reward] Auto-generated MIL-${count} reward for CUSTOMER#${order.customer_id}`);
-                    }
-                }
             }
         }
 
         await connection.commit();
 
-        // 3. Optional: Send Email Bill
+        // 5. Send Email Bill
         if (email) {
-            const [items] = await pool.query(`
-                SELECT oi.quantity, mi.name, mi.price 
-                FROM order_items oi 
-                JOIN menu_items mi ON oi.menu_item_id = mi.id 
-                WHERE oi.order_id = ?
-            `, [id]);
+            let itemLines = "";
+            if (source_table === 'orders') {
+                const [items] = await connection.query(`
+                    SELECT oi.quantity, mi.name, mi.price 
+                    FROM order_items oi 
+                    JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                    WHERE oi.order_id = ?
+                `, [id]);
+                itemLines = items.map(i => `${i.name} x ${i.quantity} = Rs. ${i.price * i.quantity}`).join('\n');
+            } else {
+                // For takeaway/delivery, parse JSON items from order object
+                try {
+                    const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+                    itemLines = items.map(i => `${i.name || i.menuItem?.name} x ${i.quantity} = Rs. ${(i.price || i.menuItem?.price || 0) * i.quantity}`).join('\n');
+                } catch (e) {}
+            }
 
-            const itemLines = items.map(i => `${i.name} x ${i.quantity} = Rs. ${i.price * i.quantity}`).join('\n');
             const mailOptions = {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: `Bill for Order #${id} - Melissa's Food Court`,
-                text: `Thank you for dining with us!\n\nOrder Details:\n${itemLines}\n\nGrand Total: Rs. ${orderRows[0].total_price}\n\nHave a great day!`
+                text: `Thank you for dining with us!\n\nOrder Details:\n${itemLines}\n\nGrand Total: Rs. ${order.total_price}\n\nHave a great day!`
             };
             transporter.sendMail(mailOptions).catch(e => console.error("Email failed:", e));
         }
@@ -445,6 +511,7 @@ export const settleOrder = async (req, res) => {
         res.json({ success: true, message: "Order settled successfully" });
     } catch (err) {
         await connection.rollback();
+        console.error("Settlement Error:", err);
         res.status(500).json({ message: "Settlement failed", error: err.message });
     } finally {
         connection.release();

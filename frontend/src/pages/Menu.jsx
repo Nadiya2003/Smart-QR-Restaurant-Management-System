@@ -3,6 +3,7 @@ import MenuItemCard from '../components/MenuItemCard';
 import FloatingCart from '../components/FloatingCart';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { io } from 'socket.io-client';
 import config from '../config';
 
 /**
@@ -21,6 +22,22 @@ function Menu() {
     useEffect(() => {
         window.scrollTo(0, 0);
         fetchMenu();
+
+        // Real-time Availability Sync
+        const socket = io(config.API_BASE_URL);
+        socket.on('menuUpdate', (data) => {
+            console.log('Web Menu update received:', data);
+            setMenuItems(prev => prev.map(item =>
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
+        });
+
+        socket.on('menuChange', (data) => {
+            console.log('Web Menu structural change:', data);
+            fetchMenu();
+        });
+
+        return () => socket.disconnect();
     }, []);
 
     const fetchMenu = async () => {
@@ -43,7 +60,9 @@ function Menu() {
         }
     };
 
-    const categories = [...new Set(menuItems.map(item => item.category))];
+    const categories = [...new Set(menuItems
+        .filter(item => (item.image_url || item.image) && item.is_active !== 0 && item.is_active !== false)
+        .map(item => item.category))];
 
     useEffect(() => {
         if (categories.length > 0 && !activeCategory) {
@@ -51,7 +70,14 @@ function Menu() {
         }
     }, [categories, activeCategory]);
 
-    const filteredItems = menuItems.filter(item => item.category === activeCategory);
+    const filteredItems = menuItems
+        .filter(item => {
+            const hasImage = item.image_url || item.image;
+            const isActive = item.is_active !== 0 && item.is_active !== false;
+            const isAvailable = item.is_available !== 0 && item.is_available !== false;
+            return item.category === activeCategory && hasImage && isActive && isAvailable;
+        })
+        .slice(0, 6);
 
     const handleCheckout = () => {
         navigate('/delivery');

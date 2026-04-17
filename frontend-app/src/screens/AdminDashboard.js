@@ -152,11 +152,16 @@ const AdminDashboard = () => {
     const [selectedReservation, setSelectedReservation] = useState(null);
 
     // Form States
-    const [menuForm, setMenuForm] = useState({ name: '', price: '', buying_price: '', category_id: '', description: '', image: '', is_active: true });
+    const [menuForm, setMenuForm] = useState({ name: '', price: '', buying_price: '', category_id: '', description: '', image: '', is_active: true, item_type: 'Food' });
     const [supplierForm, setSupplierForm] = useState({ name: '', contact_number: '', email: '', address: '', products_supplied: '' });
     const [inventoryForm, setInventoryForm] = useState({ item_name: '', quantity: '', unit: '', supplier_id: '', category: 'General', min_level: '5' });
 
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+    
+    // Category CRUD
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [editingCategory, setEditingCategory] = useState(null);
+    const [categoryForm, setCategoryForm] = useState({ name: '', image: '' });
     
     // Real-time states
     const [socketConnected, setSocketConnected] = useState(false);
@@ -254,7 +259,7 @@ const AdminDashboard = () => {
             }
 
             if (activeTab === 'menu') {
-                const menuData = await safeFetch(apiConfig.MENU.ALL, { headers: reqHeaders });
+                const menuData = await safeFetch(`${apiConfig.MENU.ALL}?admin=true`, { headers: reqHeaders });
                 if (menuData) setMenuList(menuData.items || menuData || []);
 
                 const catData = await safeFetch(apiConfig.MENU.CATEGORIES, { headers: reqHeaders });
@@ -532,18 +537,28 @@ const AdminDashboard = () => {
 
     const handleSaveMenu = async () => {
         if (!menuForm.name || !menuForm.price || !menuForm.category_id) {
-            Alert.alert('Error', 'Please fill all required fields');
+            Alert.alert('Error', 'Please fill all required fields (Name, Price, Category)');
+            return;
+        }
+
+        // Image is required for new items
+        if (!editingItem && !menuForm.image) {
+            Alert.alert('Error', 'Please upload or paste a URL for the food image');
             return;
         }
 
         const formData = new FormData();
         formData.append('name', menuForm.name);
         formData.append('price', Number(menuForm.price));
+        formData.append('buying_price', Number(menuForm.buying_price || 0));
         formData.append('category_id', menuForm.category_id);
         formData.append('description', menuForm.description || '');
         formData.append('is_active', menuForm.is_active ? 1 : 0);
+        formData.append('is_available', menuForm.is_active ? 1 : 0);
+        formData.append('item_type', menuForm.item_type || 'Food');
         
         if (menuForm.image && !menuForm.image.startsWith('http') && !menuForm.image.startsWith('/upload')) {
+            // Local URI from image picker — append as file
             const filename = menuForm.image.split('/').pop() || 'image.jpg';
             const match = /\.([a-zA-Z0-9]+)$/.exec(filename);
             const type = match ? `image/${match[1]}` : `image/jpeg`;
@@ -555,6 +570,9 @@ const AdminDashboard = () => {
             } else {
                 formData.append('image', { uri: menuForm.image, name: filename, type });
             }
+        } else if (menuForm.image) {
+            // URL or existing path — pass as text field so backend can store it
+            formData.append('image', menuForm.image);
         }
 
         const url = editingItem ? `${apiConfig.MENU.ALL}/${editingItem.id}` : apiConfig.MENU.ALL;
@@ -573,7 +591,7 @@ const AdminDashboard = () => {
             if (res.ok) {
                 Alert.alert('Success', `Menu item ${editingItem ? 'updated' : 'created'}`);
                 setShowMenuModal(false);
-                setMenuForm({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
+                setMenuForm({ name: '', price: '', buying_price: '', category_id: '', description: '', image: '', is_active: true, item_type: 'Food' });
                 setEditingItem(null);
                 fetchData(true);
             } else {
@@ -608,6 +626,67 @@ const AdminDashboard = () => {
                     }
                 }
             }
+        ]);
+    };
+
+    const handleSaveCategory = async () => {
+        if (!categoryForm.name) {
+            Alert.alert('Error', 'Category name is required');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('name', categoryForm.name);
+        
+        if (categoryForm.image && !categoryForm.image.startsWith('http') && !categoryForm.image.startsWith('/upload')) {
+            const filename = categoryForm.image.split('/').pop() || 'cat.jpg';
+            const match = /\.([a-zA-Z0-9]+)$/.exec(filename);
+            const type = match ? `image/${match[1]}` : `image/jpeg`;
+            formData.append('image', { uri: categoryForm.image, name: filename, type });
+        }
+
+        const url = editingCategory ? `${apiConfig.API_BASE_URL}/api/menu/categories/${editingCategory.id}` : `${apiConfig.API_BASE_URL}/api/menu/categories`;
+        const method = editingCategory ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+
+            if (res.ok) {
+                Alert.alert('Success', `Category ${editingCategory ? 'updated' : 'created'}`);
+                setShowCategoryModal(false);
+                setCategoryForm({ name: '', image: '' });
+                setEditingCategory(null);
+                fetchData(true);
+            } else {
+                const data = await res.json();
+                Alert.alert('Error', data.message || 'Failed to save category');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
+        }
+    };
+
+    const handleDeleteCategory = (cat) => {
+        Alert.alert('Delete Category', `Delete "${cat.name}"? This will fail if items exist in this category.`, [
+            { text: 'Cancel' },
+            { text: 'Delete', style: 'destructive', onPress: async () => {
+                try {
+                    const res = await fetch(`${apiConfig.API_BASE_URL}/api/menu/categories/${cat.id}`, {
+                        method: 'DELETE',
+                        headers
+                    });
+                    if (res.ok) {
+                        fetchData(true);
+                    } else {
+                        const data = await res.json();
+                        Alert.alert('Error', data.message || 'Failed to delete');
+                    }
+                } catch (e) { Alert.alert('Error', 'Network error'); }
+            }}
         ]);
     };
 
@@ -830,33 +909,58 @@ const AdminDashboard = () => {
 
 
     // ===== ENHANCED ORDERS TAB =====
-    const renderOrders = () => (
+    const renderOrders = () => {
+        // Prepare filtered lists beforehand for cleaner rendering
+        const historyList = orderList.filter(o => ['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED'].includes((o.status || '').toUpperCase()));
+        const getActiveOrders = (type) => orderList.filter(o => o.order_type === type && !['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED'].includes((o.status || '').toUpperCase()));
+        
+        const tabsData = [
+            { key: 'DINE-IN', icon: '🍽️', label: 'Dine-In', count: getActiveOrders('DINE-IN').length },
+            { key: 'TAKEAWAY', icon: '🥡', label: 'Takeaway', count: getActiveOrders('TAKEAWAY').length },
+            { key: 'DELIVERY', icon: '🚚', label: 'Delivery', count: getActiveOrders('DELIVERY').length },
+            { key: 'CANCELLATIONS', icon: '🚨', label: 'Cancellations', count: cancelRequestList.length },
+            { key: 'HISTORY', icon: '📜', label: 'History', count: historyList.length }
+        ];
+
+        let displayList = [];
+        if (orderSubTab === 'HISTORY') {
+            displayList = historyList;
+        } else if (orderSubTab === 'DINE-IN' || orderSubTab === 'TAKEAWAY' || orderSubTab === 'DELIVERY') {
+            displayList = getActiveOrders(orderSubTab);
+        }
+
+        return (
         <>
-            <View style={styles.subTabRow}>
-                {['ALL', 'DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS'].map(tab => {
-                    let count = 0;
-                    if (tab === 'CANCELLATIONS') count = cancelRequestList.length;
-                    else if (tab === 'ALL') count = orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
-                    else count = orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
-                    
-                    return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 15 }}>
+                <View style={[styles.subTabRow, { paddingRight: 40 }]}>
+                    {tabsData.map(tab => (
                         <TouchableOpacity 
-                            key={tab} 
-                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab, { paddingHorizontal: 15 }]}
-                            onPress={() => setOrderSubTab(tab)}
+                            key={tab.key} 
+                            style={[
+                                styles.subTab, 
+                                orderSubTab === tab.key && styles.activeSubTab, 
+                                { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25 }
+                            ]}
+                            onPress={() => setOrderSubTab(tab.key)}
                         >
-                            <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'ALL' ? '📋' : tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : '🚨'} {tab} ({count})
+                            <Text style={[
+                                styles.subTabText, 
+                                orderSubTab === tab.key && styles.activeSubTabText,
+                                { fontSize: 13, fontWeight: orderSubTab === tab.key ? 'bold' : '600' }
+                            ]}>
+                                {tab.icon} {tab.label} ({tab.count})
                             </Text>
                         </TouchableOpacity>
-                    );
-                })}
-            </View>
+                    ))}
+                </View>
+            </ScrollView>
 
-            <View style={styles.sectionHeader}>
+            <View style={[styles.sectionHeader, { marginTop: 0 }]}>
                 <View>
-                    <Text style={styles.sectionTitle}>{orderSubTab} Orders</Text>
-                    <Text style={styles.sectionSubtitle}>Manage daily transactions</Text>
+                    <Text style={styles.sectionTitle}>
+                        {tabsData.find(t => t.key === orderSubTab)?.label || orderSubTab} Orders
+                    </Text>
+                    <Text style={styles.sectionSubtitle}>Manage transactions</Text>
                 </View>
                 <TouchableOpacity style={styles.addButtonSmall} onPress={() => setShowOrderModal(true)}>
                     <Text style={styles.addButtonTextSmall}>+ Add Order</Text>
@@ -911,7 +1015,7 @@ const AdminDashboard = () => {
                         <View key={req.id} style={[styles.listCard, { borderColor: '#F59E0B', borderWidth: 1 }]}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                 <Text style={styles.listCardName}>Order #{req.order_id} Item Removal</Text>
-                                <View style={[styles.badge, { backgroundColor: '#Fef3c7' }]}>
+                                <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
                                     <Text style={[styles.badgeText, { color: '#B45309' }]}>REMOVAL REQUEST</Text>
                                 </View>
                             </View>
@@ -938,13 +1042,13 @@ const AdminDashboard = () => {
                         </View>
                     ))
                 )
-            ) : (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).length === 0 ? (
+            ) : displayList.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>🛍️</Text>
-                    <Text style={styles.emptyText}>No {orderSubTab} orders found</Text>
+                    <Text style={styles.emptyIcon}>{orderSubTab === 'HISTORY' ? '📜' : '🛍️'}</Text>
+                    <Text style={styles.emptyText}>No {tabsData.find(t => t.key === orderSubTab)?.label || 'matching'} orders found</Text>
                 </View>
             ) : (
-                (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).map((order) => {
+                displayList.map((order) => {
                     const isOngoing = ['PENDING', 'ORDER PLACED', 'PREPARING', 'READY', 'OUT FOR DELIVERY'].includes((order.status || '').toUpperCase());
                     return (
                         <TouchableOpacity 
@@ -1012,7 +1116,7 @@ const AdminDashboard = () => {
             )}
         </>
     );
-
+};
 
 
     // ===== ATTENDANCE TAB =====
@@ -1086,7 +1190,7 @@ const AdminDashboard = () => {
                 </View>
                 <TouchableOpacity style={styles.addButtonSmall} onPress={() => {
                     setEditingItem(null);
-                    setMenuForm({ name: '', price: '', category_id: '', description: '', is_active: true });
+                    setMenuForm({ name: '', price: '', buying_price: '', category_id: '', description: '', image: '', is_active: true, item_type: 'Food' });
                     setShowMenuModal(true);
                 }}>
                     <Text style={styles.addButtonTextSmall}>+ Item</Text>
@@ -1097,6 +1201,12 @@ const AdminDashboard = () => {
                 {categories.map(cat => {
                     const itemCount = menuList.filter(item => item.category === cat.name).length;
                     const isLow = itemCount === 0;
+                    const catEmoji = 
+                        cat.name === 'Sri Lankan' ? '🍛' :
+                        cat.name === 'Indian' ? '🧆' :
+                        cat.name === 'Italian' ? '🍝' :
+                        cat.name === 'Beverages' ? '🥤' :
+                        cat.name === 'Desserts' ? '🍰' : '🍽️';
                     return (
                         <TouchableOpacity 
                             key={cat.id} 
@@ -1104,13 +1214,31 @@ const AdminDashboard = () => {
                             onPress={() => setSelectedCategory(cat.name)}
                         >
                             <Text style={[styles.catPillText, selectedCategory === cat.name && styles.activeCatPillText]}>
-                                {cat.name} ({itemCount}) {isLow && '⚠️'}
+                                {catEmoji} {cat.name} ({itemCount}) {isLow && '⚠️'}
                             </Text>
+                            {selectedCategory === cat.name && (
+                                <View style={{ flexDirection: 'row', marginLeft: 8, gap: 5 }}>
+                                    <TouchableOpacity onPress={() => {
+                                        setEditingCategory(cat);
+                                        setCategoryForm({ name: cat.name, image: cat.image });
+                                        setShowCategoryModal(true);
+                                    }}>
+                                        <Text style={{ fontSize: 10 }}>✏️</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleDeleteCategory(cat)}>
+                                        <Text style={{ fontSize: 10 }}>🗑️</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </TouchableOpacity>
                     );
                 })}
-                <TouchableOpacity style={styles.catPill_add} onPress={() => Alert.alert('Add Category', 'Open Category form')}>
-                    <Text style={styles.catPillText_add}>+ New</Text>
+                <TouchableOpacity style={styles.catPill_add} onPress={() => {
+                    setEditingCategory(null);
+                    setCategoryForm({ name: '', image: '' });
+                    setShowCategoryModal(true);
+                }}>
+                    <Text style={styles.catPillText_add}>+ Category</Text>
                 </TouchableOpacity>
             </ScrollView>
 
@@ -1154,7 +1282,8 @@ const AdminDashboard = () => {
                                             buying_price: item.buying_price ? item.buying_price.toString() : '',
                                             category_id: cat ? cat.id : '',
                                             description: item.description || '',
-                                            is_active: item.status === 1 || !!item.is_active
+                                            is_active: item.status === 1 || !!item.is_active,
+                                            item_type: item.item_type || 'Food'
                                         });
                                         setShowMenuModal(true);
                                     }}
@@ -2336,6 +2465,7 @@ const AdminDashboard = () => {
             {renderActiveStaffModal()}
             {renderTotalCustomersModal()}
             {renderMenuModal()}
+            {renderCategoryModal()}
             {renderOrderModal()}
             {renderRoleModal()}
             {renderInventoryModal()}
@@ -2757,7 +2887,7 @@ const AdminDashboard = () => {
                             <TouchableOpacity onPress={() => {
                                 setShowMenuModal(false);
                                 setEditingItem(null);
-                                setMenuForm({ name: '', price: '', category_id: '', description: '', image: '', is_active: true });
+                                setMenuForm({ name: '', price: '', category_id: '', description: '', image: '', is_active: true, item_type: 'Food' });
                             }}>
                                 <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
@@ -2765,6 +2895,21 @@ const AdminDashboard = () => {
 
                         {/* Scrollable Form */}
                         <ScrollView style={{ flex: 1, marginTop: 15 }} showsVerticalScrollIndicator={false}>
+                            <Text style={styles.label}>Item Type *</Text>
+                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                {['Food', 'Drink'].map(type => (
+                                    <TouchableOpacity
+                                        key={type}
+                                        style={[styles.catPill, menuForm.item_type === type && styles.activeCatPill, { flex: 1, alignItems: 'center' }]}
+                                        onPress={() => setMenuForm({ ...menuForm, item_type: type })}
+                                    >
+                                        <Text style={[styles.catPillText, menuForm.item_type === type && styles.activeCatPillText]}>
+                                            {type === 'Food' ? '🍳 ' : '🍹 '}{type}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
                             <Text style={styles.label}>Item Name *</Text>
                             <TextInput
                                 style={styles.input}
@@ -2852,6 +2997,66 @@ const AdminDashboard = () => {
                                 <Text style={{ color: 'white', fontSize: 15, fontWeight: 'bold', letterSpacing: 0.5 }}>
                                     {editingItem ? '💾 Save Changes' : '✅ Add Menu Item'}
                                 </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    function renderCategoryModal() {
+        const handlePickCatImage = async () => {
+            try {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ['images'],
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                });
+                if (!result.canceled) {
+                    setCategoryForm({ ...categoryForm, image: result.assets[0].uri });
+                }
+            } catch (error) { console.error(error); }
+        };
+
+        return (
+            <Modal visible={showCategoryModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>{editingCategory ? '✏️ Edit Category' : '➕ New Category'}</Text>
+                            <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.label}>Category Name *</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="e.g. Desserts"
+                            value={categoryForm.name}
+                            onChangeText={(val) => setCategoryForm({ ...categoryForm, name: val })}
+                        />
+
+                        <Text style={styles.label}>Category Icon/Image</Text>
+                        <TouchableOpacity 
+                            style={[styles.input, { borderStyle: 'dashed', borderWidth: 1.5, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', height: 100 }]}
+                            onPress={handlePickCatImage}
+                        >
+                            {categoryForm.image ? (
+                                <Image source={{ uri: categoryForm.image.startsWith('http') ? categoryForm.image : (categoryForm.image.startsWith('/') ? `${apiConfig.API_BASE_URL}${categoryForm.image}` : categoryForm.image) }} style={{ width: 80, height: 80, borderRadius: 10 }} />
+                            ) : (
+                                <Text style={{ color: '#6B7280' }}>📁 Pick Icon</Text>
+                            )}
+                        </TouchableOpacity>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCategoryModal(false)}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveCategory}>
+                                <Text style={styles.saveBtnText}>{editingCategory ? 'Update' : 'Create'}</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

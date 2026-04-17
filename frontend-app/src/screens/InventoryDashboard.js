@@ -44,6 +44,8 @@ const InventoryDashboard = ({ onLogout }) => {
     const [adjustReason, setAdjustReason] = useState('');
     const [requestQty, setRequestQty] = useState('');
     const [selectedSupplierId, setSelectedSupplierId] = useState('');
+    const [modalMode, setModalMode] = useState('request'); // 'request' or 'direct'
+    const [orderPrice, setOrderPrice] = useState('');
 
     const [inventoryForm, setInventoryForm] = useState({
         item_name: '',
@@ -81,14 +83,14 @@ const InventoryDashboard = ({ onLogout }) => {
                 status: selectedStatus
             }).toString();
 
-            // 1. Fetch Inventory & Core Data (Parallel)
+            // 1. Fetch Inventory & Core Data (Parallel with individual error handling)
             const [invRes, supRes, reqRes, histRes, notifRes, orderRes] = await Promise.all([
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory?${params}`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/suppliers`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/history`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/steward-dashboard/notifications`, { headers }),
-                fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders`, { headers })
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory?${params}`, { headers }).catch(e => ({ ok: false })),
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/suppliers`, { headers }).catch(e => ({ ok: false })),
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/restock-requests`, { headers }).catch(e => ({ ok: false })),
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/history`, { headers }).catch(e => ({ ok: false })),
+                fetch(`${apiConfig.API_BASE_URL}/api/staff-notifications`, { headers }).catch(e => ({ ok: false })),
+                fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders`, { headers }).catch(e => ({ ok: false }))
             ]);
 
             if (invRes.ok) setInventory((await invRes.json()).inventory || []);
@@ -178,6 +180,52 @@ const InventoryDashboard = ({ onLogout }) => {
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to create request');
+        }
+    };
+
+    const handleUpdateSupplierOrderStatus = async (id, status) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders/${id}/status`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ status })
+            });
+            if (res.ok) {
+                Alert.alert('Success', `Order status updated to ${status}`);
+                fetchData();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update order status');
+        }
+    };
+
+    const handleCreateSupplierOrder = async () => {
+        if (!selectedItem) return Alert.alert('Error', 'Please select an item');
+        if (!requestQty || isNaN(requestQty)) return Alert.alert('Error', 'Please enter quantity');
+        if (!selectedSupplierId) return Alert.alert('Error', 'Please select a supplier');
+
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/inventory/supplier-orders`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    inventory_id: selectedItem.id,
+                    supplier_id: selectedSupplierId,
+                    quantity: parseFloat(requestQty),
+                    total_amount: parseFloat(orderPrice) || 0,
+                    notes: `Direct order from Inventory Portal`
+                })
+            });
+            if (res.ok) {
+                Alert.alert('Success', 'Supplier order placed successfully');
+                setShowRequestModal(false);
+                setRequestQty('');
+                setOrderPrice('');
+                setSelectedSupplierId('');
+                fetchData();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to create order');
         }
     };
 
@@ -273,6 +321,7 @@ const InventoryDashboard = ({ onLogout }) => {
                                 setSelectedItem(null);
                                 setRequestQty('');
                                 setSelectedSupplierId('');
+                                setModalMode('direct');
                                 setShowRequestModal(true);
                             }} 
                             style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
@@ -298,6 +347,7 @@ const InventoryDashboard = ({ onLogout }) => {
                                 setSelectedItem(null);
                                 setRequestQty('');
                                 setSelectedSupplierId('');
+                                setModalMode('request');
                                 setShowRequestModal(true);
                             }} 
                             style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 10 }]}
@@ -388,6 +438,7 @@ const InventoryDashboard = ({ onLogout }) => {
                         style={[styles.itemActionBtn, { backgroundColor: '#111827' }]}
                         onPress={() => {
                             setSelectedItem(item);
+                            setModalMode('request');
                             setShowRequestModal(true);
                         }}
                     >
@@ -565,6 +616,7 @@ const InventoryDashboard = ({ onLogout }) => {
                         setSelectedItem(null);
                         setRequestQty('');
                         setSelectedSupplierId('');
+                        setModalMode('direct');
                         setShowRequestModal(true);
                     }} 
                     style={[styles.headerActionBtn, { backgroundColor: '#3B82F6', marginRight: 0 }]}
@@ -582,13 +634,26 @@ const InventoryDashboard = ({ onLogout }) => {
                                 <Text style={styles.reqItem}>{order.item_name || 'Stock Order'}</Text>
                                 <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: 'bold' }}>Order #{order.id}</Text>
                             </View>
-                            <View style={[styles.reqBadge, { backgroundColor: order.status === 'DELIVERED' ? '#D1FAE5' : '#DBEAFE' }]}>
-                                <Text style={[styles.reqBadgeText, { color: order.status === 'DELIVERED' ? '#059669' : '#3B82F6' }]}>{order.status}</Text>
+                            <View style={[styles.reqBadge, { 
+                                backgroundColor: order.status === 'DELIVERED' ? '#D1FAE5' : (order.status === 'COMPLETED' ? '#F3F4F6' : '#DBEAFE') 
+                            }]}>
+                                <Text style={[styles.reqBadgeText, { 
+                                    color: order.status === 'DELIVERED' ? '#059669' : (order.status === 'COMPLETED' ? '#6B7280' : '#3B82F6') 
+                                }]}>{order.status}</Text>
                             </View>
                         </View>
                         <Text style={styles.reqDetails}>Qty: {order.quantity}{order.unit} · Total: Rs. {Number(order.total_amount).toLocaleString()}</Text>
                         <Text style={styles.reqDetails}>Supplier: {order.supplier_name}</Text>
                         <Text style={styles.reqDate}>Ordered on {new Date(order.created_at).toLocaleDateString()}</Text>
+                        
+                        {order.status === 'DELIVERED' && (
+                             <TouchableOpacity 
+                                 style={[styles.smallBtn, { backgroundColor: '#10B981', marginTop: 15, alignItems: 'center', padding: 10, borderRadius: 8 }]}
+                                 onPress={() => handleUpdateSupplierOrderStatus(order.id, 'COMPLETED')}
+                             >
+                                 <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>Finalize & Complete</Text>
+                             </TouchableOpacity>
+                        )}
                     </View>
                 ))
             )}
@@ -888,20 +953,18 @@ const InventoryDashboard = ({ onLogout }) => {
                                 </View>
                             </View>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Default Supplier</Text>
-                                <ScrollView horizontal style={{ marginTop: 5 }}>
+                                <Text style={styles.label}>Default Supplier (Registered)</Text>
+                                <ScrollView horizontal style={{ marginTop: 8 }} showsHorizontalScrollIndicator={false}>
                                     {suppliers.map(s => (
                                         <TouchableOpacity 
                                             key={s.id}
-                                            style={[styles.smallPill, inventoryForm.supplier_id == s.id && styles.activePill]}
+                                            style={[styles.supPill, inventoryForm.supplier_id == s.id && styles.activeSupPill, { borderWidth: 1, borderColor: '#E5E7EB' }]}
                                             onPress={() => setInventoryForm({...inventoryForm, supplier_id: s.id})}
                                         >
-                                            <Text style={[styles.pillText, inventoryForm.supplier_id == s.id && styles.activePillText]}>{s.brand_name || s.name}</Text>
+                                            <Text style={[styles.supPillText, inventoryForm.supplier_id == s.id && styles.activeSupPillText]}>{s.name} ({s.brand_name || 'Retail'})</Text>
                                         </TouchableOpacity>
                                     ))}
                                 </ScrollView>
-                            </View>
                         </ScrollView>
 
                         <TouchableOpacity style={styles.submitBtn} onPress={handleSaveInventory}>
@@ -965,11 +1028,14 @@ const InventoryDashboard = ({ onLogout }) => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>New Supply Order</Text>
+                            <Text style={styles.modalTitle}>{modalMode === 'direct' ? 'New Supply Order' : 'Restock Request'}</Text>
                             <TouchableOpacity onPress={() => setShowRequestModal(false)}><Text style={{ fontSize: 24 }}>✕</Text></TouchableOpacity>
                         </View>
                         {selectedItem ? (
-                            <Text style={styles.modalSub}>{selectedItem.item_name} (Min Level: {selectedItem.min_level})</Text>
+                            <Text style={styles.modalSub}>
+                                {selectedItem.item_name} (Min Level: {selectedItem.min_level})
+                                {selectedItem.supplier_name ? `\nSupplier: ${selectedItem.supplier_name}` : ''}
+                            </Text>
                         ) : (
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Select Item to Order</Text>
@@ -977,10 +1043,18 @@ const InventoryDashboard = ({ onLogout }) => {
                                     {inventory.map(i => (
                                         <TouchableOpacity 
                                             key={i.id} 
-                                            style={[styles.supPill, selectedItem?.id === i.id && styles.activeSupPill, { borderWidth: 1, borderColor: '#E5E7EB' }]}
-                                            onPress={() => setSelectedItem(i)}
+                                            style={[styles.supPill, selectedItem?.id === i.id && styles.activeSupPill, { borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' }]}
+                                            onPress={() => {
+                                                setSelectedItem(i);
+                                                if (i.supplier_id) setSelectedSupplierId(i.supplier_id);
+                                            }}
                                         >
                                             <Text style={[styles.supPillText, selectedItem?.id === i.id && styles.activeSupPillText]}>{i.item_name}</Text>
+                                            {i.supplier_name && (
+                                                <Text style={{ fontSize: 9, color: (selectedItem?.id === i.id ? '#111827' : '#9CA3AF'), fontWeight: (selectedItem?.id === i.id ? 'bold' : 'normal') }}>
+                                                    {i.supplier_name}
+                                                </Text>
+                                            )}
                                         </TouchableOpacity>
                                     ))}
                                 </ScrollView>
@@ -1016,8 +1090,26 @@ const InventoryDashboard = ({ onLogout }) => {
                             </ScrollView>
                         </View>
 
-                        <TouchableOpacity style={styles.submitBtn} onPress={handleCreateRequest}>
-                            <Text style={styles.btnTextWhite}>Send Request to Admin</Text>
+                        {modalMode === 'direct' && (
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Expected Price (Optional)</Text>
+                                <TextInput 
+                                    style={styles.input}
+                                    placeholder="Total amount in Rs."
+                                    keyboardType="numeric"
+                                    value={orderPrice}
+                                    onChangeText={setOrderPrice}
+                                />
+                            </View>
+                        )}
+
+                        <TouchableOpacity 
+                            style={styles.submitBtn} 
+                            onPress={modalMode === 'direct' ? handleCreateSupplierOrder : handleCreateRequest}
+                        >
+                            <Text style={styles.btnTextWhite}>
+                                {modalMode === 'direct' ? 'Place Direct Order' : 'Send Request to Admin'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>

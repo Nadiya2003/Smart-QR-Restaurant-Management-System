@@ -27,10 +27,21 @@ export const protect = (req, res, next) => {
 };
 
 export const adminOnly = (req, res, next) => {
-    if (req.user && (req.user.role === 'ADMIN' || req.user.role === 'admin')) {
+    const role = (req.user?.role || '').toUpperCase();
+    if (req.user && (role === 'ADMIN' || role === 'MANAGER')) {
         next();
     } else {
-        res.status(403).json({ message: 'Not authorized as admin' });
+        res.status(403).json({ message: 'Not authorized as admin or manager' });
+    }
+};
+
+export const canToggleAvailability = (req, res, next) => {
+    const allowed = ['ADMIN', 'MANAGER', 'KITCHEN_STAFF', 'BAR_STAFF'];
+    const role = (req.user?.role || '').toUpperCase();
+    if (req.user && allowed.includes(role)) {
+        next();
+    } else {
+        res.status(403).json({ message: 'Not authorized to toggle availability' });
     }
 };
 

@@ -110,7 +110,7 @@ const ManagerDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const [userSubTab, setUserSubTab] = useState('customers');
+    const [userSubTab, setUserSubTab] = useState('staff');
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
     const [inventorySubTab, setInventorySubTab] = useState('ITEMS');
     const [selectedCategory, setSelectedCategory] = useState('');
@@ -761,7 +761,7 @@ const ManagerDashboard = () => {
     const renderUsers = () => (
         <>
             <View style={styles.subTabRow}>
-                {['customers', 'staff'].map(tab => (
+                {['staff', 'customers'].map(tab => (
                     <TouchableOpacity 
                         key={tab} 
                         style={[styles.subTab, userSubTab === tab.toLowerCase() && styles.activeSubTab]}
@@ -773,7 +773,7 @@ const ManagerDashboard = () => {
                     </TouchableOpacity>
                 ))}
             </View>
-            {userSubTab === 'customers' ? renderCustomers() : renderStaff()}
+            {userSubTab === 'staff' ? renderStaff() : renderCustomers()}
         </>
     );
 
@@ -811,14 +811,11 @@ const ManagerDashboard = () => {
                                 <Text style={styles.listCardSub}>📞 {staff.phone || 'No Phone'}</Text>
 
                                 <View style={styles.badgeRow}>
-                                    <TouchableOpacity 
-                                        onPress={() => toggleStatus(staff.id, staff.is_active, 'staff')}
-                                        style={[styles.badge, { backgroundColor: staff.is_active ? '#D1FAE5' : '#FEE2E2' }]}
-                                    >
+                                    <View style={[styles.badge, { backgroundColor: staff.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
                                         <Text style={[styles.badgeText, { color: staff.is_active ? '#059669' : '#DC2626' }]}>
                                             {staff.is_active ? 'Active' : 'Deactivated'}
                                         </Text>
-                                    </TouchableOpacity>
+                                    </View>
                                     <TouchableOpacity 
                                         style={[styles.permBtn, { marginLeft: 0, backgroundColor: '#FEF3C7' }]} 
                                         onPress={() => {
@@ -859,14 +856,11 @@ const ManagerDashboard = () => {
                                 <Text style={styles.listCardSub}>{customer.email} • {customer.phone || 'N/A'}</Text>
                                 <Text style={styles.listCardSub}>Joined: {new Date(customer.created_at).toLocaleDateString()}</Text>
                                 <View style={styles.badgeRow}>
-                                    <TouchableOpacity 
-                                        onPress={() => toggleStatus(customer.id, customer.is_active, 'customer')}
-                                        style={[styles.badge, { backgroundColor: customer.is_active ? '#D1FAE5' : '#FEE2E2' }]}
-                                    >
+                                    <View style={[styles.badge, { backgroundColor: customer.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
                                         <Text style={[styles.badgeText, { color: customer.is_active ? '#059669' : '#DC2626' }]}>
                                             {customer.is_active ? 'Active' : 'Deactivated'}
                                         </Text>
-                                    </TouchableOpacity>
+                                    </View>
                                 </View>
                             </View>
                     </View>

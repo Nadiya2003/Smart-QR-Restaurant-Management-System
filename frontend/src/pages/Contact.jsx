@@ -93,17 +93,6 @@ function Contact() {
                             </div>
                         </GlassCard>
 
-                        {/* Map Mockup */}
-                        <GlassCard className="p-0 overflow-hidden h-[300px] border-[#D4AF37]/20 relative">
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[#D4AF37] font-bold text-xl italic p-8 text-center">
-                                Google Maps Interaction Area
-                            </div>
-                            <SafeImage
-                                src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5ce?auto=format&fit=crop&q=80&w=800"
-                                alt="Map Location"
-                                className="w-full h-full object-cover grayscale opacity-50"
-                            />
-                        </GlassCard>
                     </div>
 
                     {/* Contact Form */}

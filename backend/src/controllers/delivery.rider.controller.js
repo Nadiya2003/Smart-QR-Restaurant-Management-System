@@ -409,7 +409,7 @@ export const getHistory = async (req, res) => {
                     WHERE doi.order_id = do.id) as items_detailed
             FROM delivery_orders do
             WHERE do.created_by = ? 
-              AND do.order_status IN ('Closed', 'Cancelled')
+              AND do.order_status IN ('Delivered', 'Pending Final Closure', 'Closed', 'Cancelled')
         `;
         let params = [riderId];
 

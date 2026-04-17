@@ -72,6 +72,9 @@ const KitchenDashboard = () => {
     const [isOnDuty, setIsOnDuty] = useState(true);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
+    const [menuItems, setMenuItems] = useState([]);
+    const [menuLoading, setMenuLoading] = useState(false);
+    const [selectedMenuCategory, setSelectedMenuCategory] = useState('Sri Lankans');
     
     // Sound & Notification refs
     const prevOrderIds = useRef(new Set());
@@ -168,6 +171,34 @@ const KitchenDashboard = () => {
             setRefreshing(false);
         }
     }, [token]);
+
+    const fetchMenuItems = useCallback(async () => {
+        setMenuLoading(true);
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/menu?type=Food`, { headers });
+            if (res.ok) {
+                const data = await res.json();
+                // Filter: MUST have image
+                const validItems = (data || []).filter(item => {
+                    if (!item.image_url && !item.image) return false;
+                    const cat = (item.category || '').toLowerCase();
+                    if (cat.includes('beverage') || cat.includes('drink') || cat.includes('bar')) return false;
+                    return true;
+                });
+                setMenuItems(validItems);
+            }
+        } catch (error) {
+            console.error('Fetch menu items error:', error);
+        } finally {
+            setMenuLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        if (activeTab === 'menu') {
+            fetchMenuItems();
+        }
+    }, [activeTab, fetchMenuItems]);
 
     // Setup Socket.io
     useEffect(() => {
@@ -294,6 +325,18 @@ const KitchenDashboard = () => {
             }
         });
 
+        socket.on('menuUpdate', (data) => {
+            console.log('[Kitchen] Menu update received:', data);
+            setMenuItems(prev => prev.map(item => 
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
+        });
+
+        socket.on('menuChange', (data) => {
+            console.log('[Kitchen] Menu structural change:', data);
+            fetchData(true);
+        });
+
         const autoCheckIn = async () => {
             try {
                 await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, { method: 'POST', headers });
@@ -349,6 +392,27 @@ const KitchenDashboard = () => {
             }
         } catch (error) {
             console.error('Item update failed:', error);
+        }
+    };
+
+    const toggleItemAvailability = async (itemId, currentStatus) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/menu/${itemId}/availability`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ is_available: !currentStatus })
+            });
+            if (res.ok) {
+                // Instantly update local state
+                setMenuItems(prev => prev.map(item => 
+                    item.id === itemId ? { ...item, is_available: !currentStatus ? 1 : 0 } : item
+                ));
+                Vibration.vibrate(100);
+            } else {
+                Alert.alert('Error', 'Failed to toggle availability');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
         }
     };
 
@@ -637,6 +701,73 @@ const KitchenDashboard = () => {
         );
     };
 
+    const renderMenu = () => {
+        const categories = ['Sri Lankans', 'Italian', 'Indian', 'Chinese', 'Fast Foods', 'Desserts'];
+        const displayedItems = menuItems.filter(item => {
+            const cleanCat = (item.category || '').toLowerCase().trim();
+            const selCat = selectedMenuCategory.toLowerCase().trim();
+            if (cleanCat === selCat) return true;
+            if (selCat === 'sri lankans' && cleanCat === 'sri lankan') return true;
+            if (selCat === 'fast foods' && cleanCat === 'fast food') return true;
+            if (selCat === 'desserts' && cleanCat === 'dessert') return true;
+            return false;
+        });
+
+        return (
+            <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={menuLoading} onRefresh={fetchMenuItems} />}>
+                <View style={[styles.sectionHeader, { marginBottom: 20 }]}>
+                    <View>
+                        <Text style={styles.sectionTitle}>🍳 Kitchen Menu Management</Text>
+                        <Text style={styles.sectionSub}>Toggle item availability for customers</Text>
+                    </View>
+                </View>
+
+                {menuLoading && <ActivityIndicator size="large" color="#3B82F6" style={{ marginTop: 20 }} />}
+
+                <View style={{ marginBottom: 15 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                        {categories.map(cat => (
+                            <TouchableOpacity 
+                                key={cat} 
+                                style={[styles.catPill, selectedMenuCategory === cat && styles.activeCatPill]}
+                                onPress={() => setSelectedMenuCategory(cat)}
+                            >
+                                <Text style={[styles.catPillText, selectedMenuCategory === cat && styles.activeCatPillText]}>{cat}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+
+                <View style={styles.menuGrid}>
+                    {displayedItems.map((item) => (
+                        <View key={item.id} style={[styles.menuItemCard, !item.is_available && styles.menuItemDisabled]}>
+                            <Image source={{ uri: item.image }} style={styles.menuItemImg} />
+                            <View style={styles.menuItemBody}>
+                                <Text style={styles.menuItemName} numberOfLines={1}>{item.name}</Text>
+                                <Text style={styles.menuItemCat}>{item.category}</Text>
+                                
+                                <View style={styles.availabilityRow}>
+                                    <View style={[styles.availabilityBadge, { backgroundColor: item.is_available ? '#DCFCE7' : '#FEE2E2' }]}>
+                                        <Text style={[styles.availabilityText, { color: item.is_available ? '#166534' : '#991B1B' }]}>
+                                            {item.is_available ? '✅ AVAILABLE' : '❌ SOLD OUT'}
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={!!item.is_available}
+                                        onValueChange={() => toggleItemAvailability(item.id, item.is_available)}
+                                        trackColor={{ false: '#767577', true: '#10B981' }}
+                                        thumbColor={item.is_available ? '#f4f3f4' : '#f4f3f4'}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+                <View style={{ height: 100 }} />
+            </ScrollView>
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" />
@@ -826,8 +957,9 @@ const KitchenDashboard = () => {
             </Modal>
 
             <View style={styles.mainContainer}>
-                {activeTab === 'orders'    && renderOrders()}
+                {activeTab === 'orders' && renderOrders()}
                 {activeTab === 'history' && renderHistory()}
+                {activeTab === 'menu' && renderMenu()}
                 {activeTab === 'account' && <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>}
                 {activeTab === 'notifications' && (
                     <ScrollView style={styles.content}>
@@ -845,11 +977,16 @@ const KitchenDashboard = () => {
 
             <View style={styles.bottomNav}>
                 {[
-                    { key: 'orders', icon: '🍳', label: 'Orders' },
+                    { key: 'orders', icon: '👨‍🍳', label: 'Tickets' },
+                    { key: 'menu', icon: '📋', label: 'Menu' },
                     { key: 'history', icon: '📜', label: 'History' },
                     { key: 'account', icon: '👤', label: 'Profile' }
                 ].map(item => (
-                    <TouchableOpacity key={item.key} onPress={() => setActiveTab(item.key)} style={[styles.navItem, activeTab === item.key && styles.activeNav]}>
+                    <TouchableOpacity 
+                        key={item.key} 
+                        onPress={() => setActiveTab(item.key)} 
+                        style={[styles.navItem, activeTab === item.key && styles.activeNav]}
+                    >
                         <Text style={[styles.navIcon, activeTab === item.key && styles.activeNavIcon]}>{item.icon}</Text>
                         <Text style={[styles.navLabel, activeTab === item.key && styles.activeNavLabel]}>{item.label}</Text>
                     </TouchableOpacity>
@@ -960,6 +1097,25 @@ const styles = StyleSheet.create({
     actionBtn: { flexDirection: 'row', height: 60, borderRadius: 24, justifyContent: 'center', alignItems: 'center', gap: 12, elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10 },
     actionBtnText: { color: 'white', fontWeight: '900', fontSize: 16, letterSpacing: 1.5, textTransform: 'uppercase' },
     actionBtnIcon: { fontSize: 22 },
+
+    // New Menu Grid Styles
+    menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 10 },
+    menuItemCard: { width: (width - 60) / 2, backgroundColor: 'white', borderRadius: 18, marginBottom: 15, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 4, overflow: 'hidden' },
+    menuItemDisabled: { opacity: 0.7, backgroundColor: '#F1F5F9' },
+    menuItemImg: { width: '100%', height: 110 },
+    menuItemBody: { padding: 12 },
+    menuItemName: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
+    menuItemCat: { fontSize: 10, color: '#64748B', marginBottom: 8, fontWeight: '500' },
+    availabilityRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    availabilityBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    availabilityText: { fontSize: 8, fontWeight: '900' },
+    
+    // Category Pills
+    catScroll: { paddingVertical: 5 },
+    catPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'white', marginRight: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    activeCatPill: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+    catPillText: { fontSize: 12, color: '#64748B', fontWeight: 'bold' },
+    activeCatPillText: { color: 'white' },
 
     // Navigation Styles
     bottomNav: { flexDirection: 'row', backgroundColor: 'white', height: 85, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingBottom: 25, paddingHorizontal: 20 },

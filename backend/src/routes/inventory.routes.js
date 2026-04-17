@@ -11,7 +11,9 @@ import {
     getSuppliers, 
     getStockHistory, 
     getInventoryReport,
-    getSupplierOrders
+    getSupplierOrders,
+    createSupplierOrder,
+    updateSupplierOrderStatus
 } from '../controllers/inventory.controller.js';
 import {
     getAdvancedInventoryReport,
@@ -43,6 +45,8 @@ router.put('/restock-requests/:id/status', updateRestockStatus);
 router.get('/history', getStockHistory);
 router.get('/report', getInventoryReport);
 router.get('/supplier-orders', getSupplierOrders);
+router.post('/supplier-orders', createSupplierOrder);
+router.patch('/supplier-orders/:id/status', updateSupplierOrderStatus);
 
 // Advanced Analytics & AI
 router.get('/analytics/advanced', getAdvancedInventoryReport);

@@ -319,7 +319,7 @@ export const updateRestockStatus = async (req, res) => {
  */
 export const getSuppliers = async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM suppliers WHERE status = "active"');
+        const [rows] = await pool.query('SELECT * FROM suppliers WHERE status IN ("active", "Approved")');
         res.json({ suppliers: rows });
     } catch (error) {
         res.status(500).json({ message: 'Failed to fetch suppliers' });
@@ -470,5 +470,41 @@ export const getSupplierOrders = async (req, res) => {
     } catch (error) {
         console.error('Fetch supplier orders error:', error);
         res.status(500).json({ message: 'Failed to fetch supplier orders' });
+    }
+};
+
+/**
+ * POST /api/inventory/supplier-orders
+ * Create a direct supplier order
+ */
+export const createSupplierOrder = async (req, res) => {
+    try {
+        const { inventory_id, supplier_id, quantity, total_amount, notes } = req.body;
+        
+        await pool.query(
+            'INSERT INTO supplier_orders (supplier_id, inventory_id, quantity, total_amount, status, notes, priority) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [supplier_id, inventory_id, quantity, total_amount || 0, 'PENDING', notes || 'Direct Order', 'Normal']
+        );
+        res.status(201).json({ success: true, message: 'Supplier order placed successfully' });
+    } catch (error) {
+        console.error('Create supplier order error:', error);
+        res.status(500).json({ message: 'Failed to create supplier order' });
+    }
+};
+
+/**
+ * PATCH /api/inventory/supplier-orders/:id/status
+ */
+export const updateSupplierOrderStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        
+        await pool.query('UPDATE supplier_orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id]);
+        
+        res.json({ success: true, message: `Order status updated to ${status}` });
+    } catch (error) {
+        console.error('Update supplier order error:', error);
+        res.status(500).json({ message: 'Failed to update order status' });
     }
 };

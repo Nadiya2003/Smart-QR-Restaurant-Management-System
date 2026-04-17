@@ -118,6 +118,7 @@ export function LoginPage({ onNavigate }) {
               <button
                 type="button"
                 className="text-sm text-gray-900 font-medium"
+                onClick={() => onNavigate('password-reset')}
               >
                 Forgot?
               </button>

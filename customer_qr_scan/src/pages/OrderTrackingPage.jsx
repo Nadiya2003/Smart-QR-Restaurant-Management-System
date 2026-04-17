@@ -39,8 +39,6 @@ export function OrderTrackingPage({ onNavigate }) {
         setPrevStatus(status);
         if (status !== 'PENDING') {
             setStatusAlertVisible(true);
-            // Non-blocking sound feedback
-            try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(() => {}); } catch(e) {}
         }
     }
 
@@ -54,8 +52,8 @@ export function OrderTrackingPage({ onNavigate }) {
         return () => clearTimeout(timer);
     }
 
-    if (['COMPLETED', 'FINISHED'].includes(status)) {
-        const isPaid = !!currentOrder?.paid_at;
+    if (['COMPLETED', 'FINISHED', 'PAYMENT_COMPLETED'].includes(status)) {
+        const isPaid = !!currentOrder?.paid_at || status === 'PAYMENT_COMPLETED';
         const isAutoClosed = currentOrder?.isAutoClosed;
 
         const timer = setTimeout(async () => {

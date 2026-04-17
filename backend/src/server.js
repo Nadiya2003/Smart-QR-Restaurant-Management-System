@@ -109,6 +109,25 @@ setInterval(async () => {
     }
 }, 10 * 60 * 1000);
 
+// Requirement: Daily Reset Feature (12:00 AM)
+// Resets all menu items to Available every day at midnight
+setInterval(async () => {
+    try {
+        const now = new Date();
+        // Since we check every 15 minutes, we look for the 00:00 - 00:15 window
+        if (now.getHours() === 0 && now.getMinutes() < 15) {
+            console.log('[Maintenance] Daily reset: Setting all menu items to Available...');
+            await pool.query('UPDATE menu_items SET is_available = 1');
+            if (global.io) {
+                global.io.emit('menuUpdate', { type: 'global_reset', isAvailable: true });
+            }
+            console.log('[Maintenance] ✅ All items reset to Available.');
+        }
+    } catch (err) {
+        console.error('[Maintenance] Daily reset failed:', err.message);
+    }
+}, 15 * 60 * 1000); // Check every 15 minutes
+
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);
     console.log(`🚀 Backend with Socket.io is running!`);

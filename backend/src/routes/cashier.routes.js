@@ -11,7 +11,8 @@ import {
     getBookings,
     settleOrder,
     getOrderDetails,
-    getPaymentMethods
+    getPaymentMethods,
+    updateOrderStatus
 } from '../controllers/cashier.controller.js';
 import { getMenu } from '../controllers/menu.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -27,6 +28,7 @@ router.get('/attendance', protect, getAttendance);
 router.post('/orders', protect, createPosOrder);
 router.get('/orders', protect, getAllOrders);
 router.get('/orders/:id', protect, getOrderDetails);
+router.patch('/orders/:id/status', protect, updateOrderStatus);
 router.post('/orders/:id/settle', protect, settleOrder);
 
 // Payments

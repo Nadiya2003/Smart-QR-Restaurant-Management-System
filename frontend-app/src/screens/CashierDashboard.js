@@ -92,11 +92,68 @@ const CashierDashboard = () => {
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [settlementData, setSettlementData] = useState({ payment_method_id: null, email: '' });
+    const [selectedStatus, setSelectedStatus] = useState(null);
     const [showQRModal, setShowQRModal] = useState(false);
     const [showPastOrdersModal, setShowPastOrdersModal] = useState(false);
 
     // Dine-in Multi-table Selection
     const [guestCount, setGuestCount] = useState('');
+
+    const getStatusColor = (status) => {
+        const s = (status || '').toUpperCase();
+        if (s === 'PLACED') return '#94A3B8';
+        if (s === 'CONFIRMED') return '#6366F1';
+        if (s === 'PREPARING') return '#F59E0B';
+        if (s === 'READY_TO_SERVE') return '#3B82F6';
+        if (s === 'SERVED') return '#8B5CF6';
+        if (s === 'PAYMENT_PENDING') return '#F59E0B';
+        if (s === 'PAYMENT_COMPLETED') return '#10B981';
+        if (s === 'COMPLETED') return '#10B981';
+        return '#6B7280';
+    };
+
+    const getTypeColor = (typeName) => {
+        if (!typeName) return '#3B82F6';
+        const t = typeName.toUpperCase();
+        if (t.includes('DINE')) return '#3B82F6';
+        if (t.includes('TAKEAWAY')) return '#F59E0B';
+        if (t.includes('DELIVERY')) return '#10B981';
+        return '#64748B';
+    };
+
+    const renderMinimalOrderCard = (order) => {
+        const typeColor = getTypeColor(order.type_name);
+        const statusColor = getStatusColor(order.status_name);
+
+        return (
+            <TouchableOpacity
+                key={`small-card-${order.id}`}
+                style={styles.smallOrderCard}
+                onPress={() => {
+                    setSelectedOrder(order);
+                    setSelectedStatus(order.status_name);
+                    setSettlementData({ payment_method_id: order.payment_method_id, email: '' });
+                    setShowSettlementModal(true);
+                }}
+            >
+                <View style={[styles.compactCardSide, { backgroundColor: typeColor }]} />
+                <View style={styles.compactCardMain}>
+                    <Text style={styles.compactSteward} numberOfLines={1}>{order.steward_name || 'System'}</Text>
+                    <Text style={styles.compactTable}>
+                        {order.type_name === 'TAKEAWAY' ? '🥡 WALK-IN' :
+                            order.type_name === 'DELIVERY' ? '🚚 DELIVERY' :
+                                `🪑 ${order.table_number ? 'T-'+order.table_number : 'Table'}`}
+                    </Text>
+                </View>
+                <View style={styles.compactCardEnd}>
+                    <Text style={styles.compactTotal}>Rs.{order.total_price.toLocaleString()}</Text>
+                    <View style={[styles.compactStatus, { backgroundColor: statusColor + '20' }]}>
+                        <Text style={[styles.compactStatusText, { color: statusColor }]}>{order.status_name}</Text>
+                    </View>
+                </View>
+            </TouchableOpacity>
+        );
+    };
     const [selectedTables, setSelectedTables] = useState([]);
     const [showTableModal, setShowTableModal] = useState(false);
 
@@ -241,6 +298,20 @@ const CashierDashboard = () => {
             fetchData(true);
         });
 
+        socket.on('menuUpdate', (data) => {
+            console.log('[Cashier] Menu update received:', data);
+            setMenuItems(prev => prev.map(item => 
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
+        });
+
+        socket.on('menuChange', (data) => {
+            console.log('[Cashier] Menu structural change:', data);
+            fetchData(true);
+        });
+
+        fetchData(true);
+
         const interval = setInterval(() => fetchData(true), 25000);
         return () => {
             clearInterval(interval);
@@ -383,7 +454,10 @@ const CashierDashboard = () => {
             const res = await fetch(`${apiConfig.API_BASE_URL}/api/cashier/orders/${selectedOrder.id}/settle`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(settlementData)
+                body: JSON.stringify({
+                    ...settlementData,
+                    source_table: selectedOrder.source_table
+                })
             });
 
             if (res.ok) {
@@ -537,25 +611,7 @@ const CashierDashboard = () => {
         </View>
     );
 
-    const getStatusColor = (status) => {
-        const s = (status || '').toUpperCase();
-        if (s === 'PLACED') return '#94A3B8';
-        if (s === 'CONFIRMED') return '#6366F1';
-        if (s === 'PREPARING') return '#F59E0B';
-        if (s === 'READY_TO_SERVE') return '#3B82F6';
-        if (s === 'SERVED') return '#8B5CF6';
-        if (s === 'COMPLETED') return '#10B981';
-        return '#6B7280';
-    };
 
-    const getTypeColor = (typeName) => {
-        if (!typeName) return '#3B82F6';
-        const t = typeName.toUpperCase();
-        if (t.includes('DINE')) return '#3B82F6';
-        if (t.includes('TAKEAWAY')) return '#F59E0B';
-        if (t.includes('DELIVERY')) return '#10B981';
-        return '#64748B';
-    };
 
     const renderCashierOrderCard = (order) => {
         const typeColor = getTypeColor(order.type_name);
@@ -814,58 +870,7 @@ const CashierDashboard = () => {
     };
 
 
-    const renderSmallOrderCard = (order) => {
-        const typeColor = getTypeColor(order.type_name);
-        const statusColor = getStatusColor(order.status_name);
 
-        return (
-            <TouchableOpacity
-                key={`small-card-${order.id}`}
-                style={styles.smallOrderCard}
-                onPress={() => {
-                    setSelectedOrder(order);
-                    setSettlementData({ ...settlementData, payment_method_id: null });
-                    setShowSettlementModal(true);
-                }}
-            >
-                <View style={[styles.smallCardTypeLine, { backgroundColor: typeColor }]} />
-                <View style={styles.smallCardHeader}>
-                    <Text style={styles.smallCardId}>#{order.id}</Text>
-                    <View style={[styles.smallStatusBadge, { backgroundColor: statusColor + '20' }]}>
-                        <Text style={[styles.smallStatusText, { color: statusColor }]}>{order.status_name}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.smallCardMain}>
-                    <Text style={styles.smallCardTable}>
-                        {order.type_name === 'TAKEAWAY' ? '🥡 WALK-IN' :
-                            order.type_name === 'DELIVERY' ? '🚚 DELIVERY' :
-                                `🪑 T-${order.table_number || '?'}`}
-                    </Text>
-                    <Text style={styles.smallCardSteward} numberOfLines={1}>🤵 {order.steward_name || 'System'}</Text>
-                </View>
-
-                <View style={styles.smallCardFooter}>
-                    <Text style={styles.smallCardTotal}>Rs.{order.total_price.toLocaleString()}</Text>
-                    <TouchableOpacity
-                        style={styles.smallCloseBtn}
-                        onPress={() => {
-                            Alert.alert(
-                                'Close Order',
-                                `Are you sure you want to finalize and close Order #${order.id}?`,
-                                [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    { text: 'Yes, Close', onPress: () => handleCloseOrder(order.id) }
-                                ]
-                            );
-                        }}
-                    >
-                        <Text style={styles.smallCloseBtnText}>CLOSE</Text>
-                    </TouchableOpacity>
-                </View>
-            </TouchableOpacity>
-        );
-    };
 
     const renderHome = () => {
         const filteredOrders = orders.filter(o => {
@@ -951,7 +956,7 @@ const CashierDashboard = () => {
                     </View>
                 ) : (
                     <View style={styles.orderGridContainer}>
-                        {filteredOrders.map(renderSmallOrderCard)}
+                        {filteredOrders.map(renderMinimalOrderCard)}
                     </View>
                 )}
                 <View style={{ height: 100 }} />
@@ -1088,11 +1093,19 @@ const CashierDashboard = () => {
     };
 
     const renderPOS = () => {
-        const filteredItems = menuItems.filter(item => {
+        // Phase 1: Filter by search, existence of image, and active status
+        const validItems = menuItems.filter(item => {
+            const hasImage = item.image_url || item.image;
+            const isActive = item.is_active !== 0 && item.is_active !== false;
             const matchesSearch = (item.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesCat = !selectedCategory || item.category_id === selectedCategory;
-            return matchesSearch && matchesCat;
+            return hasImage && isActive && matchesSearch;
         });
+
+        // Phase 2: Category grouping and slice (max 6 per category)
+        const filteredItems = validItems.filter(item => !selectedCategory || item.category_id === selectedCategory);
+        
+        // If searching, we show all matches. If browsing by category, we limit to 6 per category.
+        const displayedItems = searchQuery ? filteredItems : filteredItems.slice(0, 6);
 
         return (
             <View style={styles.content}>
@@ -1163,7 +1176,7 @@ const CashierDashboard = () => {
                 </View>
 
                 <FlatList
-                    data={filteredItems}
+                    data={displayedItems}
                     numColumns={2}
                     keyExtractor={item => `pos-menu-${item.id}`}
                     columnWrapperStyle={{ justifyContent: 'space-between' }}
@@ -1556,122 +1569,157 @@ const CashierDashboard = () => {
         branch: "Colombo Fort Main"
     };
 
+    const handleStatusUpdate = async (newStatus) => {
+        try {
+            setLoading(true);
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/cashier/orders/${selectedOrder.id}/status`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({
+                    status: newStatus,
+                    source_table: selectedOrder.source_table || 'orders'
+                })
+            });
+
+            if (res.ok) {
+                setSelectedStatus(newStatus);
+                fetchData(true);
+            } else {
+                const err = await res.json();
+                Alert.alert('Error', err.message);
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Connection failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const renderSettlementModal = () => {
         if (!selectedOrder) return null;
-        const isPaid = selectedOrder.paid_at || selectedOrder.status_name === 'COMPLETED';
+        const isClosed = selectedOrder.status_name === 'COMPLETED' || selectedOrder.status_name === 'PAYMENT_COMPLETED';
+
+        const statusOptions = [
+            { label: 'Received', value: 'PENDING' },
+            { label: 'Confirmed', value: 'CONFIRMED' },
+            { label: 'Served', value: 'SERVED' },
+            { label: 'Payment Pending', value: 'PAYMENT_PENDING' },
+            { label: 'Full Settlement', value: 'PAYMENT_COMPLETED' },
+            { label: 'Closed', value: 'COMPLETED' }
+        ];
 
         return (
             <Modal visible={showSettlementModal} transparent animationType="slide">
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={styles.modalOverlay}
-                >
-                    <View style={[styles.modalContent, { maxHeight: '90%', height: '85%', borderRadius: 32 }]}>
-                        <View style={[styles.modalHeader, { paddingHorizontal: 20 }]}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { height: '90%' }]}>
+                        <View style={styles.modalHeader}>
                             <View>
-                                <Text style={styles.modalTitle}>Order Payment</Text>
-                                <Text style={{ fontSize: 12, color: '#6B7280' }}>ID: #{selectedOrder.id} • {(selectedOrder.type_name || '').replace('_', ' ')}</Text>
+                                <Text style={styles.modalTitle}>Order Details #{selectedOrder.id}</Text>
+                                <Text style={styles.sectionSub}>{selectedOrder.steward_name || 'System'} · {selectedOrder.type_name}</Text>
                             </View>
-                            <TouchableOpacity style={{ padding: 10, backgroundColor: '#F3F4F6', borderRadius: 20 }} onPress={() => setShowSettlementModal(false)}>
-                                <Text style={{ fontSize: 18 }}>✕</Text>
+                            <TouchableOpacity onPress={() => setShowSettlementModal(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                            <View style={{ padding: 20, paddingBottom: 40 }}>
-                                <View style={{ marginBottom: 25, backgroundColor: '#ECFDF5', padding: 20, borderRadius: 24, borderLeftWidth: 8, borderLeftColor: '#10B981' }}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                        <Text style={{ fontSize: 12, color: '#047857', fontWeight: 'bold' }}>AMOUNT DUE</Text>
-                                        <Text style={{ fontSize: 12, color: '#047857', fontWeight: 'bold' }}>Table {selectedOrder.table_number || 'Cash'}</Text>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {/* Status Selector */}
+                            {!isClosed && (
+                                <View style={{ marginBottom: 20 }}>
+                                    <Text style={styles.inputLabel}>MANAGE ORDER STATUS</Text>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                                        {statusOptions.map(opt => (
+                                            <TouchableOpacity
+                                                key={opt.value}
+                                                style={[
+                                                    styles.statusPill,
+                                                    selectedStatus === opt.value && styles.activeStatusPill
+                                                ]}
+                                                onPress={() => handleStatusUpdate(opt.value)}
+                                            >
+                                                <Text style={[
+                                                    styles.statusPillText,
+                                                    selectedStatus === opt.value && styles.activeStatusPillText
+                                                ]}>{opt.label}</Text>
+                                            </TouchableOpacity>
+                                        ))}
                                     </View>
-                                    <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#064E3B', marginTop: 5 }}>Rs. {selectedOrder.total_price.toLocaleString()}</Text>
                                 </View>
+                            )}
 
-                                {!isPaid ? (
-                                    <>
-                                        <View style={{ padding: 15, backgroundColor: '#EFF6FF', borderRadius: 20, marginBottom: 25, borderStyle: 'dashed', borderWidth: 1, borderColor: '#3B82F6' }}>
-                                            <Text style={{ fontSize: 10, color: '#1E40AF', fontWeight: 'bold', letterSpacing: 1.5 }}>🏦 SETTLEMENT DETAILS</Text>
-                                            <Text style={{ fontSize: 13, color: '#1E3A8A', marginTop: 6, fontWeight: '700' }}>{BUSINESS_BANK_INFO.accountName}</Text>
-                                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1D4ED8', marginTop: 2 }}>{BUSINESS_BANK_INFO.accountNumber}</Text>
-                                            <Text style={{ fontSize: 11, color: '#3B82F6', marginTop: 4 }}>{BUSINESS_BANK_INFO.bankName} • {BUSINESS_BANK_INFO.branch}</Text>
+                            {/* Order Items List */}
+                            <View style={{ marginBottom: 20 }}>
+                                <Text style={styles.inputLabel}>ITEMIZED BILL</Text>
+                                <View style={styles.itemsBoxFlat}>
+                                    {selectedOrder.items.map((item, idx) => (
+                                        <View key={idx} style={styles.billItemRow}>
+                                            <Text style={styles.billItemQty}>{item.quantity}x</Text>
+                                            <Text style={styles.billItemName}>{item.name}</Text>
+                                            <Text style={styles.billItemPrice}>Rs. {(item.price * item.quantity).toLocaleString()}</Text>
                                         </View>
-
-                                        <Text style={[styles.inputLabel, { marginLeft: 5 }]}>CHOOSE PAYMENT METHOD</Text>
-                                        <View style={{ gap: 12, marginTop: 10 }}>
-                                            {[
-                                                { id: 1, name: 'Cash Payment', icon: '💵', color: '#10B981', sub: 'Instant confirmation' },
-                                                { id: 2, name: 'Card (Terminal)', icon: '💳', color: '#3B82F6', sub: 'Swipe or Tap' },
-                                                { id: 4, name: 'Bank Transfer', icon: '🏦', color: '#F59E0B', sub: 'Manual verification' },
-                                                { id: 3, name: 'QR Scan / Online', icon: '📱', color: '#8B5CF6', sub: 'Dynamic QR generated' }
-                                            ].map(m => (
-                                                <TouchableOpacity
-                                                    key={`pay-m-${m.id}`}
-                                                    style={{
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        padding: 16,
-                                                        borderRadius: 20,
-                                                        backgroundColor: settlementData.payment_method_id === m.id ? m.color : 'white',
-                                                        borderWidth: 2,
-                                                        borderColor: settlementData.payment_method_id === m.id ? m.color : '#F1F5F9',
-                                                        shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 1
-                                                    }}
-                                                    onPress={() => {
-                                                        setSettlementData({ ...settlementData, payment_method_id: m.id });
-                                                        if (m.id === 3) setShowQRModal(true);
-                                                    }}
-                                                >
-                                                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: settlementData.payment_method_id === m.id ? 'rgba(255,255,255,0.2)' : '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginRight: 15 }}>
-                                                        <Text style={{ fontSize: 24 }}>{m.icon}</Text>
-                                                    </View>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={{ fontSize: 15, fontWeight: 'bold', color: settlementData.payment_method_id === m.id ? 'white' : '#1E293B' }}>{m.name}</Text>
-                                                        <Text style={{ fontSize: 10, color: settlementData.payment_method_id === m.id ? 'rgba(255,255,255,0.8)' : '#94A3B8' }}>{m.sub}</Text>
-                                                    </View>
-                                                    {settlementData.payment_method_id === m.id && <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 20 }}>✓</Text>}
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-                                    </>
-                                ) : (
-                                    <View style={{ alignItems: 'center', padding: 40, backgroundColor: '#F0FDF4', borderRadius: 32, borderWidth: 1, borderColor: '#DCFCE7' }}>
-                                        <Text style={{ fontSize: 60, marginBottom: 15 }}>✨</Text>
-                                        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#065F46' }}>Payment Complete</Text>
-                                        <Text style={{ fontSize: 14, color: '#047857', marginTop: 10, textAlign: 'center', lineHeight: 20 }}>This bill has been successfully settled and closed in the system.</Text>
-                                        <TouchableOpacity style={{ marginTop: 30, padding: 18, backgroundColor: 'white', borderRadius: 16, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: '#BBF7D0' }} onPress={() => setShowSettlementModal(false)}>
-                                            <Text style={{ color: '#059669', fontWeight: 'bold' }}>Close Details</Text>
-                                        </TouchableOpacity>
+                                    ))}
+                                    <View style={styles.billTotalRow}>
+                                        <Text style={styles.billTotalLabel}>Final Total</Text>
+                                        <Text style={styles.billTotalValue}>Rs. {selectedOrder.total_price.toLocaleString()}</Text>
                                     </View>
-                                )}
+                                </View>
                             </View>
+
+                            {/* Payment Options */}
+                            {!isClosed && (
+                                <View style={{ marginBottom: 20 }}>
+                                    <Text style={styles.inputLabel}>CHOOSE PAYMENT METHOD</Text>
+                                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                                        {[
+                                            { id: 1, label: 'Cash', icon: '💵' },
+                                            { id: 2, label: 'Card', icon: '💳' },
+                                            { id: 4, label: 'QR Pay', icon: '📱' }
+                                        ].map(method => (
+                                            <TouchableOpacity
+                                                key={method.id}
+                                                style={[
+                                                    styles.paymentMethodBtn,
+                                                    settlementData.payment_method_id === method.id && styles.activePaymentMethod
+                                                ]}
+                                                onPress={() => {
+                                                    setSettlementData({ ...settlementData, payment_method_id: method.id });
+                                                    handleStatusUpdate('PAYMENT_PENDING');
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 20 }}>{method.icon}</Text>
+                                                <Text style={[
+                                                    styles.paymentMethodText,
+                                                    settlementData.payment_method_id === method.id && styles.activePaymentMethodText
+                                                ]}>{method.label}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {isClosed && (
+                                <View style={styles.successBox}>
+                                    <Text style={{ fontSize: 40 }}>✅</Text>
+                                    <Text style={styles.successTitle}>Payment Successful</Text>
+                                    <Text style={styles.successSub}>Thank you, visit again!</Text>
+                                </View>
+                            )}
                         </ScrollView>
 
-                        {!isPaid && (
-                            <View style={{ padding: 25, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-                                <TouchableOpacity
-                                    style={{
-                                        backgroundColor: settlementData.payment_method_id ? '#111827' : '#E2E8F0',
-                                        paddingVertical: 20,
-                                        borderRadius: 20,
-                                        alignItems: 'center',
-                                        flexDirection: 'row',
-                                        justifyContent: 'center',
-                                        gap: 12
-                                    }}
-                                    disabled={!settlementData.payment_method_id || loading}
-                                    onPress={handleSettleOrder}
-                                >
-                                    {loading ? <ActivityIndicator color="white" /> : (
-                                        <>
-                                            <Text style={{ color: settlementData.payment_method_id ? 'white' : '#94A3B8', fontWeight: 'bold', fontSize: 18 }}>Confirm Settlement</Text>
-                                            <Text style={{ color: settlementData.payment_method_id ? 'rgba(255,255,255,0.5)' : 'transparent', fontSize: 18 }}>➔</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
+                        {!isClosed && (
+                            <TouchableOpacity
+                                style={[
+                                    styles.confirmSettleBtn,
+                                    !settlementData.payment_method_id && { backgroundColor: '#94A3B8' }
+                                ]}
+                                disabled={!settlementData.payment_method_id || loading}
+                                onPress={handleSettleOrder}
+                            >
+                                {loading ? <ActivityIndicator color="white" /> : <Text style={styles.confirmSettleBtnText}>CONFIRM SETTLEMENT</Text>}
+                            </TouchableOpacity>
                         )}
                     </View>
-                </KeyboardAvoidingView>
+                </View>
             </Modal>
         );
     };
@@ -2388,24 +2436,52 @@ const styles = StyleSheet.create({
     orderSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 5 },
     orderSearchInput: { flex: 1, fontSize: 14, color: '#1E293B', fontWeight: '500' },
     orderGridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-    smallOrderCard: { width: '48%', backgroundColor: 'white', borderRadius: 20, padding: 16, marginBottom: 15, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative', overflow: 'hidden' },
-    smallCardTypeLine: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
-    smallCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-    smallCardId: { fontSize: 16, fontWeight: '900', color: '#0F172A' },
-    smallStatusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-    smallStatusText: { fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
-    smallCardMain: { marginBottom: 12 },
-    smallCardTable: { fontSize: 14, fontWeight: '800', color: '#1E293B', marginBottom: 2 },
-    smallCardSteward: { fontSize: 10, color: '#64748B', fontWeight: '500' },
-    smallCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10 },
-    smallCardTotal: { fontSize: 12, fontWeight: '900', color: '#10B981' },
-    smallCloseBtn: { backgroundColor: '#0F172A', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-    smallCloseBtnText: { color: 'white', fontSize: 9, fontWeight: 'BOLD' },
+    smallOrderCard: { 
+        width: '48%', 
+        backgroundColor: 'white', 
+        borderRadius: 20, 
+        marginBottom: 15, 
+        shadowColor: '#6366F1', 
+        shadowOpacity: 0.08, 
+        shadowRadius: 15, 
+        elevation: 4, 
+        borderWidth: 1, 
+        borderColor: '#F1F5F9', 
+        flexDirection: 'row', 
+        overflow: 'hidden' 
+    },
     emptyCard: { padding: 50, alignItems: 'center', backgroundColor: 'white', borderRadius: 24, borderWidth: 1, borderStyle: 'dashed', borderColor: '#CBD5E1' },
     emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#475569', marginBottom: 5 },
     emptyText: { fontSize: 12, color: '#94A3B8' },
-    refreshBtn: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-    refreshBtnText: { fontSize: 11, fontWeight: 'bold', color: '#64748B' },
+    compactCardSide: { width: 6, borderTopLeftRadius: 20, borderBottomLeftRadius: 20 },
+    compactCardMain: { flex: 1, padding: 12, justifyContent: 'center' },
+    compactSteward: { fontSize: 15, fontWeight: '900', color: '#1E293B' },
+    compactTable: { fontSize: 11, color: '#64748B', marginTop: 2, fontWeight: '700' },
+    compactCardEnd: { padding: 12, alignItems: 'flex-end', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: '#F1F5F9' },
+    compactTotal: { fontSize: 13, fontWeight: '900', color: '#0F172A', marginBottom: 4 },
+    compactStatus: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    compactStatusText: { fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
+    statusPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
+    activeStatusPill: { backgroundColor: '#111827', borderColor: '#111827' },
+    statusPillText: { fontSize: 11, fontWeight: 'bold', color: '#64748B' },
+    activeStatusPillText: { color: 'white' },
+    itemsBoxFlat: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 15, borderWidth: 1, borderColor: '#F1F5F9' },
+    billItemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    billItemQty: { width: 30, fontSize: 13, fontWeight: 'bold', color: '#3B82F6' },
+    billItemName: { flex: 1, fontSize: 13, color: '#1E293B' },
+    billItemPrice: { fontSize: 13, fontWeight: 'bold', color: '#1E293B' },
+    billTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
+    billTotalLabel: { fontSize: 14, fontWeight: '800', color: '#64748B' },
+    billTotalValue: { fontSize: 16, fontWeight: '900', color: '#111827' },
+    paymentMethodBtn: { flex: 1, backgroundColor: 'white', padding: 12, borderRadius: 16, alignItems: 'center', borderWidth: 2, borderColor: '#F1F5F9' },
+    activePaymentMethod: { borderColor: '#111827', backgroundColor: '#F8FAFC' },
+    paymentMethodText: { fontSize: 11, fontWeight: '800', color: '#64748B', marginTop: 4 },
+    activePaymentMethodText: { color: '#111827' },
+    successBox: { alignItems: 'center', padding: 30, backgroundColor: '#F0FDF4', borderRadius: 24, marginTop: 20 },
+    successTitle: { fontSize: 20, fontWeight: 'bold', color: '#065F46', marginTop: 10 },
+    successSub: { fontSize: 14, color: '#047857', marginTop: 5 },
+    confirmSettleBtn: { backgroundColor: '#10B981', padding: 20, borderRadius: 20, alignItems: 'center', marginTop: 20 },
+    confirmSettleBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 },
 });
 
 export default CashierDashboard;

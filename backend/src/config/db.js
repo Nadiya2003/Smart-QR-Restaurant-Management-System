@@ -45,6 +45,22 @@ const pool = mysql.createPool({
         console.log('[Startup] All tables reset to available.');
         */
         
+        // Seed Required Categories
+        const requiredCategories = [
+            { name: 'Sri Lankan', description: 'Traditional Sri Lankan cuisine', image: '/uploads/categories/srilankan.png' },
+            { name: 'Indian', description: 'Authentic Indian flavors', image: '/uploads/categories/indian.png' },
+            { name: 'Italian', description: 'Classic Italian pasta and pizza', image: '/uploads/categories/italian.png' },
+            { name: 'Beverages', description: 'Refreshing drinks and juices', image: '/uploads/categories/beverages.png' },
+            { name: 'Desserts', description: 'Sweet treats and cakes', image: '/uploads/categories/desserts.png' }
+        ];
+
+        for (const cat of requiredCategories) {
+            const [existing] = await connection.query('SELECT id FROM categories WHERE name = ?', [cat.name]);
+            if (existing.length === 0) {
+                await connection.query('INSERT INTO categories (name, description, image) VALUES (?, ?, ?)', [cat.name, cat.description, cat.image]);
+                console.log(`[Seed] Category added: ${cat.name}`);
+            }
+        }
         connection.release();
     } catch (err) {
         console.error('Database connection failed or startup cleanup failed:', err.message);

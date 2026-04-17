@@ -19,6 +19,7 @@ import { TableSelectionPage } from './pages/TableSelectionPage.jsx';
 import { AuthSelectionPage } from './pages/AuthSelectionPage.jsx';
 import { RewardsPage } from './pages/RewardsPage.jsx';
 import { SettingsPage } from './pages/SettingsPage.jsx';
+import { PasswordResetPage } from './pages/PasswordResetPage.jsx';
 
 
 function AppContent() {
@@ -66,6 +67,8 @@ function AppContent() {
         return <RewardsPage {...commonProps} />;
       case 'settings':
         return <SettingsPage {...commonProps} />;
+      case 'password-reset':
+        return <PasswordResetPage {...commonProps} />;
       default:
         return <WelcomePage {...commonProps} />;
     }

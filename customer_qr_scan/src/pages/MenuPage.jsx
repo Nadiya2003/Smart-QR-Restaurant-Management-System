@@ -7,6 +7,7 @@ import { useCart } from '../hooks/useCart';
 import { useOrder } from '../hooks/useOrder';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
+import { io } from 'socket.io-client';
 
 export function MenuPage({ onNavigate }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,6 +25,22 @@ export function MenuPage({ onNavigate }) {
 
   useEffect(() => {
     fetchData();
+    
+    // Real-time Availability Sync
+    const socket = io(BASE_URL);
+    socket.on('menuUpdate', (data) => {
+      console.log('Menu update received:', data);
+      setMenuItems(prev => prev.map(item => 
+        item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+      ));
+    });
+
+    socket.on('menuChange', (data) => {
+      console.log('Menu structural change:', data);
+      fetchData();
+    });
+
+    return () => socket.disconnect();
   }, []);
 
   const fetchData = async () => {
@@ -54,14 +71,26 @@ export function MenuPage({ onNavigate }) {
   const steward = stewards.find((s) => s.id === selectedStewardId);
 
   const filteredItems = useMemo(() => {
-    return menuItems.filter((item) => {
+    // Phase 1: Filter by search, availability (show only true), and MUST have image
+    let baseItems = menuItems.filter((item) => {
+      const hasImage = item.image_url || item.image;
+      const isActive = item.is_active !== 0 && item.is_active !== false && item.is_active !== '0' && item.is_active !== null;
+      const isAvailable = item.is_available !== 0 && item.is_available !== false && item.is_available !== '0' && item.is_available !== null;
+      
       const matchesSearch =
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      
       const matchesCategory =
         !activeCategory || item.category === activeCategory || item.category_name === activeCategory;
-      return matchesSearch && matchesCategory;
+      
+      return matchesSearch && matchesCategory && hasImage && isActive && isAvailable;
     });
+
+    // Phase 2: Limit to max 6 items per category (if category is active or for each category)
+    // The prompt says "In the Menu Section, each category should display: Maximum of 6 food item images only"
+    // Since we are filtering by activeCategory, it means the current view is for one category.
+    return baseItems.slice(0, 6);
   }, [searchQuery, activeCategory, menuItems]);
 
   if (loading) {

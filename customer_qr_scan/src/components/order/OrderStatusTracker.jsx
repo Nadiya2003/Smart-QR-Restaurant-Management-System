@@ -50,7 +50,7 @@ export function OrderStatusTracker({ currentOrder }) {
       statusIndex = 3; // "Preparing" ticked, "Ready to Serve" active
   } else if (normalizedStatus === 'SERVED') {
       statusIndex = 5; // "Served" ticked, "Completed" active
-  } else if (['COMPLETED', 'FINISHED'].includes(normalizedStatus)) {
+  } else if (['COMPLETED', 'FINISHED', 'PAYMENT_COMPLETED'].includes(normalizedStatus)) {
       statusIndex = steps.length - 1;
   }
 

@@ -306,6 +306,18 @@ const StewardDashboard = () => {
             }
         });
 
+        socket.on('menuUpdate', (data) => {
+            console.log('[Steward] Menu update received:', data);
+            setMenuItems(prev => prev.map(item => 
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
+        });
+
+        socket.on('menuChange', (data) => {
+            console.log('[Steward] Menu structural change:', data);
+            fetchData(true);
+        });
+
         socket.on('cancelRequest', (data) => {
             Vibration && Vibration.vibrate([300, 150, 300]);
             playNotificationSound();
@@ -376,6 +388,13 @@ const StewardDashboard = () => {
             } catch (err) {
                 console.warn('Speech error:', err);
             }
+        });
+
+        socket.on('menuUpdate', (data) => {
+            console.log('[Steward] Menu update received:', data);
+            setMenuItems(prev => prev.map(item => 
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
         });
 
         return () => {
@@ -1114,8 +1133,16 @@ const StewardDashboard = () => {
     );
 
     const renderMenu = () => {
-        const categories = [...new Set(menuItems.map(item => item.category))];
-        const filteredItems = menuItems.filter(item => item.category === selectedMenuCategory);
+        // Phase 1: Filter by category and MUST have image and MUST be active
+        const activeItems = menuItems.filter(item => (item.image_url || item.image) && item.is_active !== 0 && item.is_active !== false);
+        
+        // Phase 2: Get categories from valid items only
+        const categories = [...new Set(activeItems.map(item => item.category))];
+        
+        // Phase 3: Get items for selected category, then limit to 6
+        const filteredItems = activeItems
+            .filter(item => item.category === selectedMenuCategory)
+            .slice(0, 6);
 
         return (
             <View style={{ flex: 1 }}>
@@ -1435,10 +1462,7 @@ const StewardDashboard = () => {
                     <Text style={activeTab === 'orders' ? styles.activeNavText : styles.navText}>🛍️</Text>
                     <Text style={activeTab === 'orders' ? styles.activeNavLabel : styles.navLabel}>Orders</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('reservations')} style={[styles.navItem, activeTab === 'reservations' && styles.activeNav]}>
-                    <Text style={activeTab === 'reservations' ? styles.activeNavText : styles.navText}>📅</Text>
-                    <Text style={activeTab === 'reservations' ? styles.activeNavLabel : styles.navLabel}>Bookings</Text>
-                </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => setActiveTab('menu')} style={[styles.navItem, activeTab === 'menu' && styles.activeNav]}>
                     <Text style={activeTab === 'menu' ? styles.activeNavText : styles.navText}>🍽️</Text>
                     <Text style={activeTab === 'menu' ? styles.activeNavLabel : styles.navLabel}>Menu</Text>

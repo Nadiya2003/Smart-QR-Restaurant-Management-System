@@ -66,6 +66,9 @@ const BarDashboard = () => {
     const [alertPopupVisible, setAlertPopupVisible] = useState(false);
     const [activeAlert, setActiveAlert] = useState(null);
     const [isOnDuty, setIsOnDuty] = useState(true);
+    const [menuItems, setMenuItems] = useState([]);
+    const [menuLoading, setMenuLoading] = useState(false);
+    const [selectedMenuCategory, setSelectedMenuCategory] = useState(null);
 
     // Sound & Notification refs
     const prevOrderIds = useRef(new Set());
@@ -183,6 +186,34 @@ const BarDashboard = () => {
         }
     }, [token]);
 
+    const fetchMenuItems = useCallback(async () => {
+        setMenuLoading(true);
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/menu?type=Drink`, { headers });
+            if (res.ok) {
+                const data = await res.json();
+                // Filter: MUST have image
+                const validItems = (data || []).filter(item => {
+                    if (!item.image_url && !item.image) return false;
+                    const cat = (item.category || '').toLowerCase();
+                    if (cat.includes('beverage') || cat.includes('drink') || cat.includes('bar')) return true;
+                    return false;
+                });
+                setMenuItems(validItems);
+            }
+        } catch (error) {
+            console.error('Fetch menu items error:', error);
+        } finally {
+            setMenuLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        if (activeTab === 'menu') {
+            fetchMenuItems();
+        }
+    }, [activeTab, fetchMenuItems]);
+
     // Setup Socket.io
     useEffect(() => {
         fetchData();
@@ -298,6 +329,18 @@ const BarDashboard = () => {
             }
         });
 
+        socket.on('menuUpdate', (data) => {
+            console.log('[Bar] Menu update received:', data);
+            setMenuItems(prev => prev.map(item => 
+                item.id === parseInt(data.itemId) ? { ...item, is_available: data.isAvailable ? 1 : 0 } : item
+            ));
+        });
+
+        socket.on('menuChange', (data) => {
+            console.log('[Bar] Menu structural change:', data);
+            fetchData(true);
+        });
+
         const autoCheckIn = async () => {
             try {
                 await fetch(`${apiConfig.API_BASE_URL}/api/kitchen-bar/duty/check-in`, { method: 'POST', headers });
@@ -352,6 +395,26 @@ const BarDashboard = () => {
             }
         } catch (error) {
             console.error('Drink item update failed:', error);
+        }
+    };
+
+    const toggleItemAvailability = async (itemId, currentStatus) => {
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/menu/${itemId}/availability`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ is_available: !currentStatus })
+            });
+            if (res.ok) {
+                setMenuItems(prev => prev.map(item => 
+                    item.id === itemId ? { ...item, is_available: !currentStatus ? 1 : 0 } : item
+                ));
+                Vibration.vibrate(100);
+            } else {
+                Alert.alert('Error', 'Failed to toggle availability');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Network error');
         }
     };
 
@@ -505,6 +568,66 @@ const BarDashboard = () => {
     };
 
     const [orderSubTab, setOrderSubTab] = useState('DINE-IN');
+
+    const renderMenu = () => {
+        const categories = [...new Set(menuItems.map(item => item.category).filter(Boolean))];
+        const activeCat = selectedMenuCategory || categories[0];
+        const displayedItems = menuItems.filter(item => item.category === activeCat);
+
+        return (
+            <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={menuLoading} onRefresh={fetchMenuItems} />}>
+                <View style={[styles.sectionHeader, { marginBottom: 20 }]}>
+                    <View>
+                        <Text style={styles.sectionTitle}>🍹 Bar Menu Management</Text>
+                        <Text style={styles.sectionSub}>Toggle drink availability for customers</Text>
+                    </View>
+                </View>
+
+                {menuLoading && <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 20 }} />}
+
+                <View style={{ marginBottom: 15 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                        {categories.map(cat => (
+                            <TouchableOpacity 
+                                key={cat} 
+                                style={[styles.catPill, activeCat === cat && styles.activeCatPill]}
+                                onPress={() => setSelectedMenuCategory(cat)}
+                            >
+                                <Text style={[styles.catPillText, activeCat === cat && styles.activeCatPillText]}>{cat}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+
+                <View style={styles.menuGrid}>
+                    {displayedItems.map((item) => (
+                        <View key={item.id} style={[styles.menuItemCard, !item.is_available && styles.menuItemDisabled]}>
+                            <Image source={{ uri: item.image }} style={styles.menuItemImg} />
+                            <View style={styles.menuItemBody}>
+                                <Text style={styles.menuItemName} numberOfLines={1}>{item.name}</Text>
+                                <Text style={styles.menuItemCat}>{item.category}</Text>
+                                
+                                <View style={styles.availabilityRow}>
+                                    <View style={[styles.availabilityBadge, { backgroundColor: item.is_available ? '#DCFCE7' : '#FEE2E2' }]}>
+                                        <Text style={[styles.availabilityText, { color: item.is_available ? '#166534' : '#991B1B' }]}>
+                                            {item.is_available ? '✅ AVAILABLE' : '❌ SOLD OUT'}
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={!!item.is_available}
+                                        onValueChange={() => toggleItemAvailability(item.id, item.is_available)}
+                                        trackColor={{ false: '#767577', true: '#8B5CF6' }}
+                                        thumbColor={item.is_available ? '#f4f3f4' : '#f4f3f4'}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+                <View style={{ height: 100 }} />
+            </ScrollView>
+        );
+    };
 
     const renderOrders = () => {
         const filteredByType = orders.filter(o => (o.order_type_name || 'DINE-IN').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab));
@@ -746,6 +869,7 @@ const BarDashboard = () => {
                         <View style={{ height: 40 }} />
                     </ScrollView>
                 )}
+                {activeTab === 'menu' && renderMenu()}
                 {activeTab === 'account' && <View style={{ flex: 1, padding: 15 }}><AccountSection /></View>}
                 {activeTab === 'notifications' && (
                     <ScrollView style={styles.content}>
@@ -763,7 +887,8 @@ const BarDashboard = () => {
 
             <View style={styles.bottomNav}>
                 {[
-                    { key: 'orders', icon: '🍹', label: 'Orders' },
+                    { key: 'orders', icon: '🍹', label: 'Tickets' },
+                    { key: 'menu', icon: '📋', label: 'Menu' },
                     { key: 'history', icon: '📜', label: 'History' },
                     { key: 'account', icon: '👤', label: 'Profile' }
                 ].map(item => (
@@ -877,14 +1002,33 @@ const styles = StyleSheet.create({
     actionBtnText: { color: 'white', fontWeight: '900', fontSize: 16, letterSpacing: 1.5, textTransform: 'uppercase' },
     actionBtnIcon: { fontSize: 22 },
 
+    // New Menu Grid Styles
+    menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 10 },
+    menuItemCard: { width: (Dimensions.get('window').width - 60) / 2, backgroundColor: 'white', borderRadius: 18, marginBottom: 15, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 4, overflow: 'hidden' },
+    menuItemDisabled: { opacity: 0.7, backgroundColor: '#F1F5F9' },
+    menuItemImg: { width: '100%', height: 110 },
+    menuItemBody: { padding: 12 },
+    menuItemName: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
+    menuItemCat: { fontSize: 10, color: '#64748B', marginBottom: 8, fontWeight: '500' },
+    availabilityRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    availabilityBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    availabilityText: { fontSize: 8, fontWeight: '900' },
+    
+    // Category Pills
+    catScroll: { paddingVertical: 5 },
+    catPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'white', marginRight: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    activeCatPill: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+    catPillText: { fontSize: 12, color: '#64748B', fontWeight: 'bold' },
+    activeCatPillText: { color: 'white' },
+
     // Navigation Styles
     bottomNav: { flexDirection: 'row', backgroundColor: 'white', height: 85, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingBottom: 25, paddingHorizontal: 20 },
     navItem: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    navIcon: { fontSize: 24, opacity: 0.4 },
-    activeNavIcon: { opacity: 1 },
-    navLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', marginTop: 4 },
-    activeNavLabel: { color: '#7C3AED' },
-    activeNav: { borderTopWidth: 4, borderTopColor: '#7C3AED' },
+    activeNav: { borderTopWidth: 0 },
+    navIcon: { fontSize: 24, color: '#94A3B8' },
+    activeNavIcon: { color: '#7C3AED' },
+    navLabel: { fontSize: 11, color: '#64748B', marginTop: 4, fontWeight: '600' },
+    activeNavLabel: { color: '#7C3AED', fontWeight: '800' },
 
     // Extras
     emptyCard: { flex: 1, marginTop: 60, alignItems: 'center' },
