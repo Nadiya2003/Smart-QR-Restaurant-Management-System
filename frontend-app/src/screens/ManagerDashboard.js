@@ -764,7 +764,7 @@ const ManagerDashboard = () => {
                 {['staff', 'customers'].map(tab => (
                     <TouchableOpacity 
                         key={tab} 
-                        style={[styles.subTab, userSubTab === tab.toLowerCase() && styles.activeSubTab]}
+                        style={[styles.subTab, userSubTab === tab.toLowerCase() && styles.activeSubTab, { flex: 1 }]}
                         onPress={() => setUserSubTab(tab.toLowerCase())}
                     >
                         <Text style={[styles.subTabText, userSubTab === tab.toLowerCase() && styles.activeSubTabText]}>
@@ -872,27 +872,28 @@ const ManagerDashboard = () => {
 
 const renderOrders = () => (
     <>
-        <View style={styles.subTabRow}>
-                {['ALL', 'DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+            <View style={[styles.subTabRow, { backgroundColor: 'transparent', padding: 0 }]}>
+                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
                     let count = 0;
                     if (tab === 'CANCELLATIONS') count = cancelRequestList.length;
                     else if (tab === 'ITEM REMOVALS') count = itemRemovalRequests.filter(r => r.status === 'PENDING').length;
-                    else if (tab === 'ALL') count = orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
                     else count = orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
                     
                     return (
                         <TouchableOpacity 
                             key={tab} 
-                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab]}
+                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab, { marginRight: 8, minWidth: 100 }]}
                             onPress={() => setOrderSubTab(tab)}
                         >
                             <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'ALL' ? '📋' : tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
+                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
                             </Text>
                         </TouchableOpacity>
                     );
                 })}
             </View>
+        </ScrollView>
 
             <View style={styles.sectionHeader}>
                 <View>
@@ -1795,15 +1796,23 @@ const renderOrders = () => (
                 {generatedReport && (
                     <>
                         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#ECFDF5' }]}>
-                                <Text style={{ fontSize: 10, color: '#065F46', fontWeight: 'bold' }}>TOTAL REVENUE</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#065F46' }}>Rs.{Number(kpiRevenue).toLocaleString()}</Text>
+                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000' }]}>
+                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>TOTAL SALE</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#000' }}>Rs.{Number(kpiRevenue).toLocaleString()}</Text>
                             </View>
-                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#EFF6FF' }]}>
-                                <Text style={{ fontSize: 10, color: '#1E40AF', fontWeight: 'bold' }}>TOTAL ENTRIES</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E40AF' }}>{kpiEntries}</Text>
+                            <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000' }]}>
+                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>TOTAL PROFIT</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#10B981' }}>Rs.{Number(generatedReport.summary?.profit || 0).toLocaleString()}</Text>
                             </View>
                         </View>
+
+                        {generatedReport.summary?.topProduct && (
+                            <View style={[styles.chartCard, { marginBottom: 15, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000', borderLeftWidth: 10 }]}>
+                                <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: 'bold' }}>HIGHEST SALE FOR PERIOD</Text>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#000', marginTop: 5 }}>{generatedReport.summary.topProduct.name}</Text>
+                                <Text style={{ fontSize: 14, color: '#000' }}>Rs. {Number(generatedReport.summary.topProduct.revenue).toLocaleString()}</Text>
+                            </View>
+                        )}
 
                         <View style={styles.chartCard}>
                             <View style={[styles.modalHeader, { marginBottom: 15 }]}>
@@ -3395,7 +3404,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     subTab: {
-        flex: 1,
+        paddingHorizontal: 15,
         paddingVertical: 8,
         alignItems: 'center',
         borderRadius: 8,

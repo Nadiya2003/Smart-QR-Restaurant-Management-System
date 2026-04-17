@@ -150,16 +150,31 @@ async function getReportDataInternal(type, startDate, endDate, user) {
                 GROUP BY DATE(created_at), payment_method, order_source, order_status
             `, [start, end]);
 
+            // Top Product Logic
+            const [topProdRows] = await pool.query(`
+                SELECT item_name, SUM(total_price) as revenue, SUM(quantity) as sold
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ? AND order_status != 'cancelled'
+                GROUP BY item_name ORDER BY revenue DESC LIMIT 10
+            `, [start, end]);
+
             report.summary.revenue = revRows.reduce((a, r) => a + Number(r.revenue), 0);
             report.summary.profit = revRows.reduce((a, r) => a + Number(r.profit), 0);
             report.summary.recordsCount = revRows.reduce((a, r) => a + Number(r.orders), 0);
             report.summary.successful = revRows.filter(r => r.order_status !== 'cancelled').reduce((a, r) => a + Number(r.orders), 0);
             report.summary.failed = revRows.filter(r => r.order_status === 'cancelled').reduce((a, r) => a + Number(r.orders), 0);
             
-            // Build Line Chart (Trend)
+            if (topProdRows.length > 0) {
+                report.summary.topProduct = {
+                    name: topProdRows[0].item_name,
+                    revenue: topProdRows[0].revenue
+                };
+            }
+
+            // Build Line Chart (Daily Trend)
             const trendMap = {};
             revRows.forEach(r => {
-                const d = r.date.toLocaleDateString();
+                const d = r.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
                 trendMap[d] = (trendMap[d] || 0) + Number(r.revenue);
             });
             report.visuals.line.labels = Object.keys(trendMap);
@@ -172,12 +187,40 @@ async function getReportDataInternal(type, startDate, endDate, user) {
             report.visuals.pie.datasets[0].data = Object.values(pmMap);
             report.breakdown.payment = pmMap;
 
-            report.table.headers = ['Date', 'Method', 'Source', 'Orders', 'Revenue', 'Profit'];
-            report.table.rows = revRows.slice(0, 50).map(r => [r.date.toLocaleDateString(), r.payment_method, r.order_source, r.orders, `Rs.${r.revenue}`, `Rs.${r.profit}`]);
+            // Product Bar Chart (Horizontal style)
+            report.visuals.productBar = {
+                labels: topProdRows.slice(0, 5).map(p => p.item_name),
+                data: topProdRows.slice(0, 5).map(p => Number(p.revenue))
+            };
 
-            report.insights.push(`${Object.keys(pmMap).sort((a,b) => pmMap[b]-pmMap[a])[0] || 'N/A'} is your top payment method.`);
-            if (report.summary.failed > 5) report.alerts.push("High number of cancelled orders detected! Review floor operations.");
-            report.recommendations.push("Consider promotional offers for low-revenue days identified in the trend.");
+            // Category Bar Chart
+            const [catRows] = await pool.query(`
+                SELECT category_name, SUM(total_price) as revenue
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                GROUP BY category_name ORDER BY revenue DESC
+            `, [start, end]);
+            report.visuals.bar.labels = catRows.map(c => c.category_name);
+            report.visuals.bar.datasets[0].data = catRows.map(c => Number(c.revenue));
+
+            report.table.headers = ['Date', 'Product', 'Qty', 'Revenue', 'Method', 'Source'];
+            const [detailedRows] = await pool.query(`
+                SELECT created_at, item_name, quantity, total_price, payment_method, order_source
+                FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                ORDER BY created_at DESC LIMIT 100
+            `, [start, end]);
+            report.table.rows = detailedRows.map(r => [
+                new Date(r.created_at).toLocaleDateString('en-GB'),
+                r.item_name,
+                r.quantity,
+                `Rs.${r.total_price}`,
+                r.payment_method,
+                r.order_source
+            ]);
+
+            report.insights.push(`${topProdRows[0]?.item_name || 'N/A'} is your highest grossing product.`);
+            report.insights.push(`${Object.keys(pmMap).sort((a,b) => pmMap[b]-pmMap[a])[0] || 'N/A'} is the preferred payment method.`);
             break;
 
         case 'ORDERS':
@@ -349,81 +392,154 @@ export const generatePdfReport = async (req, res) => {
         const { type, startDate, endDate } = req.query;
         const ctx = await getReportDataInternal(type, startDate, endDate, req.user);
         
-        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const doc = new PDFDocument({ margin: 30, size: 'A4' });
         const fileName = `Report_${type}_${new Date().toISOString().split('T')[0]}.pdf`;
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         doc.pipe(res);
 
-        // --- DASHBOARD STYLE HEADER ---
-        doc.rect(0, 0, 612, 100).fill('#111827');
-        doc.fillColor('#FFFFFF').fontSize(24).font('Helvetica-Bold').text(ctx.metadata.businessName, 40, 30);
-        doc.fontSize(10).font('Helvetica').text(`${ctx.metadata.reportType} DASHBOARD`, 40, 60);
-        doc.text(`Generated: ${ctx.metadata.generatedAt} | Period: ${ctx.metadata.dateRange}`, 40, 75);
-        doc.text(`Generated By: ${ctx.metadata.generatedBy}`, 450, 75, { align: 'right' });
+        // Colors
+        const primaryColor = '#000000';
+        const secondaryColor = '#4B5563';
+        const accentColor = '#6B7280';
+        const bgColor = '#FFFFFF';
+        const cardBg = '#F9FAFB';
 
-        // --- SECTION 1: REPORT SUMMARY (Cards) ---
-        let cardX = 40;
-        let cardY = 120;
-        const cards = [
-            { label: 'TOTAL COUNT', value: ctx.summary.recordsCount, color: '#3B82F6' },
-            { label: 'REVENUE / VALUE', value: `Rs.${Number(ctx.summary.revenue || ctx.summary.totalValue || 0).toLocaleString()}`, color: '#10B981' },
-            { label: 'SUCCESSFUL', value: ctx.summary.successful, color: '#10B981' },
-            { label: 'FAILED / OUT', value: ctx.summary.failed, color: '#EF4444' }
-        ];
+        // --- HEADER ---
+        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 30, 30, { width: 40 });
+        }
+        
+        doc.fillColor(primaryColor).fontSize(20).font('Helvetica-Bold').text(ctx.metadata.businessName, 80, 35);
+        doc.fillColor(secondaryColor).fontSize(10).font('Helvetica').text(`${ctx.metadata.reportType} REPORT AND TRACKER`, 80, 55);
+        
+        doc.fillColor(primaryColor).fontSize(18).font('Helvetica-Bold').text(`${startDate} - ${endDate}`, 30, 90, { align: 'center' });
+        doc.moveDown(1.5);
 
-        cards.forEach(card => {
-            doc.rect(cardX, cardY, 120, 60).fill('#F9FAFB').stroke('#E5E7EB');
-            doc.fillColor('#6B7280').fontSize(8).font('Helvetica-Bold').text(card.label, cardX + 10, cardY + 15);
-            doc.fillColor(card.color).fontSize(14).text(String(card.value), cardX + 10, cardY + 30);
-            cardX += 135;
+        // --- TOP KPIS (Row 1) ---
+        let startY = 130;
+        // Total Sale Card
+        doc.rect(30, startY, 170, 80).fill(cardBg).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("TOTAL SALE", 40, startY + 15);
+        doc.fontSize(22).text(`Rs. ${Number(ctx.summary.revenue || ctx.summary.totalValue || 0).toLocaleString()}`, 40, startY + 35);
+
+        // Total Profit Card
+        doc.rect(210, startY, 170, 80).fill(cardBg).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("TOTAL PROFIT", 220, startY + 15);
+        doc.fontSize(22).text(`Rs. ${Number(ctx.summary.profit || 0).toLocaleString()}`, 220, startY + 35);
+
+        // Highest Sale Product card
+        doc.rect(390, startY, 175, 80).fill(cardBg).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("HIGHEST SALE FOR PERIOD", 400, startY + 15);
+        doc.fontSize(14).text(ctx.summary.topProduct?.name || 'N/A', 400, startY + 35);
+        doc.fontSize(12).font('Helvetica').text(`Rs. ${Number(ctx.summary.topProduct?.revenue || 0).toLocaleString()}`, 400, startY + 55);
+
+        // --- CHARTS SECTION (Row 2) ---
+        startY += 100;
+        
+        // Total Sale by Payment Method (Pie Chart representation)
+        doc.rect(30, startY, 260, 150).fill(bgColor).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sale by Payment Method", 40, startY + 10);
+        
+        let pY = startY + 30;
+        const pmLabels = ctx.visuals.pie.labels;
+        const pmData = ctx.visuals.pie.datasets[0].data;
+        const totalPM = pmData.reduce((a, b) => a + b, 0);
+
+        pmLabels.forEach((label, i) => {
+            const val = pmData[i];
+            const pct = totalPM > 0 ? ((val / totalPM) * 100).toFixed(0) : 0;
+            doc.rect(40, pY, 10, 10).fill('#333');
+            doc.fillColor(primaryColor).fontSize(9).font('Helvetica').text(`${label}: Rs. ${Number(val).toLocaleString()} (${pct}%)`, 55, pY);
+            pY += 18;
         });
 
-        // --- SECTION 2: INSIGHTS & ALERTS ---
-        doc.moveDown(6);
-        let sectionY = doc.y + 20;
+        // Total Sales by Categories (Bar Chart representation)
+        doc.rect(305, startY, 260, 150).fill(bgColor).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sales by Category", 315, startY + 10);
         
-        doc.rect(40, sectionY, 260, 100).fill('#EFF6FF');
-        doc.fillColor('#1E40AF').fontSize(10).font('Helvetica-Bold').text("💡 PERFORMANCE INSIGHTS", 50, sectionY + 10);
-        doc.fillColor('#1E40AF').fontSize(9).font('Helvetica').text(ctx.insights.join('\n• ') || 'No insights available for this period.', 50, sectionY + 25, { width: 240 });
+        let bX = 315;
+        const catLabels = ctx.visuals.bar.labels.slice(0, 5);
+        const catData = ctx.visuals.bar.datasets[0].data.slice(0, 5);
+        const maxCat = Math.max(...catData, 1);
 
-        doc.rect(315, sectionY, 240, 100).fill('#FEF2F2');
-        doc.fillColor('#991B1B').fontSize(10).font('Helvetica-Bold').text("⚠️ ALERTS & EXCEPTIONS", 325, sectionY + 10);
-        doc.fillColor('#991B1B').fontSize(9).font('Helvetica').text(ctx.alerts.join('\n• ') || 'All systems normal. No critical alerts.', 325, sectionY + 25, { width: 220 });
+        catLabels.forEach((label, i) => {
+            const h = (catData[i] / maxCat) * 80;
+            doc.rect(bX + (i * 50), startY + 120 - h, 30, h).fill('#555');
+            doc.fillColor(primaryColor).fontSize(7).text(label.substring(0, 8), bX + (i * 50), startY + 125, { width: 35, align: 'center' });
+        });
 
-        // --- SECTION 3: DETAILED TABLE ---
-        doc.moveDown(10);
-        doc.fillColor('#111827').fontSize(12).font('Helvetica-Bold').text("DETAILED DATA TABLE", 40, doc.y);
-        doc.strokeColor('#E5E7EB').lineWidth(1).moveTo(40, doc.y + 5).lineTo(555, doc.y + 5).stroke();
+        // --- TREND SECTION (Row 3) ---
+        startY += 165;
+        doc.rect(30, startY, 535, 120).fill(cardBg).stroke('#000');
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sale by Date (Daily Trend)", 40, startY + 10);
         
-        doc.moveDown(1);
+        // Simple Line/Bar Chart for trend
+        let tX = 50;
+        const trendLabels = ctx.visuals.line.labels.slice(-15);
+        const trendValues = ctx.visuals.line.datasets[0].data.slice(-15);
+        const maxTrend = Math.max(...trendValues, 1);
+        const gap = 500 / trendLabels.length;
+
+        trendLabels.forEach((label, i) => {
+            const h = (trendValues[i] / maxTrend) * 70;
+            doc.rect(tX + (i * gap), startY + 100 - h, gap - 5, h).fill('#000');
+            if (i % 2 === 0) doc.fontSize(6).text(label, tX + (i * gap), startY + 105);
+        });
+
+        // --- PRODUCT TABLE (Row 4) ---
+        startY += 145;
+        doc.fillColor(primaryColor).fontSize(12).font('Helvetica-Bold').text("Detailed Sales Records", 30, startY);
+        doc.moveDown(0.5);
+
         const tableTop = doc.y;
-        const colWidth = 515 / ctx.table.headers.length;
+        const headers = ['Date', 'Product', 'Qty', 'Total Sale', 'Method'];
+        const colWidths = [80, 160, 60, 100, 135];
 
-        // Headers
-        doc.rect(40, tableTop, 515, 20).fill('#F3F4F6');
-        doc.fillColor('#374151').fontSize(8).font('Helvetica-Bold');
-        ctx.table.headers.forEach((h, i) => {
-            doc.text(h.toUpperCase(), 45 + (i * colWidth), tableTop + 7);
+        // Header Row
+        doc.rect(30, tableTop, 535, 20).fill('#000');
+        doc.fillColor('#FFF').fontSize(9).font('Helvetica-Bold');
+        headers.forEach((h, i) => {
+            let offset = 0;
+            for(let j=0; j<i; j++) offset += colWidths[j];
+            doc.text(h, 35 + offset, tableTop + 5);
         });
 
-        // Rows
+        // Data Rows
         let rowY = tableTop + 20;
-        doc.font('Helvetica').fontSize(8).fillColor('#4B5563');
-        ctx.table.rows.slice(0, 40).forEach((row, rowIndex) => {
-            if (rowY > 750) { doc.addPage(); rowY = 50; }
-            if (rowIndex % 2 === 0) doc.rect(40, rowY, 515, 15).fill('#FFFFFF');
-            row.forEach((cell, i) => {
-                doc.text(String(cell), 45 + (i * colWidth), rowY + 4);
+        doc.fillColor('#000').font('Helvetica').fontSize(8);
+        ctx.table.rows.slice(0, 30).forEach((row, i) => {
+            if (rowY > 750) {
+                doc.addPage();
+                rowY = 50;
+                // Re-draw header on new page
+                doc.rect(30, rowY, 535, 20).fill('#000');
+                doc.fillColor('#FFF').fontSize(9).font('Helvetica-Bold');
+                headers.forEach((h, i) => {
+                    let offset = 0;
+                    for(let j=0; j<i; j++) offset += colWidths[j];
+                    doc.text(h, 35 + offset, rowY + 5);
+                });
+                rowY += 20;
+                doc.fillColor('#000').font('Helvetica').fontSize(8);
+            }
+            
+            if (i % 2 === 0) doc.rect(30, rowY, 535, 18).fill('#F3F4F6');
+            
+            [row[0], row[1], row[2], row[3], row[4]].forEach((cell, idx) => {
+                let offset = 0;
+                for(let j=0; j<idx; j++) offset += colWidths[j];
+                doc.text(String(cell), 35 + offset, rowY + 5, { width: colWidths[idx] - 10 });
             });
-            rowY += 15;
+            rowY += 18;
         });
 
         // --- FOOTER ---
-        doc.fontSize(8).fillColor('#9CA3AF').text(
-            `CONFIDENTIAL - ${ctx.metadata.businessName} | Generated by ${ctx.metadata.generatedBy} on ${ctx.metadata.generatedAt}`,
-            0, 800, { align: 'center' }
+        doc.fontSize(8).fillColor(accentColor).text(
+            `CONFIDENTIAL - ${ctx.metadata.businessName} PROPERTY | Generated on ${ctx.metadata.generatedAt} | Page 1 of 1`,
+            0, 810, { align: 'center' }
         );
 
         doc.end();
