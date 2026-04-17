@@ -124,13 +124,19 @@ async function getReportDataInternal(type, startDate, endDate, user) {
             failed: 0,
             totalValue: 0,
             revenue: 0,
-            profit: 0
+            profit: 0,
+            totalCost: 0,
+            totalPayments: 0,
+            cashIn: 0,
+            cashOut: 0,
+            avgOrderValue: 0
         },
         visuals: {
-            pie: { labels: [], datasets: [{ data: [], backgroundColor: ['#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6'] }] },
-            bar: { labels: [], datasets: [{ label: 'Performance', data: [], backgroundColor: '#3B82F6' }] },
-            line: { labels: [], datasets: [{ label: 'Trend', data: [], borderColor: '#10B981', fill: false }] },
-            doughnut: { labels: [], datasets: [{ data: [], backgroundColor: ['#10B981', '#E5E7EB'] }] }
+            pie: { labels: [], datasets: [{ data: [], backgroundColor: ['#000000', '#374151', '#6B7280', '#9CA3AF', '#D1D5DB'] }] },
+            bar: { labels: [], datasets: [{ label: 'Performance', data: [], backgroundColor: '#000000' }] },
+            line: { labels: [], datasets: [{ label: 'Trend', data: [], borderColor: '#000000', fill: false }] },
+            productBar: { labels: [], data: [] },
+            hourTrend: { labels: [], data: [] }
         },
         table: { headers: [], rows: [] },
         breakdown: { status: {}, category: {}, payment: {} },
@@ -140,248 +146,167 @@ async function getReportDataInternal(type, startDate, endDate, user) {
     };
 
     switch (typeUpper) {
+        case 'FINANCIAL':
         case 'REVENUE':
-        case 'SALES':
-            const [revRows] = await pool.query(`
-                SELECT DATE(created_at) as date, SUM(total_price) as revenue, SUM(profit) as profit, 
-                       COUNT(DISTINCT order_id) as orders, payment_method, order_source, order_status
+            // Aggregate for visuals
+            const [hourlySales] = await pool.query(`
+                SELECT HOUR(created_at) as hour, SUM(total_price) as revenue FROM order_analytics
+                WHERE created_at >= ? AND created_at <= ?
+                AND order_status != 'CANCELLED'
+                GROUP BY HOUR(created_at)
+            `, [start, end]);
+
+            // Detailed Breakdown (Point by Point)
+            const [pointByPoint] = await pool.query(`
+                SELECT order_id as id, created_at, SUM(total_price) as total_price, payment_method, order_source,
+                       SUM(unit_price * quantity) as gross,
+                       SUM(discount_amount) as discounts
                 FROM order_analytics
                 WHERE created_at >= ? AND created_at <= ?
-                GROUP BY DATE(created_at), payment_method, order_source, order_status
+                AND order_status != 'CANCELLED'
+                GROUP BY order_id, created_at, payment_method, order_source
+                ORDER BY created_at DESC
             `, [start, end]);
 
-            // Top Product Logic
-            const [topProdRows] = await pool.query(`
-                SELECT item_name, SUM(total_price) as revenue, SUM(quantity) as sold
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ? AND order_status != 'cancelled'
-                GROUP BY item_name ORDER BY revenue DESC LIMIT 10
-            `, [start, end]);
-
-            report.summary.revenue = revRows.reduce((a, r) => a + Number(r.revenue), 0);
-            report.summary.profit = revRows.reduce((a, r) => a + Number(r.profit), 0);
-            report.summary.recordsCount = revRows.reduce((a, r) => a + Number(r.orders), 0);
-            report.summary.successful = revRows.filter(r => r.order_status !== 'cancelled').reduce((a, r) => a + Number(r.orders), 0);
-            report.summary.failed = revRows.filter(r => r.order_status === 'cancelled').reduce((a, r) => a + Number(r.orders), 0);
+            const salesInflow = pointByPoint.reduce((a, r) => a + Number(r.total_price), 0);
             
-            if (topProdRows.length > 0) {
-                report.summary.topProduct = {
-                    name: topProdRows[0].item_name,
-                    revenue: topProdRows[0].revenue
-                };
-            }
+            // Peak Hours
+            report.visuals.hourTrend.labels = hourlySales.map(r => `${r.hour}:00`);
+            report.visuals.hourTrend.data = hourlySales.map(r => Number(r.revenue));
 
-            // Build Line Chart (Daily Trend)
-            const trendMap = {};
-            revRows.forEach(r => {
-                const d = r.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-                trendMap[d] = (trendMap[d] || 0) + Number(r.revenue);
-            });
-            report.visuals.line.labels = Object.keys(trendMap);
-            report.visuals.line.datasets[0].data = Object.values(trendMap);
+            // Source Breakdown
+            const srcNames = [...new Set(pointByPoint.map(r => r.order_source))];
+            report.visuals.pie.labels = srcNames;
+            report.visuals.pie.datasets[0].data = srcNames.map(src => pointByPoint.filter(r => r.order_source === src).reduce((a, r) => a + Number(r.total_price), 0));
 
-            // Breakdown & Pie (Payment Methods)
-            const pmMap = {};
-            revRows.forEach(r => { pmMap[r.payment_method] = (pmMap[r.payment_method] || 0) + Number(r.revenue); });
-            report.visuals.pie.labels = Object.keys(pmMap);
-            report.visuals.pie.datasets[0].data = Object.values(pmMap);
-            report.breakdown.payment = pmMap;
-
-            // Product Bar Chart (Horizontal style)
-            report.visuals.productBar = {
-                labels: topProdRows.slice(0, 5).map(p => p.item_name),
-                data: topProdRows.slice(0, 5).map(p => Number(p.revenue))
-            };
-
-            // Category Bar Chart
-            const [catRows] = await pool.query(`
-                SELECT category_name, SUM(total_price) as revenue
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY category_name ORDER BY revenue DESC
+            // Costs
+            const [suppCosts] = await pool.query(`
+                SELECT SUM(total_amount) as total FROM supplier_orders 
+                WHERE created_at >= ? AND created_at <= ? AND status NOT IN ('CANCELLED')
             `, [start, end]);
-            report.visuals.bar.labels = catRows.map(c => c.category_name);
-            report.visuals.bar.datasets[0].data = catRows.map(c => Number(c.revenue));
+            const inventoryOutflow = Number(suppCosts[0].total || 0);
 
-            report.table.headers = ['Date', 'Product', 'Qty', 'Revenue', 'Method', 'Source'];
-            const [detailedRows] = await pool.query(`
-                SELECT created_at, item_name, quantity, total_price, payment_method, order_source
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                ORDER BY created_at DESC LIMIT 100
-            `, [start, end]);
-            report.table.rows = detailedRows.map(r => [
-                new Date(r.created_at).toLocaleDateString('en-GB'),
-                r.item_name,
-                r.quantity,
-                `Rs.${r.total_price}`,
-                r.payment_method,
-                r.order_source
+            report.summary.revenue = salesInflow;
+            report.summary.totalCost = inventoryOutflow;
+            report.summary.profit = salesInflow - inventoryOutflow;
+            report.summary.cashIn = salesInflow;
+            report.summary.cashOut = inventoryOutflow;
+            report.summary.recordsCount = pointByPoint.length;
+
+            report.table.headers = ['Time', 'Order#', 'Source', 'Gross', 'Discounts', 'Net Cash', 'Method'];
+            report.table.rows = pointByPoint.map(r => [
+                new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                `#${r.id}`,
+                r.order_source,
+                `Rs.${Number(r.gross || r.total_price).toLocaleString()}`,
+                `Rs.${Number(r.discounts || 0).toLocaleString()}`,
+                `Rs.${Number(r.total_price).toLocaleString()}`,
+                r.payment_method || 'N/A'
             ]);
 
-            report.insights.push(`${topProdRows[0]?.item_name || 'N/A'} is your highest grossing product.`);
-            report.insights.push(`${Object.keys(pmMap).sort((a,b) => pmMap[b]-pmMap[a])[0] || 'N/A'} is the preferred payment method.`);
+            report.insights.push(`Average Order Value: Rs. ${(salesInflow / (pointByPoint.length || 1)).toFixed(2)}`);
+            report.insights.push(`Digital Payments: ${((pointByPoint.filter(r => r.payment_method !== 'cash').length / (pointByPoint.length || 1)) * 100).toFixed(1)}%`);
             break;
 
-        case 'ORDERS':
-            const [orderRows] = await pool.query(`
-                SELECT order_status, COUNT(*) as count, SUM(total_price) as revenue FROM (
-                    SELECT order_status, total_price, created_at FROM delivery_orders
-                    UNION ALL
-                    SELECT order_status, total_price, created_at FROM takeaway_orders
-                    UNION ALL
-                    SELECT order_status, SUM(total_price) as total_price, created_at FROM order_analytics WHERE order_source = 'DINE-IN' GROUP BY order_id, order_status, created_at
-                ) as combined
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY order_status
+        case 'INVENTORY_COSTS':
+            const [purchaseRows] = await pool.query(`
+                SELECT so.*, s.name as supplier_name, i.item_name 
+                FROM supplier_orders so
+                LEFT JOIN suppliers s ON so.supplier_id = s.id
+                LEFT JOIN inventory i ON so.inventory_id = i.id
+                WHERE so.created_at >= ? AND so.created_at <= ?
+                ORDER BY so.created_at DESC
             `, [start, end]);
-            report.summary.recordsCount = orderRows.reduce((a, r) => a + r.count, 0);
-            report.summary.successful = orderRows.filter(r => !['cancelled', 'failed'].includes(r.order_status)).reduce((a, r) => a + r.count, 0);
-            report.summary.failed = orderRows.filter(r => ['cancelled', 'failed'].includes(r.order_status)).reduce((a, r) => a + r.count, 0);
-            report.summary.revenue = orderRows.reduce((a, r) => a + Number(r.revenue), 0);
-
-            report.visuals.pie.labels = orderRows.map(r => r.order_status.toUpperCase());
-            report.visuals.pie.datasets[0].data = orderRows.map(r => r.count);
-
-            report.table.headers = ['Status', 'Total Orders', 'Revenue'];
-            report.table.rows = orderRows.map(r => [r.order_status, r.count, `Rs.${r.revenue}`]);
+            report.summary.totalValue = purchaseRows.reduce((a, r) => a + Number(r.total_amount), 0);
+            report.table.headers = ['Date', 'Item', 'Supplier', 'Qty', 'Unit Cost', 'Total', 'Status'];
+            report.table.rows = purchaseRows.map(r => [
+                new Date(r.created_at).toLocaleDateString(),
+                r.item_name,
+                r.supplier_name,
+                r.quantity,
+                `Rs.${(r.total_amount / r.quantity).toFixed(2)}`,
+                `Rs.${r.total_amount}`,
+                r.status
+            ]);
             break;
 
-        case 'CANCELLATIONS':
-            const [cancelRows] = await pool.query(`
-                SELECT order_source, item_name, total_price as lost_revenue, created_at FROM order_analytics
-                WHERE order_status = 'cancelled' AND created_at >= ? AND created_at <= ?
-            `, [start, end]);
-            report.summary.recordsCount = cancelRows.length;
-            report.summary.totalValue = cancelRows.reduce((a, r) => a + Number(r.lost_revenue), 0);
-            
-            const srcCancelMap = {};
-            cancelRows.forEach(r => { srcCancelMap[r.order_source] = (srcCancelMap[r.order_source] || 0) + 1; });
-            report.visuals.bar.labels = Object.keys(srcCancelMap);
-            report.visuals.bar.datasets[0].data = Object.values(srcCancelMap);
-
-            report.table.headers = ['Item', 'Source', 'Lost Revenue', 'Date'];
-            report.table.rows = cancelRows.map(r => [r.item_name, r.order_source, `Rs.${r.lost_revenue}`, r.created_at.toLocaleDateString()]);
-            
-            report.alerts.push(`Rs.${report.summary.totalValue} lost due to cancellations.`);
-            report.recommendations.push("Identify recurring cancellation reasons and resolve internal bottlenecks.");
-            break;
-
-        case 'CUSTOMERS':
-            const [custRows] = await pool.query(`
-                SELECT name, email, phone, created_at, status FROM online_customers
-                WHERE created_at >= ? AND created_at <= ?
-            `, [start, end]);
-            report.summary.recordsCount = custRows.length;
-            report.summary.successful = custRows.filter(c => c.status === 'active').length;
-            
-            report.visuals.line.labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-            report.visuals.line.datasets[0].data = [10, 25, 15, 30]; // Placeholder for demographic trend
-
-            report.table.headers = ['Name', 'Email', 'Phone', 'Join Date'];
-            report.table.rows = custRows.map(c => [c.name, c.email, c.phone, c.created_at.toLocaleDateString()]);
-            break;
-
-        case 'RESERVATIONS':
-            const [resRows] = await pool.query(`
-                SELECT reservation_date, status, COUNT(*) as count 
-                FROM reservations 
-                WHERE reservation_date >= ? AND reservation_date <= ?
-                GROUP BY reservation_date, status
-            `, [startDate, endDate]);
-            report.summary.recordsCount = resRows.reduce((a, r) => a + r.count, 0);
-            report.summary.successful = resRows.filter(r => r.status === 'confirmed').reduce((a, r) => a + r.count, 0);
-            
-            report.visuals.bar.labels = [...new Set(resRows.map(r => new Date(r.reservation_date).toLocaleDateString()))].slice(0, 10);
-            report.visuals.bar.datasets[0].data = report.visuals.bar.labels.map(l => 
-                resRows.filter(r => new Date(r.reservation_date).toLocaleDateString() === l).reduce((a, r) => a + r.count, 0)
-            );
-
-            report.table.headers = ['Date', 'Status', 'Bookings'];
-            report.table.rows = resRows.map(r => [new Date(r.reservation_date).toLocaleDateString(), r.status, r.count]);
+        case 'SUPPLIER_PAYMENTS':
+            const [payRows] = await pool.query(`
+                SELECT s.name as supplier_name, SUM(so.total_amount) as total_payable,
+                       (SELECT SUM(amount) FROM supplier_payments sp JOIN supplier_orders so2 ON sp.supplier_order_id = so2.id WHERE so2.supplier_id = s.id) as total_paid
+                FROM suppliers s
+                JOIN supplier_orders so ON s.id = so.supplier_id
+                GROUP BY s.id
+            `);
+            report.table.headers = ['Supplier', 'Payable', 'Paid', 'Outstanding Debt'];
+            report.table.rows = payRows.map(r => {
+                const pending = Number(r.total_payable) - Number(r.total_paid || 0);
+                return [r.supplier_name, `Rs.${Number(r.total_payable).toLocaleString()}`, `Rs.${Number(r.total_paid || 0).toLocaleString()}`, `Rs.${Number(pending).toLocaleString()}`];
+            });
             break;
 
         case 'FOOD_WISE':
-        case 'FOOD':
             const [foodRows] = await pool.query(`
-                SELECT item_name, category_name, SUM(quantity) as sold, SUM(total_price) as revenue
+                SELECT item_name, category_name, SUM(quantity) as sold, SUM(total_price) as revenue, AVG(unit_price) as avg_price,
+                       SUM(COALESCE(buying_price, 0) * quantity) as total_cost
                 FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
+                WHERE created_at >= ? AND created_at <= ? AND order_status != 'CANCELLED'
                 GROUP BY item_name, category_name ORDER BY sold DESC
             `, [start, end]);
 
-            report.summary.totalValue = foodRows.reduce((a, r) => a + Number(r.revenue), 0);
-            report.summary.recordsCount = foodRows.length;
-            report.summary.successful = foodRows.reduce((a, r) => a + Number(r.sold), 0);
+            report.summary.revenue = foodRows.reduce((a, r) => a + Number(r.revenue), 0);
+            report.summary.totalCost = foodRows.reduce((a, r) => a + Number(r.total_cost || 0), 0);
+            report.summary.profit = report.summary.revenue - report.summary.totalCost;
 
             report.visuals.bar.labels = foodRows.slice(0, 7).map(r => r.item_name);
             report.visuals.bar.datasets[0].data = foodRows.slice(0, 7).map(r => r.sold);
 
-            const catMap = {};
-            foodRows.forEach(r => { catMap[r.category_name] = (catMap[r.category_name] || 0) + Number(r.sold); });
-            report.visuals.doughnut.labels = Object.keys(catMap);
-            report.visuals.doughnut.datasets[0].data = Object.values(catMap);
-            report.breakdown.category = catMap;
-
-            report.table.headers = ['Item Name', 'Category', 'Qty Sold', 'Revenue'];
-            report.table.rows = foodRows.map(r => [r.item_name, r.category_name, r.sold, `Rs.${r.revenue}`]);
-
-            report.insights.push(`${foodRows[0]?.item_name || 'N/A'} is the star performer this period.`);
-            report.recommendations.push("Boost sales of low-performing categories by bundling them with top sellers.");
-            break;
-
-        case 'INVENTORY':
-            const [invRows] = await pool.query(`
-                SELECT i.*, s.name as supplier_name FROM inventory i 
-                LEFT JOIN suppliers s ON i.supplier_id = s.id 
-                ORDER BY i.quantity ASC
-            `);
-            report.summary.recordsCount = invRows.length;
-            report.summary.failed = invRows.filter(i => i.quantity === 0).length;
-            report.summary.pending = invRows.filter(i => i.quantity > 0 && i.quantity <= i.min_level).length;
-            report.summary.successful = invRows.length - report.summary.failed - report.summary.pending;
-
-            report.visuals.pie.labels = ['Critical (Out)', 'Low Stock', 'Healthy'];
-            report.visuals.pie.datasets[0].data = [report.summary.failed, report.summary.pending, report.summary.successful];
-
-            report.table.headers = ['Item', 'Category', 'Stock', 'Unit', 'Status', 'Supplier'];
-            report.table.rows = invRows.map(i => [i.item_name, i.category, i.quantity, i.unit, i.status, i.supplier_name]);
-
-            if (report.summary.failed > 0) report.alerts.push(`${report.summary.failed} items are completely out of stock!`);
-            report.recommendations.push("Set up automated restock requests for items frequently hitting 'Low Stock'.");
+            report.table.headers = ['Item Name', 'Quantity Sold', 'Revenue', 'Total Cost', 'Net Profit'];
+            report.table.rows = foodRows.map(r => [
+                r.item_name, 
+                r.sold, 
+                `Rs.${Number(r.revenue).toLocaleString()}`, 
+                `Rs.${Number(r.total_cost || 0).toLocaleString()}`,
+                `Rs.${(Number(r.revenue) - Number(r.total_cost || 0)).toLocaleString()}`
+            ]);
             break;
 
         case 'STAFF':
-            const [staffRows] = await pool.query(`
-                SELECT su.full_name, sr.role_name as role, COUNT(a.id) as attendance,
-                       AVG(TIMESTAMPDIFF(HOUR, a.check_in_time, IFNULL(a.check_out_time, NOW()))) as avg_hours
+            const [staffPerf] = await pool.query(`
+                SELECT su.full_name, sr.role_name, COUNT(DISTINCT a.id) as days, SUM(TIMESTAMPDIFF(HOUR, a.check_in_time, IFNULL(a.check_out_time, NOW()))) as hours
                 FROM staff_users su
-                LEFT JOIN staff_roles sr ON su.role_id = sr.id
+                JOIN staff_roles sr ON su.role_id = sr.id
                 LEFT JOIN staff_attendance a ON su.id = a.staff_id
                 WHERE a.date >= ? AND a.date <= ?
                 GROUP BY su.id
             `, [startDate, endDate]);
-            report.summary.recordsCount = staffRows.length;
-            report.visuals.bar.labels = staffRows.map(s => s.full_name);
-            report.visuals.bar.datasets[0].data = staffRows.map(s => s.avg_hours);
+            report.table.headers = ['Name', 'Official Role', 'Attendance', 'Total Productive Hours'];
+            report.table.rows = staffPerf.map(s => [s.full_name, s.role_name, `${s.days} days`, `${Number(s.hours).toFixed(1)}h`]);
+            break;
 
-            report.table.headers = ['Name', 'Role', 'Attendance', 'Avg Hours'];
-            report.table.rows = staffRows.map(s => [s.full_name, s.role, s.attendance, Number(s.avg_hours).toFixed(1)]);
+        case 'CANCELLATIONS':
+            const [cancels] = await pool.query(`
+                SELECT order_source, item_name, total_price as lost, created_at, unit_price, quantity FROM order_analytics
+                WHERE order_status = 'cancelled' AND created_at >= ? AND created_at <= ?
+            `, [start, end]);
+            report.summary.totalValue = cancels.reduce((a, r) => a + Number(r.lost), 0);
+            report.table.headers = ['Item Description', 'Qty', 'Unit Price', 'Lost Revenue', 'Origin Source'];
+            report.table.rows = cancels.map(r => [
+                r.item_name,
+                r.quantity,
+                `Rs.${r.unit_price}`,
+                `Rs.${r.lost}`,
+                r.order_source
+            ]);
             break;
 
         default:
-            // Generic Orders Report as fallback
-            const [genRows] = await pool.query(`
-                SELECT order_id, order_source, order_status, SUM(total_price) as total, created_at, payment_method
-                FROM order_analytics
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY order_id, order_source, order_status, created_at, payment_method
-                ORDER BY created_at DESC
-            `, [start, end]);
-            report.summary.recordsCount = genRows.length;
-            report.summary.revenue = genRows.reduce((a,r) => a+Number(r.total), 0);
-            report.table.headers = ['Order ID', 'Source', 'Status', 'Total', 'Payment', 'Date'];
-            report.table.rows = genRows.slice(0, 50).map(r => [r.order_id, r.order_source, r.order_status, `Rs.${r.total}`, r.payment_method, r.created_at.toLocaleDateString()]);
+            const [sumSales] = await pool.query("SELECT SUM(total_price) as revenue FROM order_analytics WHERE created_at >= ? AND created_at <= ? AND order_status != 'CANCELLED'", [start, end]);
+            const [sumCosts] = await pool.query("SELECT SUM(total_amount) as costs FROM supplier_orders WHERE created_at >= ? AND created_at <= ? AND status != 'CANCELLED'", [start, end]);
+            report.summary.revenue = Number(sumSales[0].revenue || 0);
+            report.summary.totalCost = Number(sumCosts[0].costs || 0);
+            report.summary.profit = report.summary.revenue - report.summary.totalCost;
+            break;
     }
 
     return report;
@@ -392,160 +317,117 @@ export const generatePdfReport = async (req, res) => {
         const { type, startDate, endDate } = req.query;
         const ctx = await getReportDataInternal(type, startDate, endDate, req.user);
         
-        const doc = new PDFDocument({ margin: 30, size: 'A4' });
-        const fileName = `Report_${type}_${new Date().toISOString().split('T')[0]}.pdf`;
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const fileName = `BusinessIQ_Report_${type}_${startDate}.pdf`;
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         doc.pipe(res);
 
-        // Colors
-        const primaryColor = '#000000';
-        const secondaryColor = '#4B5563';
-        const accentColor = '#6B7280';
-        const bgColor = '#FFFFFF';
-        const cardBg = '#F9FAFB';
+        // --- THEME ---
+        const colors = {
+            primary: '#111827',
+            secondary: '#374151',
+            accent: '#10B981',
+            muted: '#6B7280',
+            danger: '#EF4444',
+            bg: '#F9FAFB',
+            white: '#FFFFFF'
+        };
 
         // --- HEADER ---
-        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
-        if (fs.existsSync(logoPath)) {
-            doc.image(logoPath, 30, 30, { width: 40 });
-        }
+        doc.rect(0, 0, 612, 100).fill(colors.primary);
+        doc.fillColor(colors.white).fontSize(24).font('Helvetica-Bold').text("MELISSA'S FOOD COURT", 40, 30);
+        doc.fontSize(10).font('Helvetica').text(`BUSINESS INTELLIGENCE: ${ctx.metadata.reportType}`, 40, 60);
+        doc.text(`AUDIT PERIOD: ${ctx.metadata.dateRange}`, 40, 75);
+        doc.text(`GENERATED: ${ctx.metadata.generatedAt}`, 400, 35, { align: 'right' });
+
+        // --- KPI SUMMARY ---
+        let topY = 130;
+        const kpiWidth = 170;
         
-        doc.fillColor(primaryColor).fontSize(20).font('Helvetica-Bold').text(ctx.metadata.businessName, 80, 35);
-        doc.fillColor(secondaryColor).fontSize(10).font('Helvetica').text(`${ctx.metadata.reportType} REPORT AND TRACKER`, 80, 55);
-        
-        doc.fillColor(primaryColor).fontSize(18).font('Helvetica-Bold').text(`${startDate} - ${endDate}`, 30, 90, { align: 'center' });
-        doc.moveDown(1.5);
+        // Revenue Card
+        doc.rect(40, topY, kpiWidth, 70).fill(colors.white).stroke(colors.secondary);
+        doc.fillColor(colors.secondary).fontSize(8).font('Helvetica-Bold').text("GROSS REVENUE", 50, topY + 15);
+        doc.fillColor(colors.primary).fontSize(16).text(`Rs. ${Number(ctx.summary.revenue || 0).toLocaleString()}`, 50, topY + 35);
 
-        // --- TOP KPIS (Row 1) ---
-        let startY = 130;
-        // Total Sale Card
-        doc.rect(30, startY, 170, 80).fill(cardBg).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("TOTAL SALE", 40, startY + 15);
-        doc.fontSize(22).text(`Rs. ${Number(ctx.summary.revenue || ctx.summary.totalValue || 0).toLocaleString()}`, 40, startY + 35);
+        // Cost Card
+        doc.rect(40 + kpiWidth + 10, topY, kpiWidth, 70).fill(colors.white).stroke(colors.secondary);
+        doc.fillColor(colors.secondary).fontSize(8).font('Helvetica-Bold').text("TOTAL EXPENDITURE", 50 + kpiWidth + 10, topY + 15);
+        doc.fillColor(colors.danger).fontSize(16).text(`Rs. ${Number(ctx.summary.totalCost || 0).toLocaleString()}`, 50 + kpiWidth + 10, topY + 35);
 
-        // Total Profit Card
-        doc.rect(210, startY, 170, 80).fill(cardBg).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("TOTAL PROFIT", 220, startY + 15);
-        doc.fontSize(22).text(`Rs. ${Number(ctx.summary.profit || 0).toLocaleString()}`, 220, startY + 35);
+        // Profit Card
+        const profit = ctx.summary.profit || 0;
+        doc.rect(40 + (kpiWidth + 10) * 2, topY, kpiWidth, 70).fill(colors.white).stroke(colors.secondary);
+        doc.fillColor(colors.secondary).fontSize(8).font('Helvetica-Bold').text("NET PROFITABILITY", 50 + (kpiWidth + 10) * 2, topY + 15);
+        doc.fillColor(profit >= 0 ? colors.accent : colors.danger).fontSize(16).text(`Rs. ${Number(profit).toLocaleString()}`, 50 + (kpiWidth + 10) * 2, topY + 35);
 
-        // Highest Sale Product card
-        doc.rect(390, startY, 175, 80).fill(cardBg).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("HIGHEST SALE FOR PERIOD", 400, startY + 15);
-        doc.fontSize(14).text(ctx.summary.topProduct?.name || 'N/A', 400, startY + 35);
-        doc.fontSize(12).font('Helvetica').text(`Rs. ${Number(ctx.summary.topProduct?.revenue || 0).toLocaleString()}`, 400, startY + 55);
+        // --- VISUALIZATION SECTION ---
+        topY += 100;
+        doc.fillColor(colors.primary).fontSize(12).font('Helvetica-Bold').text("ANALYTICAL BREAKDOWN", 40, topY);
+        doc.rect(40, topY + 15, 515, 2).fill(colors.primary);
 
-        // --- CHARTS SECTION (Row 2) ---
-        startY += 100;
-        
-        // Total Sale by Payment Method (Pie Chart representation)
-        doc.rect(30, startY, 260, 150).fill(bgColor).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sale by Payment Method", 40, startY + 10);
-        
-        let pY = startY + 30;
-        const pmLabels = ctx.visuals.pie.labels;
-        const pmData = ctx.visuals.pie.datasets[0].data;
-        const totalPM = pmData.reduce((a, b) => a + b, 0);
+        // Simple Bar Chart for Inflow vs Outflow
+        const barY = topY + 40;
+        const inVal = Number(ctx.summary.revenue || 0);
+        const outVal = Number(ctx.summary.totalCost || 0);
+        const maxVal = Math.max(inVal, outVal, 1);
+        const barWidthMax = 300;
 
-        pmLabels.forEach((label, i) => {
-            const val = pmData[i];
-            const pct = totalPM > 0 ? ((val / totalPM) * 100).toFixed(0) : 0;
-            doc.rect(40, pY, 10, 10).fill('#333');
-            doc.fillColor(primaryColor).fontSize(9).font('Helvetica').text(`${label}: Rs. ${Number(val).toLocaleString()} (${pct}%)`, 55, pY);
-            pY += 18;
-        });
+        doc.fillColor(colors.muted).fontSize(9).text("Cash Flow Balance", 40, barY);
+        doc.rect(40, barY + 15, (inVal/maxVal) * barWidthMax, 20).fill(colors.primary);
+        doc.fillColor(colors.primary).text(`Inflow: Rs. ${inVal.toLocaleString()}`, 40 + (inVal/maxVal) * barWidthMax + 10, barY + 22);
 
-        // Total Sales by Categories (Bar Chart representation)
-        doc.rect(305, startY, 260, 150).fill(bgColor).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sales by Category", 315, startY + 10);
-        
-        let bX = 315;
-        const catLabels = ctx.visuals.bar.labels.slice(0, 5);
-        const catData = ctx.visuals.bar.datasets[0].data.slice(0, 5);
-        const maxCat = Math.max(...catData, 1);
+        doc.rect(40, barY + 45, (outVal/maxVal) * barWidthMax, 20).fill(colors.secondary);
+        doc.fillColor(colors.secondary).text(`Outflow: Rs. ${outVal.toLocaleString()}`, 40 + (outVal/maxVal) * barWidthMax + 10, barY + 52);
 
-        catLabels.forEach((label, i) => {
-            const h = (catData[i] / maxCat) * 80;
-            doc.rect(bX + (i * 50), startY + 120 - h, 30, h).fill('#555');
-            doc.fillColor(primaryColor).fontSize(7).text(label.substring(0, 8), bX + (i * 50), startY + 125, { width: 35, align: 'center' });
-        });
-
-        // --- TREND SECTION (Row 3) ---
-        startY += 165;
-        doc.rect(30, startY, 535, 120).fill(cardBg).stroke('#000');
-        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text("Total Sale by Date (Daily Trend)", 40, startY + 10);
-        
-        // Simple Line/Bar Chart for trend
-        let tX = 50;
-        const trendLabels = ctx.visuals.line.labels.slice(-15);
-        const trendValues = ctx.visuals.line.datasets[0].data.slice(-15);
-        const maxTrend = Math.max(...trendValues, 1);
-        const gap = 500 / trendLabels.length;
-
-        trendLabels.forEach((label, i) => {
-            const h = (trendValues[i] / maxTrend) * 70;
-            doc.rect(tX + (i * gap), startY + 100 - h, gap - 5, h).fill('#000');
-            if (i % 2 === 0) doc.fontSize(6).text(label, tX + (i * gap), startY + 105);
-        });
-
-        // --- PRODUCT TABLE (Row 4) ---
-        startY += 145;
-        doc.fillColor(primaryColor).fontSize(12).font('Helvetica-Bold').text("Detailed Sales Records", 30, startY);
+        // --- TABLE ---
+        topY += 130;
+        doc.fillColor(colors.primary).fontSize(12).font('Helvetica-Bold').text("DETAILED AUDIT LOG", 40, topY);
         doc.moveDown(0.5);
 
-        const tableTop = doc.y;
-        const headers = ['Date', 'Product', 'Qty', 'Total Sale', 'Method'];
-        const colWidths = [80, 160, 60, 100, 135];
+        const tableTop = doc.y + 5;
+        const head = ctx.table.headers;
+        const cw = 515 / head.length;
 
-        // Header Row
-        doc.rect(30, tableTop, 535, 20).fill('#000');
-        doc.fillColor('#FFF').fontSize(9).font('Helvetica-Bold');
-        headers.forEach((h, i) => {
-            let offset = 0;
-            for(let j=0; j<i; j++) offset += colWidths[j];
-            doc.text(h, 35 + offset, tableTop + 5);
-        });
+        // Header Background
+        doc.rect(40, tableTop, 515, 25).fill(colors.primary);
+        doc.fillColor(colors.white).fontSize(8).font('Helvetica-Bold');
+        head.forEach((h, i) => doc.text(h.toUpperCase(), 45 + (i * cw), tableTop + 8, { width: cw - 5, align: 'left' }));
 
-        // Data Rows
-        let rowY = tableTop + 20;
-        doc.fillColor('#000').font('Helvetica').fontSize(8);
-        ctx.table.rows.slice(0, 30).forEach((row, i) => {
-            if (rowY > 750) {
-                doc.addPage();
-                rowY = 50;
-                // Re-draw header on new page
-                doc.rect(30, rowY, 535, 20).fill('#000');
-                doc.fillColor('#FFF').fontSize(9).font('Helvetica-Bold');
-                headers.forEach((h, i) => {
-                    let offset = 0;
-                    for(let j=0; j<i; j++) offset += colWidths[j];
-                    doc.text(h, 35 + offset, rowY + 5);
-                });
-                rowY += 20;
-                doc.fillColor('#000').font('Helvetica').fontSize(8);
+        let curY = tableTop + 25;
+        doc.fillColor(colors.primary).font('Helvetica');
+        ctx.table.rows.forEach((row, rowIndex) => {
+            if (curY > 750) { 
+                doc.addPage(); 
+                curY = 40; 
+                doc.rect(40, curY, 515, 25).fill(colors.primary);
+                doc.fillColor(colors.white).font('Helvetica-Bold');
+                head.forEach((h, i) => doc.text(h.toUpperCase(), 45 + (i * cw), curY + 8));
+                curY += 25;
+                doc.fillColor(colors.primary).font('Helvetica');
             }
             
-            if (i % 2 === 0) doc.rect(30, rowY, 535, 18).fill('#F3F4F6');
+            // Alternate row shading
+            if (rowIndex % 2 === 0) {
+                doc.rect(40, curY, 515, 20).fill(colors.bg);
+            }
             
-            [row[0], row[1], row[2], row[3], row[4]].forEach((cell, idx) => {
-                let offset = 0;
-                for(let j=0; j<idx; j++) offset += colWidths[j];
-                doc.text(String(cell), 35 + offset, rowY + 5, { width: colWidths[idx] - 10 });
+            doc.fillColor(colors.primary).fontSize(7);
+            row.forEach((cell, cellIndex) => {
+                doc.text(String(cell), 45 + (cellIndex * cw), curY + 6, { width: cw - 5, truncate: true });
             });
-            rowY += 18;
+            curY += 20;
         });
 
         // --- FOOTER ---
-        doc.fontSize(8).fillColor(accentColor).text(
-            `CONFIDENTIAL - ${ctx.metadata.businessName} PROPERTY | Generated on ${ctx.metadata.generatedAt} | Page 1 of 1`,
-            0, 810, { align: 'center' }
-        );
+        const footerY = 800;
+        doc.fontSize(8).fillColor(colors.muted).text("© MELISSA'S FOOD COURT - CONFIDENTIAL BUSINESS INTELLIGENCE", 40, footerY, { align: 'center' });
 
         doc.end();
     } catch (err) {
         console.error('PDF Generation Error:', err);
-        res.status(500).json({ message: 'Failed to generate PDF', error: err.message });
+        res.status(500).json({ message: 'Internal Server Error during PDF generation' });
     }
-};
+};;
 

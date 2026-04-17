@@ -332,24 +332,25 @@ export const createOrder = async (req, res) => {
         if (order_type === 'DINE-IN') {
             const [pendingStatus] = await connection.query('SELECT id FROM order_statuses WHERE name = "PENDING"');
             const statusId = pendingStatus[0]?.id || 1;
+            const finalOrderType = 'guest';
 
-            const finalOrderType = 'guest'; // Admin orders via this route are usually guest or we'd have a customer selection
-
-            // 'orders' table for DINE_IN
             const [result] = await connection.query(
                 'INSERT INTO orders (customer_id, table_id, status_id, order_type_id, order_type, total_price) VALUES (?, ?, ?, 1, ?, ?)',
                 [null, table_id || null, statusId, finalOrderType, total_price || 0]
             );
 
-            // Update table status to 'not available'
             if (table_id) {
                 await connection.query('UPDATE restaurant_tables SET status = "not available" WHERE id = ?', [table_id]);
             }
 
             for (const item of items) {
+                const [menuRows] = await connection.query('SELECT buying_price FROM menu_items WHERE id = ?', [item.id]);
+                const buyP = menuRows[0]?.buying_price || 0;
+                const profit = (item.price - buyP) * item.quantity;
+
                 await connection.query(
-                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [result.insertId, 'DINE-IN', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'DINE-IN', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity, buyP, profit]
                 );
             }
 
@@ -360,9 +361,13 @@ export const createOrder = async (req, res) => {
             );
 
             for (const item of items) {
+                const [menuRows] = await connection.query('SELECT buying_price FROM menu_items WHERE id = ?', [item.id]);
+                const buyP = menuRows[0]?.buying_price || 0;
+                const profit = (item.price - buyP) * item.quantity;
+
                 await connection.query(
-                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [result.insertId, 'TAKEAWAY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'TAKEAWAY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity, buyP, profit]
                 );
             }
 
@@ -373,9 +378,13 @@ export const createOrder = async (req, res) => {
             );
 
             for (const item of items) {
+                const [menuRows] = await connection.query('SELECT buying_price FROM menu_items WHERE id = ?', [item.id]);
+                const buyP = menuRows[0]?.buying_price || 0;
+                const profit = (item.price - buyP) * item.quantity;
+
                 await connection.query(
-                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [result.insertId, 'DELIVERY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity]
+                    'INSERT INTO order_analytics (order_id, order_source, order_status, payment_method, item_id, item_name, category_name, quantity, unit_price, total_price, buying_price, profit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [result.insertId, 'DELIVERY', 'pending', 'CASH', item.id, item.name, item.category || 'General', item.quantity, item.price, item.price * item.quantity, buyP, profit]
                 );
             }
         }

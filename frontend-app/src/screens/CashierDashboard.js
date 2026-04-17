@@ -169,7 +169,7 @@ const CashierDashboard = () => {
     const [isEditingExistingOrder, setIsEditingExistingOrder] = useState(null); // Stores the order ID being edited
 
     // Reports State
-    const [reportType, setReportType] = useState('revenue'); // revenue, food, orders, cancellations, customers, staff, supplier
+    const [reportType, setReportType] = useState('FINANCIAL'); // FINANCIAL, FOOD_WISE, CANCELLATIONS
     const [reportFilters, setReportFilters] = useState({
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
@@ -1836,32 +1836,51 @@ const CashierDashboard = () => {
     };
     const handleDownloadPDF = async () => {
         try {
-            const url = `${apiConfig.API_URL}/reports/pdf?type=${reportType}&startDate=${reportFilters.startDate}&endDate=${reportFilters.endDate}&token=${token}`;
+            const params = new URLSearchParams({
+                token,
+                type: reportType,
+                startDate: reportFilters.startDate,
+                endDate: reportFilters.endDate
+            }).toString();
+            const url = `${apiConfig.API_URL}/reports/pdf?${params}`;
             const supported = await Linking.canOpenURL(url);
             if (supported) {
-                Alert.alert('Download Started', 'The PDF report is being generated and will open in your browser.');
                 await Linking.openURL(url);
             } else {
-                Alert.alert('Error', 'Cannot open download link on this device.');
+                Alert.alert('Error', 'Cannot open download link.');
             }
         } catch (error) {
-            Alert.alert('Download Failed', 'Could not generate PDF at this time.');
+            Alert.alert('Download Failed', 'Could not generate PDF.');
         }
     };
 
     const fetchReportData = async () => {
         setIsGenerating(true);
         try {
+            let endpoint = '';
+            switch (reportType) {
+                case 'FINANCIAL': endpoint = '/reports/financial-audit'; break;
+                case 'INVENTORY_COSTS': endpoint = '/reports/inventory-costs'; break;
+                case 'SUPPLIER_PAYMENTS': endpoint = '/reports/supplier-payments'; break;
+                case 'FOOD_WISE': endpoint = '/reports/food'; break;
+                case 'REVENUE': endpoint = '/reports/revenue'; break;
+                case 'STAFF': endpoint = '/reports/staff'; break;
+                case 'CANCELLATIONS': endpoint = '/reports/cancellations'; break;
+                case 'CUSTOMERS': endpoint = '/reports/customers'; break;
+                default: endpoint = '/reports/revenue';
+            }
+
             const query = `?type=${reportType}&startDate=${reportFilters.startDate}&endDate=${reportFilters.endDate}`;
-            const res = await fetch(`${apiConfig.API_URL}/reports/generate${query}`, { headers });
+            const res = await fetch(`${apiConfig.API_URL}${endpoint}${query}`, { headers });
             if (res.ok) {
                 const data = await res.json();
                 setReportData(data);
             } else {
-                Alert.alert('Report Error', 'Could not fetch report data for the selected period.');
+                const err = await res.json();
+                Alert.alert('Report Error', err.message || 'Could not fetch report data.');
             }
         } catch (error) {
-            Alert.alert('Connection Error', 'Server is unreachable.');
+            Alert.alert('Connection Error', 'Network error while fetching report.');
         } finally {
             setIsGenerating(false);
         }
@@ -1869,13 +1888,9 @@ const CashierDashboard = () => {
 
     const renderReportsTab = () => {
         const reportTypes = [
-            { key: 'revenue', label: 'Revenue', icon: '💰' },
-            { key: 'food', label: 'Food-Wise', icon: '🍲' },
-            { key: 'orders', label: 'Orders', icon: '📋' },
-            { key: 'customers', label: 'Customers', icon: '👥' },
-            { key: 'cancellations', label: 'Cancelled', icon: '🚫' },
-            { key: 'staff', label: 'Staff Perk', icon: '👔' },
-            { key: 'supplier', label: 'Stock-In', icon: '📦' },
+            { key: 'FINANCIAL', label: 'Financial Hub', icon: '💰' },
+            { key: 'FOOD_WISE', label: 'Dish Performance', icon: '🍲' },
+            { key: 'CANCELLATIONS', label: 'Cancellations', icon: '🚫' },
         ];
 
         const setQuickRange = (range) => {
@@ -1894,28 +1909,19 @@ const CashierDashboard = () => {
 
         return (
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {/* 1. Header & Action Row */}
                 <View style={[styles.sectionHeader, { marginBottom: 20 }]}>
                     <View>
-                        <Text style={styles.sectionTitle}>📈 Business Intel</Text>
-                        <Text style={styles.sectionSub}>Generate specialized performance audits</Text>
+                        <Text style={styles.sectionTitle}>💎 Financial Intelligence</Text>
+                        <Text style={styles.sectionSub}>Business performance & liquidity audits</Text>
                     </View>
-                    <TouchableOpacity onPress={handleDownloadPDF} style={[styles.refreshBtn, { backgroundColor: '#111827' }]}>
-                        <Text style={[styles.refreshBtnText, { color: 'white' }]}>📄 PDF Report</Text>
-                    </TouchableOpacity>
                 </View>
 
-                {/* 2. Report Type Selector - Horizontal */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
                     {reportTypes.map(item => (
                         <TouchableOpacity
                             key={item.key}
-                            style={[
-                                styles.subTab,
-                                { minWidth: 100, marginRight: 10, paddingVertical: 12 },
-                                reportType === item.key && styles.activeSubTab
-                            ]}
-                            onPress={() => setReportType(item.key)}
+                            style={[styles.subTab, { minWidth: 100, marginRight: 10, paddingVertical: 12 }, reportType === item.key && styles.activeSubTab]}
+                            onPress={() => { setReportType(item.key); setReportData(null); }}
                         >
                             <Text style={{ fontSize: 18, marginBottom: 4 }}>{item.icon}</Text>
                             <Text style={[styles.subTabText, reportType === item.key && styles.activeSubTabText]}>{item.label}</Text>
@@ -1923,108 +1929,77 @@ const CashierDashboard = () => {
                     ))}
                 </ScrollView>
 
-                {/* 3. Filters Section - User Friendly Inputs */}
-                <View style={[styles.summaryCard, { padding: 15, marginBottom: 20 }]}>
-                    <Text style={[styles.inputLabel, { marginBottom: 15 }]}>PERIOD & FILTERS</Text>
-
+                <View style={[styles.summaryCard, { padding: 18, marginBottom: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' }]}>
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: '#64748B', letterSpacing: 1, marginBottom: 15 }}>PERIOD SELECTION</Text>
                     <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                        <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }}
-                            onPress={() => setFilterModal({
-                                show: true, title: 'Start Date', placeholder: 'YYYY-MM-DD', value: reportFilters.startDate,
-                                onSubmit: (v) => setReportFilters({ ...reportFilters, startDate: v })
-                            })}
-                        >
-                            <Text style={{ fontSize: 10, color: '#64748B', fontWeight: 'bold' }}>START DATE</Text>
+                        <TouchableOpacity style={{ flex: 1, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => setFilterModal({ show: true, title: 'Start Date', placeholder: 'YYYY-MM-DD', value: reportFilters.startDate, onSubmit: (v) => setReportFilters({ ...reportFilters, startDate: v }) })}>
+                            <Text style={{ fontSize: 10, color: '#94A3B8', fontWeight: 'bold' }}>START</Text>
                             <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1E293B' }}>{reportFilters.startDate}</Text>
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }}
-                            onPress={() => setFilterModal({
-                                show: true, title: 'End Date', placeholder: 'YYYY-MM-DD', value: reportFilters.endDate,
-                                onSubmit: (v) => setReportFilters({ ...reportFilters, endDate: v })
-                            })}
-                        >
-                            <Text style={{ fontSize: 10, color: '#64748B', fontWeight: 'bold' }}>END DATE</Text>
+                        <TouchableOpacity style={{ flex: 1, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => setFilterModal({ show: true, title: 'End Date', placeholder: 'YYYY-MM-DD', value: reportFilters.endDate, onSubmit: (v) => setReportFilters({ ...reportFilters, endDate: v }) })}>
+                            <Text style={{ fontSize: 10, color: '#94A3B8', fontWeight: 'bold' }}>END</Text>
                             <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1E293B' }}>{reportFilters.endDate}</Text>
                         </TouchableOpacity>
                     </View>
-
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                         {['today', 'weekly', 'monthly'].map(r => (
-                            <TouchableOpacity key={r} onPress={() => setQuickRange(r)} style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' }}>
-                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>{r}</Text>
+                            <TouchableOpacity key={r} onPress={() => setQuickRange(r)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 10 }}>
+                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>{r}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
-
-                    <TouchableOpacity
-                        style={{ marginTop: 20, backgroundColor: '#6366F1', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
-                        onPress={fetchReportData}
-                    >
-                        {isGenerating ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: 'bold' }}>🎯 Analyze Period</Text>}
+                    <TouchableOpacity style={{ marginTop: 20, backgroundColor: '#111827', paddingVertical: 16, borderRadius: 12, alignItems: 'center' }} onPress={fetchReportData}>
+                        {isGenerating ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: 'bold', letterSpacing: 1 }}>GET INTEL DATA</Text>}
                     </TouchableOpacity>
                 </View>
 
-                {/* 4. Report Visuals & Summary */}
-                {!reportData && !isGenerating ? (
-                    <View style={{ alignItems: 'center', marginTop: 40, opacity: 0.3 }}>
-                        <Text style={{ fontSize: 70 }}>📝</Text>
-                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#64748B', marginTop: 10 }}>No report generated for this selection</Text>
-                    </View>
-                ) : (
+                {reportData && (
                     <View>
-                        {/* Summary Metrics */}
-                        <View style={styles.statsRow}>
-                            <View style={[styles.statBox, { backgroundColor: '#ECFDF5', flex: 1 }]}>
-                                <Text style={styles.statLabel}>GENERATED REVENUE</Text>
-                                <Text style={[styles.statVal, { color: '#065F46' }]}>Rs.{Number(reportData?.summary?.totalRevenue || 0).toLocaleString()}</Text>
+                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                            <View style={{ flex: 1, backgroundColor: 'white', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#000' }}>
+                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#64748B' }}>TOTAL INFLOW</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#000' }}>Rs.{(Number(reportData.summary?.revenue || 0)).toLocaleString()}</Text>
                             </View>
-                            <View style={[styles.statBox, { backgroundColor: '#F0F9FF', flex: 1 }]}>
-                                <Text style={styles.statLabel}>TOTAL RECORDS</Text>
-                                <Text style={[styles.statVal, { color: '#0369A1' }]}>{reportData?.summary?.totalOrders || 0}</Text>
+                            <View style={{ flex: 1, backgroundColor: 'white', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#EF4444' }}>
+                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#64748B' }}>TOTAL OUTFLOW</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#EF4444' }}>Rs.{(Number(reportData.summary?.totalCost || 0)).toLocaleString()}</Text>
                             </View>
                         </View>
 
-                        {/* Detailed Data List */}
-                        <View style={[styles.summaryCard, { padding: 0, overflow: 'hidden', marginTop: 20, marginBottom: 50 }]}>
-                            <View style={{ backgroundColor: '#F8FAFC', padding: 18, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                                <Text style={{ fontWeight: 'bold', color: '#1E293B', fontSize: 16 }}>{reportData?.title || 'Report Records'}</Text>
+                        <View style={{ backgroundColor: '#111827', padding: 20, borderRadius: 20, marginBottom: 20 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <View>
+                                    <Text style={{ color: '#94A3B8', fontSize: 10, fontWeight: 'bold' }}>NET PROJECTED SURPLUS</Text>
+                                    <Text style={{ color: '#10B981', fontSize: 24, fontWeight: 'bold' }}>Rs. {(Number(reportData.summary?.profit || 0)).toLocaleString()}</Text>
+                                </View>
+                                <View style={{ backgroundColor: '#374151', padding: 10, borderRadius: 10 }}>
+                                    <Text style={{ color: 'white', fontWeight: 'bold' }}>{((reportData.summary?.profit / reportData.summary?.revenue) * 100 || 0).toFixed(1)}%</Text>
+                                    <Text style={{ color: '#94A3B8', fontSize: 8 }}>Margin</Text>
+                                </View>
                             </View>
+                        </View>
 
-                            {reportData?.data?.length === 0 ? (
-                                <Text style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>No data available for the selected parameters.</Text>
-                            ) : (
-                                reportData?.data?.map((row, idx) => (
-                                    <View key={idx} style={{ padding: 16, borderBottomWidth: idx === reportData.data.length - 1 ? 0 : 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#334155', marginBottom: 2 }}>
-                                                {row.item_name || row.date || row.full_name || row.supplier || row.status || 'Report Entry'}
-                                            </Text>
-                                            <Text style={{ fontSize: 12, color: '#64748B' }}>
-                                                {row.category_name || row.role || row.email || row.order_source || 'Performance Data'}
-                                            </Text>
-                                        </View>
-                                        <View style={{ alignItems: 'flex-end' }}>
-                                            {(row.revenue || row.total_price || row.total_spent) !== undefined && (
-                                                <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#059669' }}>
-                                                    Rs.{(Number(row.revenue || row.total_price || row.total_spent)).toLocaleString()}
-                                                </Text>
-                                            )}
-                                            {(row.total_sold || row.orders || row.count || row.order_count) !== undefined && (
-                                                <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
-                                                    {row.total_sold || row.orders || row.count || row.order_count} units
-                                                </Text>
-                                            )}
-                                        </View>
-                                    </View>
-                                ))
-                            )}
+                        <View style={{ backgroundColor: 'white', padding: 15, borderRadius: 20, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 50 }}>
+                            <Text style={{ fontWeight: 'bold', marginBottom: 15 }}>AUDIT LOG DATA</Text>
+                            <View style={{ backgroundColor: '#F8FAFC', padding: 10, flexDirection: 'row', borderRadius: 8 }}>
+                                {reportData.table?.headers?.map((h, i) => (
+                                    <Text key={i} style={{ fontSize: 9, fontWeight: 'bold', flex: 1 }}>{h}</Text>
+                                ))}
+                            </View>
+                            {reportData.table?.rows?.slice(0, 15).map((row, i) => (
+                                <View key={i} style={{ flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                                    {row.map((cell, ci) => (
+                                        <Text key={ci} style={{ fontSize: 8, flex: 1 }}>{cell}</Text>
+                                    ))}
+                                </View>
+                            ))}
+                            <TouchableOpacity style={{ marginTop: 25, backgroundColor: '#DC2626', padding: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }} onPress={handleDownloadPDF}>
+                                <Text style={{ fontSize: 18 }}>📄</Text>
+                                <Text style={{ color: 'white', fontWeight: 'bold' }}>Export Financial PDF</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 )}
-                <View style={{ height: 100 }} />
             </ScrollView>
         );
     };

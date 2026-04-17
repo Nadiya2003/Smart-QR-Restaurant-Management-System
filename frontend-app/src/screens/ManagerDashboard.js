@@ -761,7 +761,7 @@ const ManagerDashboard = () => {
     const renderUsers = () => (
         <>
             <View style={styles.subTabRow}>
-                {['staff', 'customers'].map(tab => (
+                {['customers', 'staff'].map(tab => (
                     <TouchableOpacity 
                         key={tab} 
                         style={[styles.subTab, userSubTab === tab.toLowerCase() && styles.activeSubTab, { flex: 1 }]}
@@ -773,7 +773,7 @@ const ManagerDashboard = () => {
                     </TouchableOpacity>
                 ))}
             </View>
-            {userSubTab === 'staff' ? renderStaff() : renderCustomers()}
+            {userSubTab === 'customers' ? renderCustomers() : renderStaff()}
         </>
     );
 
@@ -811,11 +811,6 @@ const ManagerDashboard = () => {
                                 <Text style={styles.listCardSub}>📞 {staff.phone || 'No Phone'}</Text>
 
                                 <View style={styles.badgeRow}>
-                                    <View style={[styles.badge, { backgroundColor: staff.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
-                                        <Text style={[styles.badgeText, { color: staff.is_active ? '#059669' : '#DC2626' }]}>
-                                            {staff.is_active ? 'Active' : 'Deactivated'}
-                                        </Text>
-                                    </View>
                                     <TouchableOpacity 
                                         style={[styles.permBtn, { marginLeft: 0, backgroundColor: '#FEF3C7' }]} 
                                         onPress={() => {
@@ -826,8 +821,6 @@ const ManagerDashboard = () => {
                                     >
                                         <Text style={[styles.permBtnText, { color: '#D97706' }]}>🛠️ Role</Text>
                                     </TouchableOpacity>
-
-
                                 </View>
                             </View>
                         </View>
@@ -854,21 +847,14 @@ const ManagerDashboard = () => {
                             <View style={styles.listCardInfo}>
                                 <Text style={styles.listCardName}>{customer.name}</Text>
                                 <Text style={styles.listCardSub}>{customer.email} • {customer.phone || 'N/A'}</Text>
-                                <Text style={styles.listCardSub}>Joined: {new Date(customer.created_at).toLocaleDateString()}</Text>
-                                <View style={styles.badgeRow}>
-                                    <View style={[styles.badge, { backgroundColor: customer.is_active ? '#D1FAE5' : '#FEE2E2' }]}>
-                                        <Text style={[styles.badgeText, { color: customer.is_active ? '#059669' : '#DC2626' }]}>
-                                            {customer.is_active ? 'Active' : 'Deactivated'}
-                                        </Text>
-                                    </View>
-                                </View>
+                                <Text style={styles.listCardSub}>Member since: {new Date(customer.created_at).toLocaleDateString()}</Text>
                             </View>
+                        </View>
                     </View>
-                </View>
-            ))
-        )}
-    </>
-);
+                ))
+            )}
+        </>
+    );
 
 const renderOrders = () => (
     <>
@@ -1641,21 +1627,23 @@ const renderOrders = () => (
         try {
             let endpoint = '';
             switch (reportType) {
-                case 'Food Wise': endpoint = '/reports/food'; break;
-                case 'Revenue': endpoint = '/reports/revenue'; break;
-                case 'Orders': endpoint = '/reports/orders'; break;
-                case 'Cancellations': endpoint = '/reports/cancellations'; break;
-                case 'Customers': endpoint = '/reports/customers'; break;
-                case 'Staff': endpoint = '/reports/staff'; break;
+                case 'FINANCIAL': endpoint = '/reports/financial-audit'; break;
+                case 'INVENTORY_COSTS': endpoint = '/reports/inventory-costs'; break;
+                case 'SUPPLIER_PAYMENTS': endpoint = '/reports/supplier-payments'; break;
+                case 'FOOD_WISE': endpoint = '/reports/food'; break;
+                case 'REVENUE': endpoint = '/reports/revenue'; break;
+                case 'STAFF': endpoint = '/reports/staff'; break;
+                case 'CANCELLATIONS': endpoint = '/reports/cancellations'; break;
+                case 'CUSTOMERS': endpoint = '/reports/customers'; break;
                 default: endpoint = '/reports/revenue';
             }
 
             const queryParams = new URLSearchParams();
             queryParams.append('startDate', reportFilters.startDate);
             queryParams.append('endDate', reportFilters.endDate);
-            queryParams.append('hourStart', reportFilters.hourStart);
-            queryParams.append('hourEnd', reportFilters.hourEnd);
-            if (reportFilters.category) queryParams.append('category', reportFilters.category);
+            if (reportFilters.hourStart) queryParams.append('hourStart', reportFilters.hourStart);
+            if (reportFilters.hourEnd) queryParams.append('hourEnd', reportFilters.hourEnd);
+            if (reportFilters.category && reportFilters.category !== 'All') queryParams.append('category', reportFilters.category);
 
             const res = await fetch(`${apiConfig.API_URL}${endpoint}?${queryParams.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -1676,12 +1664,13 @@ const renderOrders = () => (
     // ===== REPORTS TAB =====
     const renderReports = () => {
         const reportCategories = [
-            { key: 'Food Wise', icon: '🍲' },
-            { key: 'Revenue', icon: '💰' },
-            { key: 'Orders', icon: '📋' },
-            { key: 'Cancellations', icon: '🚫' },
-            { key: 'Customers', icon: '👥' },
-            { key: 'Staff', icon: '👔' },
+            { id: 'financial', name: 'Financial Hub', icon: '💰', type: 'FINANCIAL' },
+            { id: 'revenue', name: 'Revenue Tracking', icon: '📈', type: 'REVENUE' },
+            { id: 'inventory_audit', name: 'Inventory Costs', icon: '📦', type: 'INVENTORY_COSTS' },
+            { id: 'supplier_pay', name: 'Supplier Payments', icon: '🤝', type: 'SUPPLIER_PAYMENTS' },
+            { id: 'food', name: 'Food Performance', icon: '🍔', type: 'FOOD_WISE' },
+            { id: 'staff', name: 'Staff Audit', icon: '👤', type: 'STAFF' },
+            { id: 'cancel', name: 'Loss & Cancellations', icon: '🚫', type: 'CANCELLATIONS' }
         ];
 
         const setQuickRange = (range) => {
@@ -1698,10 +1687,9 @@ const renderOrders = () => (
         };
 
         const handleDownloadPDF = () => {
-            const typeSlug = reportType.toLowerCase().replace(' ', '-');
             const params = new URLSearchParams({
                 token,
-                type: typeSlug,
+                type: reportType,
                 startDate: reportFilters.startDate,
                 endDate: reportFilters.endDate
             }).toString();
@@ -1709,71 +1697,30 @@ const renderOrders = () => (
             Linking.openURL(pdfUrl).catch(err => Alert.alert('Error', 'Could not open PDF: ' + err.message));
         };
 
-        let kpiRevenue = 0, kpiEntries = 0;
-        if (generatedReport) {
-            if (reportType === 'Revenue' && generatedReport.trend) {
-                kpiRevenue = generatedReport.trend.reduce((a, d) => a + Number(d.revenue || 0), 0);
-                kpiEntries = generatedReport.trend.reduce((a, d) => a + Number(d.orders || 0), 0);
-            } else if (reportType === 'Food Wise' && generatedReport.items) {
-                kpiRevenue = generatedReport.items.reduce((a, i) => a + Number(i.revenue || 0), 0);
-                kpiEntries = generatedReport.items.reduce((a, i) => a + Number(i.total_sold || 0), 0);
-            } else if (reportType === 'Orders' && generatedReport.byStatus) {
-                kpiRevenue = generatedReport.byStatus.reduce((a, s) => a + Number(s.revenue || 0), 0);
-                kpiEntries = generatedReport.byStatus.reduce((a, s) => a + Number(s.count || 0), 0);
-            } else if (reportType === 'Customers' && generatedReport.summary) {
-                kpiEntries = generatedReport.summary.total || 0;
-            } else if (reportType === 'Staff' && generatedReport.attendance) {
-                kpiEntries = generatedReport.attendance.length;
-            } else if (reportType === 'Cancellations') {
-                kpiEntries = (generatedReport.deliveryCancels || []).reduce((a,c) => a+Number(c.count||0),0) +
-                             (generatedReport.takeawayCancels || []).reduce((a,c) => a+Number(c.count||0),0);
-            }
-        }
-
         return (
-            <>
-                <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                    <View>
-                        <Text style={styles.headerTitle}>📈 Reports Center</Text>
-                        <Text style={styles.headerSubtitle}>Generate, analyze and export business data</Text>
-                    </View>
-                    {generatedReport && (
-                        <TouchableOpacity style={[styles.addButtonSmall, { backgroundColor: '#DC2626' }]} onPress={handleDownloadPDF}>
-                            <Text style={styles.addButtonTextSmall}>📄 PDF</Text>
-                        </TouchableOpacity>
-                    )}
+            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>📊 Business IQ Dashboard</Text>
+                    <Text style={styles.headerSubtitle}>Financial & Operational intelligence engine</Text>
                 </View>
 
+                {/* Report Type pills */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-                    {reportCategories.map(({ key, icon }) => (
+                    {reportCategories.map((cat) => (
                         <TouchableOpacity
-                            key={key}
-                            style={[styles.catPill, reportType === key && styles.activeCatPill, { paddingHorizontal: 14, paddingVertical: 10 }]}
-                            onPress={() => { setReportType(key); setGeneratedReport(null); }}
+                            key={cat.id}
+                            style={[styles.catPill, reportType === cat.type && styles.activeCatPill, { paddingHorizontal: 14, paddingVertical: 10 }]}
+                            onPress={() => { setReportType(cat.type); setGeneratedReport(null); }}
                         >
-                            <Text style={{ fontSize: 16, marginBottom: 2 }}>{icon}</Text>
-                            <Text style={[styles.catPillText, reportType === key && styles.activeCatPillText]}>{key}</Text>
+                            <Text style={{ fontSize: 16, marginBottom: 2 }}>{cat.icon}</Text>
+                            <Text style={[styles.catPillText, reportType === cat.type && styles.activeCatPillText]}>{cat.name}</Text>
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
 
                 <View style={styles.listCard}>
-                    <Text style={[styles.listCardName, { marginBottom: 12 }]}>PERIOD & FILTERS</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                        <TouchableOpacity
-                            style={[styles.filterBtn, { flex: 1, paddingVertical: 12, alignItems: 'center' }]}
-                            onPress={() => setFilterModal({ show: true, title: 'Start Date', placeholder: 'YYYY-MM-DD', value: reportFilters.startDate, onSubmit: (val) => val.match(/^\d{4}-\d{2}-\d{2}$/) ? setReportFilters(f => ({ ...f, startDate: val })) : Alert.alert('Invalid Format', 'Use YYYY-MM-DD') })}
-                        >
-                            <Text style={styles.filterBtnText}>📅 {reportFilters.startDate}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.filterBtn, { flex: 1, paddingVertical: 12, alignItems: 'center' }]}
-                            onPress={() => setFilterModal({ show: true, title: 'End Date', placeholder: 'YYYY-MM-DD', value: reportFilters.endDate, onSubmit: (val) => val.match(/^\d{4}-\d{2}-\d{2}$/) ? setReportFilters(f => ({ ...f, endDate: val })) : Alert.alert('Invalid Format', 'Use YYYY-MM-DD') })}
-                        >
-                            <Text style={styles.filterBtnText}>📅 {reportFilters.endDate}</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 15 }}>
+                    <Text style={styles.listCardName}>DATE CONFIGURATION</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginVertical: 12 }}>
                         {['today', 'weekly', 'monthly'].map(r => (
                             <TouchableOpacity key={r} onPress={() => setQuickRange(r)}
                                 style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB' }}>
@@ -1781,128 +1728,101 @@ const renderOrders = () => (
                             </TouchableOpacity>
                         ))}
                     </View>
-                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: reportLoading ? '#9CA3AF' : '#10B981' }]} onPress={generateReport} disabled={reportLoading}>
-                        {reportLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.saveBtnText}>🎯 Generate Report</Text>}
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                        <TouchableOpacity style={[styles.filterBtn, { flex: 1 }]} onPress={() => setFilterModal({ show: true, title: 'Start Date', placeholder: 'YYYY-MM-DD', value: reportFilters.startDate, onSubmit: (v) => setReportFilters(f => ({ ...f, startDate: v })) })}>
+                            <Text style={styles.filterBtnText}>Start: {reportFilters.startDate}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.filterBtn, { flex: 1 }]} onPress={() => setFilterModal({ show: true, title: 'End Date', placeholder: 'YYYY-MM-DD', value: reportFilters.endDate, onSubmit: (v) => setReportFilters(f => ({ ...f, endDate: v })) })}>
+                            <Text style={styles.filterBtnText}>End: {reportFilters.endDate}</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: reportLoading ? '#9CA3AF' : '#111827' }]} onPress={generateReport} disabled={reportLoading}>
+                        {reportLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.saveBtnText}>🎯 Process Financial Intelligence</Text>}
                     </TouchableOpacity>
                 </View>
-
-                {!generatedReport && !reportLoading && (
-                    <View style={{ alignItems: 'center', paddingVertical: 50, opacity: 0.4 }}>
-                        <Text style={{ fontSize: 50 }}>📊</Text>
-                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#6B7280', marginTop: 10 }}>Select filters and generate a report</Text>
-                    </View>
-                )}
 
                 {generatedReport && (
                     <>
                         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
                             <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000' }]}>
-                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>TOTAL SALE</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#000' }}>Rs.{Number(kpiRevenue).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>MONEY INFLOW</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#000' }}>Rs.{Number(generatedReport.summary?.revenue || 0).toLocaleString()}</Text>
                             </View>
                             <View style={[styles.chartCard, { flex: 1, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000' }]}>
-                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>TOTAL PROFIT</Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#10B981' }}>Rs.{Number(generatedReport.summary?.profit || 0).toLocaleString()}</Text>
+                                <Text style={{ fontSize: 10, color: '#000', fontWeight: 'bold' }}>MONEY OUTFLOW</Text>
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#EF4444' }}>Rs.{Number(generatedReport.summary?.totalCost || 0).toLocaleString()}</Text>
                             </View>
                         </View>
 
-                        {generatedReport.summary?.topProduct && (
-                            <View style={[styles.chartCard, { marginBottom: 15, padding: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#000', borderLeftWidth: 10 }]}>
-                                <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: 'bold' }}>HIGHEST SALE FOR PERIOD</Text>
-                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#000', marginTop: 5 }}>{generatedReport.summary.topProduct.name}</Text>
-                                <Text style={{ fontSize: 14, color: '#000' }}>Rs. {Number(generatedReport.summary.topProduct.revenue).toLocaleString()}</Text>
+                        <View style={[styles.chartCard, { marginBottom: 15, padding: 15, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <View>
+                                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: 'bold' }}>NET PROFIT SURPLUS</Text>
+                                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: (generatedReport.summary?.profit || 0) > 0 ? '#10B981' : '#EF4444' }}>Rs. {Number(generatedReport.summary?.profit || 0).toLocaleString()}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: (generatedReport.summary?.profit > 0 ? '#10B981' : '#EF4444'), marginRight: 5 }} />
+                                        <Text style={{ fontSize: 9, color: '#4B5563' }}>{(generatedReport.summary?.profit > 0 ? 'Positive Cashflow' : 'Liquidity Warning')}</Text>
+                                    </View>
+                                </View>
+                                <View style={{ backgroundColor: '#000', padding: 12, borderRadius: 8 }}>
+                                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>{((generatedReport.summary?.profit / generatedReport.summary?.revenue) * 100 || 0).toFixed(1)}%</Text>
+                                    <Text style={{ color: '#FFF', fontSize: 8 }}>Margin</Text>
+                                </View>
                             </View>
-                        )}
+                        </View>
 
                         <View style={styles.chartCard}>
-                            <View style={[styles.modalHeader, { marginBottom: 15 }]}>
-                                <Text style={styles.chartTitle}>{reportType} — {reportFilters.startDate} to {reportFilters.endDate}</Text>
+                            <Text style={styles.chartTitle}>{reportCategories.find(c => c.type === reportType)?.name}</Text>
+                            
+                            {/* Visual Trend Bars */}
+                            {generatedReport.visuals?.hourTrend && (
+                                <View style={{ marginTop: 15 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 10 }}>Peak Sales Hours</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 100, gap: 10 }}>
+                                            {generatedReport.visuals.hourTrend.labels.map((h, i) => {
+                                                const val = generatedReport.visuals.hourTrend.data[i];
+                                                const max = Math.max(...generatedReport.visuals.hourTrend.data, 1);
+                                                return (
+                                                    <View key={i} style={{ alignItems: 'center' }}>
+                                                        <View style={{ width: 20, height: (val / max) * 70 + 2, backgroundColor: '#000', borderRadius: 2 }} />
+                                                        <Text style={{ fontSize: 8, marginTop: 5, color: '#6B7280' }}>{h}</Text>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    </ScrollView>
+                                </View>
+                            )}
+
+                            {/* Audit Log Table Rendering */}
+                            <View style={{ marginTop: 20 }}>
+                                <Text style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 10 }}>Detailed Audit Log</Text>
+                                <View style={{ backgroundColor: '#F3F4F6', padding: 8, flexDirection: 'row', borderRadius: 4 }}>
+                                    {generatedReport.table?.headers?.map((h, i) => (
+                                        <Text key={i} style={{ fontSize: 9, fontWeight: 'bold', flex: 1 }}>{h}</Text>
+                                    ))}
+                                </View>
+                                {generatedReport.table?.rows?.slice(0, 15).map((row, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                                        {row.map((cell, ci) => (
+                                            <Text key={ci} style={{ fontSize: 8, flex: 1 }}>{cell}</Text>
+                                        ))}
+                                    </View>
+                                ))}
+                                {(!generatedReport.table?.rows || generatedReport.table.rows.length === 0) && (
+                                    <View style={{ padding: 20, alignItems: 'center' }}><Text style={{ color: '#9CA3AF', fontSize: 12 }}>No transactions found for this period</Text></View>
+                                )}
                             </View>
 
-                            {reportType === 'Food Wise' && generatedReport.items && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Top Selling Items</Text>
-                                    {generatedReport.items.slice(0, 6).map((item, idx) => (
-                                        <View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}>
-                                            <Text style={styles.permItemText}>#{idx+1} {item.item_name}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={[styles.summaryValue, { color: '#10B981' }]}>{item.total_sold} sold</Text>
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(item.revenue||0).toLocaleString()}</Text>
-                                            </View>
-                                        </View>
-                                    ))}
-                                    <View style={styles.barChartContainer}>
-                                        {generatedReport.items.slice(0, 6).map((item, idx) => {
-                                            const maxSold = Math.max(...generatedReport.items.map(i => Number(i.total_sold) || 1), 1);
-                                            return (<View key={idx} style={styles.barColumn}><View style={[styles.bar, { height: (Number(item.total_sold) / maxSold) * 80 + 5, backgroundColor: '#10B981' }]} /><Text style={styles.barLabel}>{item.item_name.substring(0, 5)}</Text></View>);
-                                        })}
-                                    </View>
-                                    {generatedReport.categories && (<View style={{ marginTop: 15 }}><Text style={styles.summaryLabel}>Sales by Category</Text>{generatedReport.categories.map((cat, idx) => (<View key={idx} style={styles.summaryRow}><Text style={styles.summaryLabel}>{cat.category_name}</Text><Text style={styles.summaryValue}>Rs.{Number(cat.revenue||0).toLocaleString()}</Text></View>))}</View>)}
-                                </>
-                            )}
-
-                            {reportType === 'Revenue' && generatedReport.trend && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Revenue Trend</Text>
-                                    <View style={styles.barChartContainer}>
-                                        {generatedReport.trend.map((day, idx) => {
-                                            const dateLabel = day.date ? (new Date(day.date).getDate() + '/' + (new Date(day.date).getMonth() + 1)) : '??';
-                                            const maxRev = Math.max(...generatedReport.trend.map(d => Number(d.revenue) || 1), 1);
-                                            return (<View key={idx} style={styles.barColumn}><View style={[styles.bar, { height: Math.min(80, (Number(day.revenue) / maxRev) * 80), backgroundColor: '#3B82F6' }]} /><Text style={styles.barLabel}>{dateLabel}</Text></View>);
-                                        })}
-                                    </View>
-                                    {generatedReport.trend.slice(0, 5).map((day, idx) => (
-                                        <View key={idx} style={[styles.summaryRow, { alignItems: 'flex-start' }]}>
-                                            <Text style={[styles.summaryLabel, { marginTop: 2 }]}>{day.date ? new Date(day.date).toLocaleDateString() : 'N/A'}</Text>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={styles.summaryValue}>Rs. {Number(day.revenue||0).toLocaleString()}</Text>
-                                                <Text style={{ fontSize: 12, color: '#10B981', fontWeight: '600', marginTop: 2 }}>+ Profit: Rs. {Number(day.profit||0).toLocaleString()}</Text>
-                                                {Number(day.lost) > 0 && <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 2 }}>- Lost: Rs. {Number(day.lost).toLocaleString()}</Text>}
-                                                <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{day.orders} successful orders</Text>
-                                            </View>
-                                        </View>
-                                    ))}
-                                    {generatedReport.bySource && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>By Order Type</Text>{generatedReport.bySource.map((src, idx) => (<View key={idx} style={styles.summaryRow}><Text style={styles.summaryLabel}>{src.type}</Text><Text style={styles.summaryValue}>Rs.{Number(src.revenue||0).toLocaleString()} ({src.count})</Text></View>))}</View>)}
-                                </>
-                            )}
-
-                            {reportType === 'Orders' && generatedReport.byStatus && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Orders by Status</Text>
-                                    {generatedReport.byStatus.map((s, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{s.status}</Text><View style={{ alignItems: 'flex-end' }}><Text style={[styles.summaryValue, { color: '#3B82F6' }]}>{s.count} orders</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(s.revenue||0).toLocaleString()}</Text></View></View>))}
-                                </>
-                            )}
-
-                            {reportType === 'Customers' && generatedReport.summary && (
-                                <>
-                                    <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Total Customers</Text><Text style={styles.summaryValue}>{generatedReport.summary.total}</Text></View>
-                                    <View style={[styles.summaryRow, { marginTop: 8 }]}><Text style={styles.summaryLabel}>New This Week</Text><Text style={[styles.summaryValue, { color: '#10B981' }]}>+{generatedReport.summary.newThisWeek}</Text></View>
-                                    {generatedReport.loyal && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Loyal Customers</Text>{generatedReport.loyal.slice(0, 5).map((c, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{c.name}</Text><View style={{ alignItems: 'flex-end' }}><Text style={styles.summaryValue}>{c.order_count} orders</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>Rs.{Number(c.total_spent||0).toLocaleString()}</Text></View></View>))}</View>)}
-                                </>
-                            )}
-
-                            {reportType === 'Staff' && generatedReport.attendance && (
-                                <>
-                                    <Text style={styles.summaryLabel}>Staff Performance</Text>
-                                    {generatedReport.attendance.map((s, idx) => (<View key={idx} style={[styles.permItem, { justifyContent: 'space-between' }]}><Text style={styles.permItemText}>{s.full_name}</Text><View style={{ alignItems: 'flex-end' }}><Text style={styles.summaryValue}>{s.days_present} days</Text><Text style={{ fontSize: 11, color: '#9CA3AF' }}>{Number(s.avg_hours||0).toFixed(1)}h avg</Text></View></View>))}
-                                </>
-                            )}
-
-                            {reportType === 'Cancellations' && (
-                                <>
-                                    <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Delivery Cancellations</Text><Text style={[styles.summaryValue, { color: '#EF4444' }]}>{(generatedReport.deliveryCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}</Text></View>
-                                    <View style={[styles.summaryRow, { marginTop: 8 }]}><Text style={styles.summaryLabel}>Takeaway Cancellations</Text><Text style={[styles.summaryValue, { color: '#EF4444' }]}>{(generatedReport.takeawayCancels || []).reduce((a,c) => a + Number(c.count||0), 0)}</Text></View>
-                                    {([...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])]).length > 0 && (<View style={{ marginTop: 15 }}><Text style={[styles.summaryLabel, { marginBottom: 8 }]}>Top Cancellation Reasons</Text>{[...(generatedReport.deliveryCancels||[]),...(generatedReport.takeawayCancels||[])].sort((a,b)=>b.count-a.count).slice(0,5).map((c,i)=>(<View key={i} style={styles.permItem}><Text style={styles.permItemText}>{c.cancellation_reason || 'Unknown'}</Text><Text style={styles.summaryValue}>{c.count}</Text></View>))}</View>)}
-                                </>
-                            )}
-
-                            <TouchableOpacity style={[styles.exportBtn, { marginTop: 20, backgroundColor: '#DC2626' }]} onPress={handleDownloadPDF}>
-                                <Text style={styles.exportBtnText}>📄 Download PDF Report</Text>
+                            <TouchableOpacity style={[styles.exportBtn, { marginTop: 25, backgroundColor: '#DC2626' }]} onPress={handleDownloadPDF}>
+                                <Text style={styles.exportBtnText}>📄 Export Audit PDF</Text>
                             </TouchableOpacity>
                         </View>
                     </>
                 )}
-            </>
+                <View style={{ height: 100 }} />
+            </ScrollView>
         );
     };
 

@@ -15,6 +15,9 @@ router.get('/orders', reportController.getOrdersReport);
 router.get('/cancellations', reportController.getCancellationsReport);
 router.get('/customers', reportController.getCustomersReport);
 router.get('/staff', reportController.getStaffReport);
+router.get('/financial-audit', reportController.generateUnifiedReport);
+router.get('/inventory-costs', reportController.generateUnifiedReport);
+router.get('/supplier-payments', reportController.generateUnifiedReport);
 router.get('/generate', reportController.generateUnifiedReport);
 router.get('/pdf', reportController.generatePdfReport);
 
