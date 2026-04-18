@@ -188,7 +188,7 @@ const StaffDashboard = () => {
                         onPress={() => setShowAccount(true)}
                         style={[styles.profileBox, { marginLeft: 10, borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1 }]}
                     >
-                        {user?.profile_image ? (
+                        {user?.profile_image || user?.image || user?.steward_image ? (
                             <Image 
                                 source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
                                 style={styles.profileImg}

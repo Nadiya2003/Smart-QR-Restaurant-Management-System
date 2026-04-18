@@ -237,16 +237,20 @@ export const updateRestockStatus = async (req, res) => {
             origin === 'SUPPLIER' ? [status, id] : [status, admin_id, id]
         );
 
-        // 1.5 If RETAILER request and status is APPROVED, create a supplier_order
-        if (origin === 'RETAILER' && status === 'APPROVED') {
-            const [reqInfo] = await connection.query('SELECT inventory_id, supplier_id, quantity FROM restock_requests WHERE id = ?', [id]);
+        // 1.5 If status is APPROVED, create a supplier_order (both RETAILER and SUPPLIER origins)
+        if (status === 'APPROVED') {
+            const [reqInfo] = await connection.query(`SELECT inventory_id, supplier_id, quantity FROM ${table} WHERE id = ?`, [id]);
             if (reqInfo.length > 0) {
                 const { supplier_id, quantity, inventory_id } = reqInfo[0];
                 const [[item]] = await connection.query('SELECT item_name FROM inventory WHERE id = ?', [inventory_id]);
                 
+                // If the supplier initiated it, they already agreed, so it skips PENDING
+                const newOrderStatus = origin === 'SUPPLIER' ? 'APPROVED' : 'PENDING';
+                const notes = origin === 'SUPPLIER' ? `Approved Supplier Offer for ${item.item_name}` : `Restock Request for ${item.item_name}`;
+
                 await connection.query(
                     'INSERT INTO supplier_orders (supplier_id, inventory_id, quantity, total_amount, status, notes, priority) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [supplier_id, inventory_id, quantity, 0, 'PENDING', `Restock Request for ${item.item_name}`, 'Normal']
+                    [supplier_id, inventory_id, quantity, 0, newOrderStatus, notes, 'Normal']
                 );
 
                 // Notify Supplier Staff
@@ -254,14 +258,14 @@ export const updateRestockStatus = async (req, res) => {
                 for (const staff of supplierStaff) {
                     await connection.query(
                         'INSERT INTO staff_notifications (staff_id, title, message, notification_type) VALUES (?, ?, ?, ?)',
-                        [staff.staff_id, 'New Order from Restaurant', `A new restock order has been placed for "${item.item_name}".`, 'INFO']
+                        [staff.staff_id, origin === 'SUPPLIER' ? 'Offer Approved' : 'New Order from Restaurant', origin === 'SUPPLIER' ? `Your offer to supply "${item.item_name}" was approved.` : `A new restock order has been placed for "${item.item_name}".`, 'INFO']
                     );
                 }
             }
         }
 
-        // 2. If COMPLETED or APPROVED (for supplier offers), auto-update inventory
-        if (status === 'COMPLETED' || (origin === 'SUPPLIER' && status === 'APPROVED')) {
+        // 2. If COMPLETED, auto-update inventory (used mainly for manual completion of old restock logic without supplier_orders)
+        if (status === 'COMPLETED') {
             const [request] = await connection.query(`SELECT inventory_id, quantity, supplier_id FROM ${table} WHERE id = ?`, [id]);
             if (request.length > 0) {
                 const { inventory_id, quantity, supplier_id } = request[0];

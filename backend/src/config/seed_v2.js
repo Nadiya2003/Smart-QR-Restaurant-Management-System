@@ -8,8 +8,7 @@ async function seedData() {
         // 1. Categories
         const categories = [
             'Sri Lankan', 'Indian', 'Chinese', 'Italian', 
-            'Beverages', 'Desserts', 'Fast Food', 'Seafood', 
-            'Vegetarian', 'Special Items'
+            'Beverages', 'Desserts', 'Fast Food'
         ];
         for (const cat of categories) {
             await pool.query("INSERT IGNORE INTO categories (name) VALUES (?)", [cat]);
@@ -57,7 +56,7 @@ async function seedData() {
             [catMap['Beverages'], 'Ginger Tea (Ceylon)', 'Warm cup of authentic Ceylon tea with fresh ginger', 150.00, 'https://images.unsplash.com/photo-1544787210-22bb68b373e4?w=400', '["Traditional", "Warm"]'],
             [catMap['Desserts'], 'Rich Watalappam', 'Rich coconut custard pudding made with jaggery', 350.00, 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=400', '["Traditional", "Sweet"]'],
             [catMap['Fast Food'], 'Double Cheese Burger', 'Beef patty with melted cheese, lettuce and tomato', 1100.00, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400', '["Quick Bite"]'],
-            [catMap['Seafood'], 'Garlic Butter Prawns XL', 'Large prawns sautéed in garlic infused butter sauce', 1800.00, 'https://images.unsplash.com/photo-1521193089946-7aa29d1fe73a?w=400', '["Premium", "Seafood"]']
+            [catMap['Fast Food'], 'Grilled Chicken Wrap', 'Grilled chicken with fresh veggies wrapped in tortilla', 900.00, 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=400', '["Quick Bite", "Grilled"]']
         ];
 
         for (const item of menuItems) {

@@ -2283,7 +2283,7 @@ const renderOrders = () => (
 
                 <View style={styles.adminInfo_compact}>
                     <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.adminAvatar_small, { overflow: 'hidden' }]}>
-                        {user?.profile_image ? (
+                        {user?.profile_image || user?.image || user?.steward_image ? (
                             <Image 
                                 source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
                                 style={{ width: '100%', height: '100%', resizeMode: 'cover' }} 

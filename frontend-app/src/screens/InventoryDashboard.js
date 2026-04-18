@@ -300,7 +300,7 @@ const InventoryDashboard = ({ onLogout }) => {
                         onPress={() => setActiveTab('account')}
                         style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
                     >
-                        {user?.profile_image || user?.image ? (
+                        {user?.profile_image || user?.image || user?.steward_image ? (
                             <Image 
                                 source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
                                 style={styles.profileImg}

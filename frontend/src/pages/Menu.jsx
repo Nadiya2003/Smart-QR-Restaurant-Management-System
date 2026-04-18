@@ -60,9 +60,23 @@ function Menu() {
         }
     };
 
-    const categories = [...new Set(menuItems
+    const baseCategories = [...new Set(menuItems
         .filter(item => (item.image_url || item.image) && item.is_active !== 0 && item.is_active !== false)
         .map(item => item.category))];
+
+    const categoryOrder = [
+        'Sri Lankan', 'Indian', 'Chinese', 'Italian', 
+        'Beverages', 'Desserts', 'Fast Food'
+    ];
+
+    const categories = baseCategories.sort((a, b) => {
+        const indexA = categoryOrder.indexOf(a);
+        const indexB = categoryOrder.indexOf(b);
+        if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+    });
 
     useEffect(() => {
         if (categories.length > 0 && !activeCategory) {

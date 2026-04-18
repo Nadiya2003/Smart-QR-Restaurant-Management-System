@@ -265,8 +265,10 @@ const AdminDashboard = () => {
                 const catData = await safeFetch(apiConfig.MENU.CATEGORIES, { headers: reqHeaders });
                 const fetchedCats = catData?.categories || catData || [];
                 setCategories(fetchedCats);
-                if (fetchedCats.length > 0 && !selectedCategory) {
-                    setSelectedCategory(fetchedCats[0].name);
+                if (fetchedCats.length > 0) {
+                    // Use functional updater so we always read the CURRENT selectedCategory,
+                    // not the stale closure value — prevents resetting to first category after delete
+                    setSelectedCategory(prev => prev || fetchedCats[0].name);
                 }
             }
 
@@ -2322,9 +2324,9 @@ const AdminDashboard = () => {
 
                 <View style={styles.adminInfo_compact}>
                     <TouchableOpacity onPress={() => setActiveTab('account')} style={[styles.adminAvatar_small, { overflow: 'hidden' }]}>
-                        {user?.profile_image ? (
+                        {user?.profile_image || user?.image || user?.steward_image ? (
                             <Image 
-                                source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }} 
+                                source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${(user.profile_image || user.image).startsWith('/') ? '' : '/'}${user.profile_image || user.image}` }} 
                                 style={{ width: '100%', height: '100%', resizeMode: 'cover' }} 
                             />
                         ) : (

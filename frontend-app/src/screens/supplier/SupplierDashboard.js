@@ -132,9 +132,9 @@ const SupplierDashboard = () => {
                     onPress={() => setActiveTab('account')}
                     style={[styles.profileBox, activeTab === 'account' && { borderWidth: 2, borderColor: '#3B82F6' }]}
                 >
-                    {user?.profile_image || user?.image ? (
+                    {user?.profile_image || user?.image || user?.steward_image ? (
                         <Image 
-                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${user.profile_image || user.image}` }} 
+                            source={{ uri: (user.profile_image || user.image).startsWith('http') ? (user.profile_image || user.image) : `${apiConfig.API_BASE_URL}${(user.profile_image || user.image).startsWith('/') ? '' : '/'}${user.profile_image || user.image}` }} 
                             style={styles.profileImg}
                         />
                     ) : (
@@ -298,7 +298,7 @@ const SupplierDashboard = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
             {renderHeader()}
             
             <View style={styles.mainContainer}>
@@ -318,7 +318,7 @@ const SupplierDashboard = () => {
                     </ScrollView>
                 )}
                 {activeTab === 'account' && (
-                    <View style={{ flex: 1, padding: 15 }}>
+                    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
                         <AccountSection />
                     </View>
                 )}
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
     notifBtn: { marginRight: 15, position: 'relative', padding: 5 },
     badge: { position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
     logoutBtn: { padding: 5 },
-    mainContainer: { flex: 1 },
+    mainContainer: { flex: 1, backgroundColor: '#F9FAFB' },
     statsRow: { flexDirection: 'row', padding: 20, justifyContent: 'space-between' },
     statBox: { width: (width - 60) / 3, padding: 15, borderRadius: 16, alignItems: 'center' },
     statVal: { fontSize: 24, fontWeight: '800', color: '#1E40AF' },

@@ -507,7 +507,7 @@ const CashierDashboard = () => {
                     onPress={() => setActiveTab('account')}
                     style={[styles.profileBox, activeTab === 'account' && styles.activeProfileBox]}
                 >
-                    {user?.profile_image ? (
+                    {user?.profile_image || user?.image || user?.steward_image ? (
                         <Image
                             source={{ uri: user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}` }}
                             style={styles.profileImg}
