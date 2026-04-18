@@ -180,7 +180,6 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
-                    'Content-Type': 'multipart/form-data',
                 },
                 body: formData,
             });

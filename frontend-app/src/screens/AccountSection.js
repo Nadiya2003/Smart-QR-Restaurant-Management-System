@@ -79,7 +79,6 @@ const AccountSection = () => {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
-                    'Content-Type': 'multipart/form-data',
                 },
                 body: formData,
             });
@@ -110,10 +109,11 @@ const AccountSection = () => {
         }
     };
 
+    const userImg = user?.profile_image || user?.image || user?.steward_image;
     const displayImage = profileImage 
         ? profileImage.uri 
-        : (user?.profile_image 
-            ? (user.profile_image.startsWith('http') ? user.profile_image : `${apiConfig.API_BASE_URL}${user.profile_image}`)
+        : (userImg 
+            ? (userImg.startsWith('http') ? userImg : `${apiConfig.API_BASE_URL}${userImg.startsWith('/') ? '' : '/'}${userImg}`)
             : null);
 
     return (
