@@ -2,6 +2,7 @@ import React from 'react';
 import { Header } from '../components/layout/Header';
 import { Badge } from '../components/ui/Badge';
 import { useOrder } from '../hooks/useOrder';
+import { downloadEBill } from '../utils/billGenerator';
 
 export function OrderHistoryPage({ onNavigate }) {
   const { orderHistory, isGuest } = useOrder();
@@ -79,13 +80,23 @@ export function OrderHistoryPage({ onNavigate }) {
                     )}
                   </div>
 
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-sm font-medium text-gray-500">
-                      Total
-                    </span>
-                    <span className="font-bold text-gray-900">
-                      Rs. {totalAmount.toLocaleString()}
-                    </span>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-50 mt-1">
+                    <div>
+                      <span className="text-sm font-medium text-gray-500 block">
+                        Total Amount
+                      </span>
+                      <span className="font-bold text-gray-900">
+                        Rs. {totalAmount.toLocaleString()}
+                      </span>
+                    </div>
+                    
+                    <button 
+                      onClick={() => downloadEBill(order)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-semibold hover:bg-black transition-colors shadow-sm"
+                      title="Download Professional E-Bill"
+                    >
+                      <span className="text-sm">⬇️</span> Download E-Bill
+                    </button>
                   </div>
                 </div>
               );

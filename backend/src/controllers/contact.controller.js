@@ -26,7 +26,7 @@ export const submitContactMessage = async (req, res) => {
 
         const mailOptions = {
             from: email,
-            to: 'nadeesha0532@gmail.com',
+            to: 'melissasfoodcourt01@gmail.com',
             subject: `Contact Form: ${subject || 'New Message'}`,
             text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`
         };
