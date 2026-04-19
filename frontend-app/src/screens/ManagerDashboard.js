@@ -338,9 +338,14 @@ const ManagerDashboard = () => {
             socket.emit('join', 'manager_room');
         });
 
-        socket.on('newOrder', () => {
+        socket.on('newOrder', (data) => {
              playNotificationSound();
-             Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+             if (data && (data.type === 'TAKEAWAY' || data.type === 'DELIVERY')) {
+                 const title = data.type === 'TAKEAWAY' ? 'Walk-in Order Paid' : 'Delivery Order Paid';
+                 Alert.alert(`✅ Payment Successful - ${title}`, `A new ${data.type.toLowerCase()} order was paid online.\nCustomer: ${data.customerName || 'N/A'}\nAmount: Rs.${data.totalPrice || 0}`);
+             } else {
+                 Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+             }
              fetchData(true);
         });
 

@@ -208,6 +208,11 @@ const StewardDashboard = () => {
         });
 
         socket.on('orderUpdate', (data) => {
+            // Do not notify Stewards of Delivery or Takeaway orders (only Dine-in)
+            if (data && data.type && ['TAKEAWAY', 'DELIVERY'].includes(data.type.toUpperCase())) {
+                return;
+            }
+
             // If this steward triggered the update themselves, skip the popup (avoid duplicate)
             if (selfTriggeredUpdate.current) {
                 selfTriggeredUpdate.current = false;
@@ -215,8 +220,8 @@ const StewardDashboard = () => {
                 return;
             }
 
-            // Show popups for updates triggered by OTHER staff or the kitchen/bar
-            if (data.staffId === user.id || !data.staffId) {
+            // Show popups for updates triggered by OTHER staff or the kitchen/bar for THIS steward's orders only
+            if (data.staffId === user.id) {
                 Vibration && Vibration.vibrate([100, 200, 100, 200]);
                 playNotificationSound();
 
@@ -261,6 +266,11 @@ const StewardDashboard = () => {
         });
 
         socket.on('newOrder', (data) => {
+            // Do not notify Stewards of Delivery or Takeaway orders (only Dine-in)
+            if (data && data.type && ['TAKEAWAY', 'DELIVERY'].includes(data.type.toUpperCase())) {
+                return;
+            }
+
             // Deduplication: skip if we already showed a popup for this orderId
             const orderKey = `${data.orderId}-${data.isUpdate ? 'upd' : 'new'}`;
             if (seenOrderIds.current.has(orderKey)) return;
@@ -375,7 +385,8 @@ const StewardDashboard = () => {
 
         // VOICE NOTIFICATION (Requirement: Voice sound for ready orders)
         socket.on('orderReadyNotify', (data) => {
-            // Prevent duplicate announcements
+            // Prevent duplicate announcements and target the specific steward
+            if (data.staffId !== user.id) return;
             if (notifiedIds.current.has(data.orderId)) return;
             notifiedIds.current.add(data.orderId);
 

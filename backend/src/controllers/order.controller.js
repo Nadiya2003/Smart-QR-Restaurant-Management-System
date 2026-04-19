@@ -5,7 +5,7 @@ import pool from '../config/db.js';
  */
 export const createDeliveryOrder = async (req, res) => {
     try {
-        const { customer_id, customer_name, phone, address, items, total_price, notes, payment_status, transaction_id } = req.body;
+        const { customer_id, customer_name, phone, address, delivery_time, items, total_price, notes, payment_status, transaction_id } = req.body;
 
         if (payment_status !== 'paid') {
             return res.status(400).json({ message: 'Payment failed. Order not saved.' });
@@ -17,9 +17,9 @@ export const createDeliveryOrder = async (req, res) => {
 
             const [result] = await connection.query(
                 `INSERT INTO delivery_orders 
-                (customer_id, customer_name, phone, address, items, total_price, notes, payment_method, payment_status, transaction_id, order_status, order_type) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending', 'online')`,
-                [customer_id || null, customer_name, phone, address, JSON.stringify(items), total_price, notes || '', transaction_id]
+                (customer_id, customer_name, phone, address, delivery_time, items, total_price, notes, payment_method, payment_status, transaction_id, order_status, order_type) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'paid', ?, 'pending', 'online')`,
+                [customer_id || null, customer_name, phone, address, delivery_time || null, JSON.stringify(items), total_price, notes || '', transaction_id]
             );
 
             // Loyalty Points Logic: 1 point per Rs. 100

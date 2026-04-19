@@ -152,28 +152,33 @@ export const getAllOrders = async (req, res) => {
                    JOIN menu_items mi ON oi.menu_item_id = mi.id 
                    WHERE oi.order_id = o.id) as items,
                    NULL as payment_status, pm.name as payment_method_name, NULL as order_type,
-                   o.slip_image, o.payment_method_id, o.paid_at
+                   o.slip_image, o.payment_method_id, o.paid_at, 
+                   CONCAT(da.area_name, ' T-', rs.table_number) as display_location, 
+                   su.full_name as steward_name
             FROM orders o 
             LEFT JOIN order_types ot ON o.order_type_id = ot.id 
             LEFT JOIN order_statuses os ON o.status_id = os.id 
             LEFT JOIN payment_methods pm ON o.payment_method_id = pm.id 
-            
+            LEFT JOIN restaurant_tables rs ON o.table_id = rs.id
+            LEFT JOIN dining_areas da ON rs.area_id = da.id
+            LEFT JOIN stewards s ON o.steward_id = s.id
+            LEFT JOIN staff_users su ON s.staff_id = su.id            
             UNION ALL
 
             SELECT to_ord.id, to_ord.total_price, to_ord.created_at, 'TAKEAWAY' as type_name, to_ord.order_status as status_name,
-                   'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name, to_ord.needed_time,
+                   'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name, IFNULL(to_ord.pickup_time, to_ord.needed_time) as needed_time,
                    to_ord.items as items,
                    to_ord.payment_status as payment_status, to_ord.payment_method as payment_method_name, NULL as order_type,
-                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at
+                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at, 'WALK-IN' as display_location, 'System' as steward_name
             FROM takeaway_orders to_ord
 
             UNION ALL
 
             SELECT do.id, do.total_price, do.created_at, 'DELIVERY' as type_name, do.order_status as status_name,
-                   'delivery_orders' as source_table, do.phone, do.customer_name, do.needed_time,
+                   'delivery_orders' as source_table, do.phone, do.customer_name, IFNULL(do.delivery_time, do.needed_time) as needed_time,
                    do.items as items,
                    do.payment_status as payment_status, do.payment_method as payment_method_name, do.order_type as order_type,
-                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at
+                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at, 'DELIVERY' as display_location, 'System' as steward_name
             FROM delivery_orders do
             ORDER BY created_at DESC
         `);
@@ -225,6 +230,7 @@ export const updateOrderStatus = async (req, res) => {
 
         if (global.io) {
             global.io.emit('orderUpdate', { 
+                id: parseInt(id),
                 orderId: parseInt(id), 
                 status: status,
                 source: source_table
@@ -375,11 +381,11 @@ export const settleOrder = async (req, res) => {
             statusName = order.status_name;
 
             // REQUIREMENT: Dine-in allowed if order is served or in payment flow
-            if (!['SERVED', 'COMPLETED', 'PAYMENT_PENDING', 'READY_TO_SERVE'].includes(statusName)) {
+            if (!['SERVED', 'COMPLETED', 'PAYMENT_PENDING', 'READY_TO_SERVE', 'CONFIRMED', 'PAYMENT_COMPLETED'].includes(statusName)) {
                 await connection.rollback();
                 return res.status(400).json({
                     success: false,
-                    message: `Payment restricted: Order status is "${statusName}". Table orders must be fully SERVED before settlement.`
+                    message: `Payment restricted: Order status is "${statusName}". Table orders must be confirmed or served before settlement.`
                 });
             }
 

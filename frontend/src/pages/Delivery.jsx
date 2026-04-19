@@ -31,6 +31,7 @@ function Delivery() {
         address: '',
         city: '',
         pickupTime: '',
+        deliveryTime: '',
         notes: ''
     });
 
@@ -74,6 +75,24 @@ function Delivery() {
             return;
         }
 
+        // 12 AM to 9 PM Order Placement Window Validation
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMins = currentHour * 60 + currentMinute;
+        
+        const orderPlacementStartMins = 0; // 12:00 AM (Midnight)
+        const orderPlacementEndMins = 21 * 60; // 9:00 PM
+        
+        // Fulfillment bounds (Delivery & Pickup only happen during open hours)
+        const openMins = 11 * 60; // 11:00 AM
+        const closeMins = 21 * 60; // 9:00 PM
+
+        if (currentTimeInMins >= orderPlacementEndMins) {
+            setError('We are currently closed. Orders for today can only be placed between 12:00 AM and 9:00 PM.');
+            return;
+        }
+
         // Basic validation
         if (orderType === 'delivery' && (!details.address || !details.city)) {
             setError('Please provide a delivery address and city');
@@ -83,6 +102,38 @@ function Delivery() {
             setError('Please provide your estimated pickup time');
             return;
         }
+        
+        if (orderType === 'takeaway' && details.pickupTime) {
+            const [selHr, selMin] = details.pickupTime.split(':').map(Number);
+            const selTotalMins = selHr * 60 + selMin;
+            if (selTotalMins < openMins || selTotalMins >= closeMins) {
+                setError('Pickup time must be between 11:00 AM and 9:00 PM.');
+                return;
+            }
+            if (selTotalMins < currentTimeInMins) {
+                setError('Pickup time cannot be in the past.');
+                return;
+            }
+        }
+
+        if (orderType === 'delivery' && !details.deliveryTime) {
+            setError('Please provide your expected delivery time');
+            return;
+        }
+
+        if (orderType === 'delivery' && details.deliveryTime) {
+            const [selHr, selMin] = details.deliveryTime.split(':').map(Number);
+            const selTotalMins = selHr * 60 + selMin;
+            if (selTotalMins < openMins || selTotalMins >= closeMins) {
+                setError('Delivery time must be between 11:00 AM and 9:00 PM.');
+                return;
+            }
+            if (selTotalMins < currentTimeInMins) {
+                setError('Delivery time cannot be in the past.');
+                return;
+            }
+        }
+
         if (!details.phone || !details.fullName) {
             setError('Full name and phone number are required');
             return;
@@ -93,8 +144,31 @@ function Delivery() {
     };
 
     const processPayment = async () => {
-        if (!cardDetails.number || cardDetails.number.length < 16) {
-            setError('Valid card number is required');
+        if (!cardDetails.number || cardDetails.number.replace(/\s/g, '').length !== 16) {
+            setError('Valid 16-digit card number is required');
+            return;
+        }
+
+        if (!cardDetails.expiry || !cardDetails.expiry.match(/^(0[1-9]|1[0-2])\/\d{2}$/)) {
+            setError('Valid expiry date in MM/YY format is required');
+            return;
+        }
+
+        const [month, year] = cardDetails.expiry.split('/');
+        const expiryDate = new Date(2000 + parseInt(year), parseInt(month));
+        const today = new Date();
+        if (expiryDate < today) {
+            setError('Your card has expired');
+            return;
+        }
+
+        if (!cardDetails.cvv || cardDetails.cvv.length !== 3) {
+            setError('Valid 3-digit CVV is required');
+            return;
+        }
+
+        if (!cardDetails.name) {
+            setError('Cardholder name is required');
             return;
         }
 
@@ -124,6 +198,7 @@ function Delivery() {
 
             if (orderType === 'delivery') {
                 payload.address = `${details.address}, ${details.city}`;
+                payload.delivery_time = details.deliveryTime;
             } else {
                 payload.pickup_time = details.pickupTime;
             }
@@ -377,17 +452,29 @@ function Delivery() {
 
                                         {orderType === 'takeaway' && (
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-300 mb-2">Estimated Pickup Time</label>
+                                                <label className="block text-sm font-medium text-gray-300 mb-2">Estimated Pickup Time (11:00 AM - 9:00 PM)</label>
                                                 <input
                                                     name="pickupTime"
                                                     value={details.pickupTime}
                                                     onChange={handleInputChange}
+                                                    min="11:00"
+                                                    max="21:00"
                                                     type="time" required className="input-glass w-full" />
                                             </div>
                                         )}
 
                                         {orderType === 'delivery' && (
                                             <>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-sm font-medium text-gray-300 mb-2">Expected Delivery Time (11:00 AM - 9:00 PM)</label>
+                                                    <input
+                                                        name="deliveryTime"
+                                                        value={details.deliveryTime}
+                                                        onChange={handleInputChange}
+                                                        min="11:00"
+                                                        max="21:00"
+                                                        type="time" required className="input-glass w-full" />
+                                                </div>
                                                 <div className="md:col-span-2">
                                                     <label className="block text-sm font-medium text-gray-300 mb-2">Delivery Address</label>
                                                     <textarea

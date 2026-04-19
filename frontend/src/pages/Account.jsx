@@ -340,15 +340,28 @@ function Account() {
                                 ) : (
                                     <div className="space-y-4">
                                         {orders.map(order => {
-                                            const isTerminal = ['COMPLETED', 'DELIVERED', 'CANCELLED'].includes(order.order_status?.toUpperCase());
-                                            const statusSteps = ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+                                            const upStatus = (order.order_status || 'Pending').toUpperCase();
+                                            const isTerminal = ['COMPLETED', 'DELIVERED', 'CANCELLED', 'COMPLETE'].includes(upStatus);
+                                            const isTakeaway = order.type === 'TAKEAWAY';
+                                            const statusSteps = isTakeaway
+                                                ? ['Confirmed', 'Preparing', 'Ready', 'Pickup', 'Complete']
+                                                : ['Pending', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+                                            
                                             const currentStatus = order.order_status || 'Pending';
                                             
                                             // Handle formatting differences
                                             let normalizedStatus = currentStatus;
-                                            const upStatus = currentStatus.toUpperCase();
-                                            if (upStatus === 'READY' || upStatus === 'PREPARING' || upStatus === 'COOKING') {
-                                                normalizedStatus = 'Accepted';
+                                            
+                                            if (isTakeaway) {
+                                                if (upStatus === 'CONFIRMED') normalizedStatus = 'Confirmed';
+                                                else if (upStatus === 'PREPARING' || upStatus === 'COOKING') normalizedStatus = 'Preparing';
+                                                else if (upStatus === 'READY' || upStatus === 'READY_TO_SERVE') normalizedStatus = 'Ready';
+                                                else if (upStatus === 'PICKUP' || upStatus === 'PICKED_UP') normalizedStatus = 'Pickup';
+                                                else if (upStatus === 'COMPLETED' || upStatus === 'COMPLETE') normalizedStatus = 'Complete';
+                                            } else {
+                                                if (upStatus === 'READY' || upStatus === 'PREPARING' || upStatus === 'COOKING') {
+                                                    normalizedStatus = 'Accepted';
+                                                }
                                             }
                                             
                                             const currentIdx = statusSteps.findIndex(s => s.toLowerCase() === normalizedStatus.toLowerCase());

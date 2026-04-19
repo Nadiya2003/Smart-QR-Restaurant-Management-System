@@ -19,42 +19,7 @@ const BUSINESS_BANK_INFO = {
     branch: "Colombo Fort"
 };
 
-// ─── Timer Component ──────────────────────────────────────────────
-const OrderTimer = ({ createdAt }) => {
-    const [timeLeft, setTimeLeft] = useState(20 * 60);
-    const timerRef = useRef(null);
 
-    useEffect(() => {
-        const calculateTime = () => {
-            const start = new Date(createdAt).getTime();
-            const now = new Date().getTime();
-            const elapsed = Math.floor((now - start) / 1000);
-            const remaining = Math.max(0, (20 * 60) - elapsed);
-            setTimeLeft(remaining);
-        };
-        calculateTime();
-        timerRef.current = setInterval(calculateTime, 1000);
-        return () => clearInterval(timerRef.current);
-    }, [createdAt]);
-
-    const formatTime = (seconds) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const isUrgent = timeLeft < 5 * 60;
-    const isLate = timeLeft === 0;
-
-    return (
-        <View style={[styles.timerBox, isUrgent && styles.timerUrgent, isLate && styles.timerLate]}>
-            <Text style={[styles.timerLabel, isUrgent && !isLate && styles.timerLabelUrgent, isLate && { color: '#FFFFFF' }]}>{isLate ? 'OVERDUE' : 'TIME'}</Text>
-            <Text style={[styles.timerText, isUrgent && !isLate && styles.timerTextUrgent, isLate && { color: '#FFFFFF' }]}>
-                {isLate ? '⚠️ LATE' : formatTime(timeLeft)}
-            </Text>
-        </View>
-    );
-};
 
 const DeliveryRiderDashboard = ({ onLogout }) => {
     const { user, token, logout } = useAuth();
@@ -192,10 +157,12 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             socket.emit('join', 'delivery_rider');
         });
 
-        socket.on('new_delivery_order', (data) => {
-            playNotificationSound();
-            Alert.alert('New Order!', data.isUpdate ? 'Order details changed' : 'New Order Started - Begin Preparation');
-            fetchData(true);
+        socket.on('newOrder', (data) => {
+            if (data.type === 'DELIVERY') {
+                playNotificationSound();
+                Alert.alert('New Order!', `Order #${data.orderId} received from ${data.customerName || 'Customer'}`);
+                fetchData(true);
+            }
         });
 
         socket.on('delivery_order_updated', () => {
@@ -395,7 +362,10 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                 
                 // Switch to Home to see the new order
                 setActiveTab('home');
-                fetchData();
+                // Use a slight delay to ensure DB transaction is fully finalized before fetching
+                setTimeout(() => {
+                    fetchData();
+                }, 500);
             } else {
                 const errData = await res.json();
                 Alert.alert('Error', (errData.message || 'Failed to create order') + (errData.error ? `: ${errData.error}` : ''));
@@ -624,13 +594,18 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
             normStatus = 'Accepted';
         }
         
+        // Map backend final closure state to 'Delivered' step
+        if (normStatus.toLowerCase() === 'pending final closure') {
+            normStatus = 'Delivered';
+        }
+        
         const currentIdx = statusSteps.indexOf(normStatus);
         
         const payStatus = (order.payment_status || 'pending').toLowerCase();
         const payMethod = (order.payment_method || 'cash').toLowerCase();
         const isPaid = ['paid', 'completed', 'settled'].includes(payStatus);
-        const isCollected = payStatus === 'collected';
-        const isOnlineOrder = order.order_type === 'online' || payMethod === 'online';
+        const isCollected = payStatus === 'collected' || payStatus === 'pending settlement';
+        const isOnlineOrder = (order.order_type || '').toLowerCase() === 'online' || payMethod === 'online';
 
         return (
             <View key={order.id} style={styles.orderCard}>
@@ -642,7 +617,6 @@ const DeliveryRiderDashboard = ({ onLogout }) => {
                     <View style={[styles.statusBadge, getStatusColor(order.order_status)]}>
                         <Text style={styles.statusBadgeText}>{order.order_status}</Text>
                     </View>
-                    <OrderTimer createdAt={order.created_at} />
                 </View>
 
                 {/* Status Stepper */}
