@@ -21,6 +21,18 @@ export const createReservation = async (req, res) => {
             });
         }
 
+        // Operating Hours Validation: 11:00 AM – 9:00 PM (23:00 is last entry cutoff)
+        const [hrStr, minStr] = time.split(':');
+        const selHr = parseInt(hrStr, 10);
+        const selMin = parseInt(minStr, 10);
+        const selTotalMins = selHr * 60 + selMin;
+        if (selTotalMins < 11 * 60 || selTotalMins >= 21 * 60) {
+            return res.status(400).json({
+                message: 'Outside operating hours',
+                error: 'Reservations are only accepted between 11:00 AM and 9:00 PM.'
+            });
+        }
+
         // Check if table is actually available for that time
         const [existing] = await pool.query(
             `SELECT * FROM reservations 

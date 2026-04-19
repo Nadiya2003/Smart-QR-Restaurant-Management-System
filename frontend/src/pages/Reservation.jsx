@@ -152,6 +152,17 @@ function Reservation() {
             }
         }
 
+        // Operating Hours Validation: 11:00 AM – 9:00 PM
+        const [selHr, selMin] = formData.time.split(':').map(Number);
+        const selTotalMins = selHr * 60 + selMin;
+        const openMins  = 11 * 60;       // 11:00 AM = 660 mins
+        const closeMins = 21 * 60;       // 9:00 PM  = 1260 mins
+        if (selTotalMins < openMins || selTotalMins >= closeMins) {
+            setError('Reservations are only accepted between 11:00 AM and 9:00 PM.');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
         const guestCount = parseInt(formData.guests);
         if (formData.tableCapacity < guestCount) {
             setError(`Selected table does not have enough seats for ${guestCount} guests (Table capacity: ${formData.tableCapacity})`);
@@ -363,12 +374,15 @@ function Reservation() {
                             <div>
                                 <label htmlFor="time" className="block text-sm font-medium text-gray-300 mb-2">
                                     Time <span className="text-red-400">*</span>
+                                    <span className="text-gray-500 text-xs ml-2">(11:00 AM – 9:00 PM)</span>
                                 </label>
                                 <input
                                     type="time"
                                     id="time"
                                     name="time"
                                     value={formData.time}
+                                    min="11:00"
+                                    max="21:00"
                                     onChange={handleChange}
                                     className="input-glass w-full focus:ring-[#D4AF37]/50"
                                     required

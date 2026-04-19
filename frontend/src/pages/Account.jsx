@@ -446,7 +446,12 @@ function Account() {
                                 ) : (
                                     <div className="grid grid-cols-1 gap-6">
                                         {reservations.map(res => {
-                                            const resDate = new Date(res.reservation_date);
+                                            // Fix: Append T00:00:00 to force local timezone parsing.
+                                            // Without it, "2026-04-20" is parsed as UTC midnight,
+                                            // which shows as April 19 in UTC+5:30 (Sri Lanka).
+                                            const rawDate = res.reservation_date || '';
+                                            const datePart = (typeof rawDate === 'string' ? rawDate : rawDate.toISOString()).split('T')[0];
+                                            const resDate = new Date(`${datePart}T00:00:00`);
                                             const isPast = resDate < new Date() && res.status !== 'CANCELLED';
                                             
                                             return (
