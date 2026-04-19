@@ -152,7 +152,7 @@ export const getAllOrders = async (req, res) => {
                    JOIN menu_items mi ON oi.menu_item_id = mi.id 
                    WHERE oi.order_id = o.id) as items,
                    NULL as payment_status, pm.name as payment_method_name, NULL as order_type,
-                   o.slip_image
+                   o.slip_image, o.payment_method_id, o.paid_at
             FROM orders o 
             LEFT JOIN order_types ot ON o.order_type_id = ot.id 
             LEFT JOIN order_statuses os ON o.status_id = os.id 
@@ -164,7 +164,7 @@ export const getAllOrders = async (req, res) => {
                    'takeaway_orders' as source_table, to_ord.phone, to_ord.customer_name, to_ord.needed_time,
                    to_ord.items as items,
                    to_ord.payment_status as payment_status, to_ord.payment_method as payment_method_name, NULL as order_type,
-                   NULL as slip_image
+                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at
             FROM takeaway_orders to_ord
 
             UNION ALL
@@ -173,10 +173,8 @@ export const getAllOrders = async (req, res) => {
                    'delivery_orders' as source_table, do.phone, do.customer_name, do.needed_time,
                    do.items as items,
                    do.payment_status as payment_status, do.payment_method as payment_method_name, do.order_type as order_type,
-                   NULL as slip_image
+                   NULL as slip_image, NULL as payment_method_id, NULL as paid_at
             FROM delivery_orders do
-            WHERE do.order_status != 'Closed'
-            
             ORDER BY created_at DESC
         `);
         
@@ -366,23 +364,27 @@ export const settleOrder = async (req, res) => {
         // 1. Fetch order details based on source table
         if (source_table === 'orders') {
             const [rows] = await connection.query(
-                "SELECT o.table_id, o.total_price, o.customer_name, o.customer_id, os.name as status_name FROM orders o JOIN order_statuses os ON o.status_id = os.id WHERE o.id = ?",
+                `SELECT o.table_id, o.total_price, o.customer_name, o.customer_id, coalesce(os.name, 'PENDING') as status_name 
+                 FROM orders o 
+                 LEFT JOIN order_statuses os ON o.status_id = os.id 
+                 WHERE o.id = ?`,
                 [id]
             );
-            if (rows.length === 0) throw new Error("Order not found in orders table");
+            if (rows.length === 0) throw new Error("Order record not found in database.");
             order = rows[0];
             statusName = order.status_name;
 
-            // REQUIREMENT: Dine-in allowed ONLY IF order is fully served
-            if (statusName !== 'SERVED' && statusName !== 'COMPLETED') {
+            // REQUIREMENT: Dine-in allowed if order is served or in payment flow
+            if (!['SERVED', 'COMPLETED', 'PAYMENT_PENDING', 'READY_TO_SERVE'].includes(statusName)) {
                 await connection.rollback();
                 return res.status(400).json({
                     success: false,
-                    message: "Payment restricted: Order must be fully SERVED by steward before settlement."
+                    message: `Payment restricted: Order status is "${statusName}". Table orders must be fully SERVED before settlement.`
                 });
             }
 
-            const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['PAYMENT_COMPLETED']);
+            const [statusRows] = await connection.query("SELECT id FROM order_statuses WHERE name = ?", ['COMPLETED']);
+            if (statusRows.length === 0) throw new Error("System configuration error: 'COMPLETED' status missing.");
             const completedStatusId = statusRows[0].id;
 
             updateQuery = "UPDATE orders SET status_id = ?, payment_method_id = ?, paid_at = NOW(), main_status = 'COMPLETED' WHERE id = ?";
@@ -393,13 +395,13 @@ export const settleOrder = async (req, res) => {
                 "SELECT items, total_price, customer_name, customer_id, order_status FROM takeaway_orders WHERE id = ?",
                 [id]
             );
-            if (rows.length === 0) throw new Error("Order not found in takeaway_orders table");
+            if (rows.length === 0) throw new Error("Takeaway order not found.");
             order = rows[0];
             
             const [pmRows] = await connection.query("SELECT name FROM payment_methods WHERE id = ?", [payment_method_id]);
             const pmName = pmRows.length > 0 ? pmRows[0].name : 'Cash';
 
-            updateQuery = "UPDATE takeaway_orders SET order_status = 'PAYMENT_COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
+            updateQuery = "UPDATE takeaway_orders SET order_status = 'COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
             updateParams = [pmName, id];
 
         } else if (source_table === 'delivery_orders') {
@@ -407,13 +409,13 @@ export const settleOrder = async (req, res) => {
                 "SELECT items, total_price, customer_name, customer_id, order_status FROM delivery_orders WHERE id = ?",
                 [id]
             );
-            if (rows.length === 0) throw new Error("Order not found in delivery_orders table");
+            if (rows.length === 0) throw new Error("Delivery order not found.");
             order = rows[0];
 
             const [pmRows] = await connection.query("SELECT name FROM payment_methods WHERE id = ?", [payment_method_id]);
             const pmName = pmRows.length > 0 ? pmRows[0].name : 'Cash';
 
-            updateQuery = "UPDATE delivery_orders SET order_status = 'PAYMENT_COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
+            updateQuery = "UPDATE delivery_orders SET order_status = 'COMPLETED', payment_method = ?, payment_status = 'PAID' WHERE id = ?";
             updateParams = [pmName, id];
         } else {
             throw new Error(`Invalid source table: ${source_table}`);
@@ -421,7 +423,7 @@ export const settleOrder = async (req, res) => {
 
         // 2. Perform the update
         const [resUpdate] = await connection.query(updateQuery, updateParams);
-        if (resUpdate.affectedRows === 0) throw new Error("Order already settled or failed to update");
+        if (resUpdate.affectedRows === 0) throw new Error("Order update failed - it may have been already settled or the ID is invalid.");
 
         // 3. Set table status to 'cleaning' ONLY for Dine-In (orders table)
         if (source_table === 'orders' && order.table_id) {
@@ -437,10 +439,11 @@ export const settleOrder = async (req, res) => {
                 });
             }
 
+            const tableIdToReset = order.table_id;
             setTimeout(async () => {
                 try {
-                    await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [order.table_id]);
-                    if (global.io) global.io.emit('tableUpdate', { tableId: order.table_id, status: 'available' });
+                    await pool.query("UPDATE restaurant_tables SET status = 'available' WHERE id = ?", [tableIdToReset]);
+                    if (global.io) global.io.emit('tableUpdate', { tableId: tableIdToReset, status: 'available' });
                 } catch (e) {
                     console.error("Delayed table reset failed:", e);
                 }
@@ -456,8 +459,8 @@ export const settleOrder = async (req, res) => {
 
         // 4. Grant Loyalty Points if registered customer
         if (order.customer_id) {
-            const totalPrice = order.total_price || 0;
-            let pointsEarned = Math.floor(totalPrice / 100);
+            const totalPriceForPoints = order.total_price || 0;
+            let pointsEarned = Math.floor(totalPriceForPoints / 100);
             
             // Item-based Bonus Points (Only for orders table since takeaway/delivery items are JSON)
             if (source_table === 'orders') {
@@ -510,9 +513,13 @@ export const settleOrder = async (req, res) => {
 
         res.json({ success: true, message: "Order settled successfully" });
     } catch (err) {
-        await connection.rollback();
-        console.error("Settlement Error:", err);
-        res.status(500).json({ message: "Settlement failed", error: err.message });
+        if (connection) await connection.rollback();
+        console.error("Settlement Error Details:", err);
+        res.status(500).json({ 
+            message: "Settlement process failed", 
+            error: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     } finally {
         connection.release();
     }

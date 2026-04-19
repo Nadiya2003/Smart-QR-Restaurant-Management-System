@@ -717,13 +717,13 @@ const ManagerDashboard = () => {
                     </TouchableOpacity>
                 </View>
 
-                {orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length === 0 ? (
+                {orderList.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED', 'PAYMENT_COMPLETED'].includes((o.status || '').toUpperCase())).length === 0 ? (
                     <View style={styles.emptyCard}>
                         <Text style={styles.emptyText}>No active orders at the moment</Text>
                     </View>
                 ) : (
                     orderList
-                        .filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase()))
+                        .filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED', 'PAYMENT_COMPLETED'].includes((o.status || '').toUpperCase()))
                         .slice(0, 10) // Show top 10 most recent active
                         .map(order => (
                             <TouchableOpacity 
@@ -856,35 +856,59 @@ const ManagerDashboard = () => {
         </>
     );
 
-const renderOrders = () => (
-    <>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-            <View style={[styles.subTabRow, { backgroundColor: 'transparent', padding: 0 }]}>
-                {['DINE-IN', 'TAKEAWAY', 'DELIVERY', 'CANCELLATIONS', 'ITEM REMOVALS'].map(tab => {
-                    let count = 0;
-                    if (tab === 'CANCELLATIONS') count = cancelRequestList.length;
-                    else if (tab === 'ITEM REMOVALS') count = itemRemovalRequests.filter(r => r.status === 'PENDING').length;
-                    else count = orderList.filter(o => o.order_type === tab && !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status || '').toUpperCase())).length;
-                    
-                    return (
+    const renderOrders = () => {
+        // Prepare filtered lists beforehand for cleaner rendering
+        const historyStatuses = ['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED', 'PAYMENT_COMPLETED'];
+        const historyList = orderList.filter(o => historyStatuses.includes((o.status || '').toUpperCase()));
+        const getActiveOrders = (type) => orderList.filter(o => o.order_type === type && !historyStatuses.includes((o.status || '').toUpperCase()));
+        
+        const tabsData = [
+            { key: 'DINE-IN', icon: '🍽️', label: 'Dine-In', count: getActiveOrders('DINE-IN').length },
+            { key: 'TAKEAWAY', icon: '🥡', label: 'Takeaway', count: getActiveOrders('TAKEAWAY').length },
+            { key: 'DELIVERY', icon: '🚚', label: 'Delivery', count: getActiveOrders('DELIVERY').length },
+            { key: 'CANCELLATIONS', icon: '🚨', label: 'Requests', count: cancelRequestList.length },
+            { key: 'HISTORY', icon: '📜', label: 'History', count: historyList.length }
+        ];
+
+        let displayList = [];
+        if (orderSubTab === 'HISTORY') {
+            displayList = historyList;
+        } else if (orderSubTab === 'DINE-IN' || orderSubTab === 'TAKEAWAY' || orderSubTab === 'DELIVERY') {
+            displayList = getActiveOrders(orderSubTab);
+        }
+
+        return (
+        <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 15 }}>
+                <View style={[styles.subTabRow, { paddingRight: 40 }]}>
+                    {tabsData.map(tab => (
                         <TouchableOpacity 
-                            key={tab} 
-                            style={[styles.subTab, orderSubTab === tab && styles.activeSubTab, { marginRight: 8, minWidth: 100 }]}
-                            onPress={() => setOrderSubTab(tab)}
+                            key={tab.key} 
+                            style={[
+                                styles.subTab, 
+                                orderSubTab === tab.key && styles.activeSubTab, 
+                                { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25 }
+                            ]}
+                            onPress={() => setOrderSubTab(tab.key)}
                         >
-                            <Text style={[styles.subTabText, orderSubTab === tab && styles.activeSubTabText]}>
-                                {tab === 'DINE-IN' ? '🍽️' : tab === 'TAKEAWAY' ? '🥡' : tab === 'DELIVERY' ? '🚚' : tab === 'CANCELLATIONS' ? '🚨' : '🗑️'} {tab} ({count})
+                            <Text style={[
+                                styles.subTabText, 
+                                orderSubTab === tab.key && styles.activeSubTabText,
+                                { fontSize: 13, fontWeight: orderSubTab === tab.key ? 'bold' : '600' }
+                            ]}>
+                                {tab.icon} {tab.label} ({tab.count})
                             </Text>
                         </TouchableOpacity>
-                    );
-                })}
-            </View>
-        </ScrollView>
+                    ))}
+                </View>
+            </ScrollView>
 
-            <View style={styles.sectionHeader}>
+            <View style={[styles.sectionHeader, { marginTop: 0 }]}>
                 <View>
-                    <Text style={styles.sectionTitle}>{orderSubTab} Orders</Text>
-                    <Text style={styles.sectionSubtitle}>Manage daily transactions</Text>
+                    <Text style={styles.sectionTitle}>
+                        {tabsData.find(t => t.key === orderSubTab)?.label || orderSubTab} Orders
+                    </Text>
+                    <Text style={styles.sectionSubtitle}>Manage transactions</Text>
                 </View>
                 <TouchableOpacity style={styles.addButtonSmall} onPress={() => setShowOrderModal(true)}>
                     <Text style={styles.addButtonTextSmall}>+ Add Order</Text>
@@ -928,51 +952,13 @@ const renderOrders = () => (
                         </View>
                     ))
                 )
-            ) : orderSubTab === 'ITEM REMOVALS' ? (
-                itemRemovalRequests.filter(r => r.status === 'PENDING').length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <Text style={styles.emptyIcon}>🗑️</Text>
-                        <Text style={styles.emptyText}>No pending item removal requests</Text>
-                    </View>
-                ) : (
-                    itemRemovalRequests.filter(r => r.status === 'PENDING').map((req) => (
-                        <View key={req.id} style={[styles.listCard, { borderColor: '#F59E0B', borderWidth: 1 }]}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={styles.listCardName}>Order #{req.order_id} Item Removal</Text>
-                                <View style={[styles.badge, { backgroundColor: '#Fef3c7' }]}>
-                                    <Text style={[styles.badgeText, { color: '#B45309' }]}>REMOVAL REQUEST</Text>
-                                </View>
-                            </View>
-                            <Text style={[styles.listCardSub, { fontWeight: 'bold', color: '#111827', marginTop: 5 }]}>Item: {req.item_name}</Text>
-                            <Text style={styles.listCardSub}>Requested by: {req.staff_name || 'Staff'}</Text>
-                            <Text style={[styles.listCardSub, { marginTop: 5, color: '#374151', fontStyle: 'italic' }]}>
-                                Reason: "{req.reason}"
-                            </Text>
-                            
-                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                                <TouchableOpacity 
-                                    style={[styles.editBtn, { backgroundColor: '#10B981', flex: 1 }]} 
-                                    onPress={() => handleItemRemovalAction(req.id, 'approve')}
-                                >
-                                    <Text style={[styles.editBtnText, { color: 'white' }]}>Approve</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity 
-                                    style={[styles.deleteBtn, { backgroundColor: '#EF4444', flex: 1 }]} 
-                                    onPress={() => handleItemRemovalAction(req.id, 'reject')}
-                                >
-                                    <Text style={[styles.deleteBtnText, { color: 'white' }]}>Reject</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    ))
-                )
-            ) : (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).length === 0 ? (
+            ) : displayList.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>🛍️</Text>
-                    <Text style={styles.emptyText}>No {orderSubTab} orders found</Text>
+                    <Text style={styles.emptyIcon}>{orderSubTab === 'HISTORY' ? '📜' : '🛍️'}</Text>
+                    <Text style={styles.emptyText}>No {tabsData.find(t => t.key === orderSubTab)?.label || 'matching'} orders found</Text>
                 </View>
             ) : (
-                (orderSubTab === 'ALL' ? orderList : orderList.filter(o => o.order_type === orderSubTab)).map((order) => {
+                displayList.map((order) => {
                     const isOngoing = ['PENDING', 'ORDER PLACED', 'PREPARING', 'READY', 'OUT FOR DELIVERY'].includes((order.status || '').toUpperCase());
                     return (
                         <TouchableOpacity 
@@ -998,6 +984,7 @@ const renderOrders = () => (
                                     {order.order_type === 'DELIVERY' && order.address ? (
                                         <Text style={styles.listCardSub}>📍 {order.address}</Text>
                                     ) : null}
+                                    <Text style={styles.listCardSub}>Items: {order.items_summary || (order.items && Array.isArray(order.items) ? order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') : 'Check Details')}</Text>
                                     <Text style={styles.listCardSub}>Total: Rs. {Number(order.total_price || 0).toLocaleString()} ({order.payment_method || (order.payment_status === 'paid' ? 'Paid Online' : 'Unpaid')})</Text>
                                     <Text style={styles.listCardSub}>Time: {new Date(order.created_at).toLocaleTimeString()}</Text>
                                     
@@ -1039,7 +1026,7 @@ const renderOrders = () => (
             )}
         </>
     );
-
+};
 
 
     // ===== ATTENDANCE TAB =====
@@ -2198,8 +2185,8 @@ const renderOrders = () => (
     const handleCloseOrder = async (orderId) => {
         try {
             setLoading(true);
-            const res = await fetch(`${apiConfig.API_BASE_URL}/api/delivery-rider/orders/${orderId}/close`, {
-                method: 'PATCH',
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/orders/${orderId}/close`, {
+                method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
             });
             if (res.ok) {

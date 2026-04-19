@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import transporter from '../config/mailer.js';
 import { getPermissionsForRole } from '../utils/staffPermissions.js';
 
 // Role name to table name mapping
@@ -15,6 +16,52 @@ const ROLE_TABLE_MAP = {
     'supplier': 'supplier_staff',
 };
 
+export const verifyStaffEmail = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) return res.status(400).json({ message: 'Email and OTP required' });
+
+        const [users] = await pool.query(
+            'SELECT id FROM staff_users WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
+            [email, otp]
+        );
+
+        if (users.length === 0) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        await pool.query(
+            'UPDATE staff_users SET is_verified = 1, reset_otp = NULL, reset_otp_expiry = NULL WHERE id = ?',
+            [users[0].id]
+        );
+
+        res.json({ message: 'Staff email verified successfully. Please wait for admin approval.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+const sendVerificationEmail = async (email, otp) => {
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Verify Your Staff Account Email - Smart QR Restaurant',
+        html: `
+            <h1>Hello!</h1>
+            <p>Your staff verification code is: <strong>${otp}</strong></p>
+            <p>Please enter this code in the app to verify your identity.</p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        return true;
+    } catch (error) {
+        console.error('Staff verification email failed:', error);
+        return false;
+    }
+};
+
 /**
  * Register a new staff member.
  * 1. Inserts into staff_users (master table)
@@ -24,7 +71,7 @@ const ROLE_TABLE_MAP = {
 export const registerStaff = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { full_name, email, phone, password, role, profile_image } = req.body;
+        const { full_name, email, phone, password, role, profile_image, bank_name, account_number, account_name } = req.body;
 
         if (!full_name || !email || !password || !role) {
             return res.status(400).json({ message: 'Full name, email, password, and role are required' });
@@ -70,9 +117,9 @@ export const registerStaff = async (req, res) => {
         }
 
         const [staffResult] = await connection.query(
-            `INSERT INTO staff_users (full_name, email, phone, profile_image, password, role_id, status, permissions)
-             VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-            [full_name, email, phone || null, finalProfileImage, hashedPassword, roleId, defaultPermissions]
+            `INSERT INTO staff_users (full_name, email, phone, profile_image, password, role_id, status, permissions, bank_name, account_number, account_name, is_verified)
+             VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, 1)`,
+            [full_name, email, phone || null, finalProfileImage, hashedPassword, roleId, defaultPermissions, bank_name || null, account_number || null, account_name || null]
         );
 
         const staffId = staffResult.insertId;
@@ -85,7 +132,6 @@ export const registerStaff = async (req, res) => {
                 [staffId]
             );
         }
-
         await connection.commit();
 
         res.status(201).json({
@@ -131,8 +177,8 @@ export const loginStaff = async (req, res) => {
             `SELECT su.*, sr.role_name
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
-             WHERE su.email = ?`,
-            [loginId]
+             WHERE su.email = ? OR su.full_name = ?`,
+            [loginId, loginId]
         );
 
         if (staffRows.length === 0) {
@@ -213,6 +259,9 @@ export const loginStaff = async (req, res) => {
                 status: user.status,
                 is_active: user.is_active,
                 profile_image: user.profile_image,
+                bank_name: user.bank_name,
+                account_number: user.account_number,
+                account_name: user.account_name,
                 permissions
             }
         });
@@ -236,6 +285,7 @@ export const getStaffProfile = async (req, res) => {
 
         const [staff] = await pool.query(
             `SELECT su.id, su.full_name, su.email, su.phone, su.profile_image, su.is_active, su.created_at,
+                    su.bank_name, su.account_number, su.account_name,
                     sr.role_name as role
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
@@ -322,7 +372,7 @@ export const logoutStaff = async (req, res) => {
 export const updateStaffProfile = async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { full_name, email, phone } = req.body;
+        const { full_name, email, phone, bank_name, account_number, account_name } = req.body;
 
         if (userId === 0) {
             return res.status(403).json({ message: 'Hardcoded admin account cannot be updated in database. Please register a proper admin account.' });
@@ -353,6 +403,18 @@ export const updateStaffProfile = async (req, res) => {
             updateFields.push('profile_image = ?');
             queryParams.push(profileImage);
         }
+        if (bank_name !== undefined) {
+            updateFields.push('bank_name = ?');
+            queryParams.push(bank_name || null);
+        }
+        if (account_number !== undefined) {
+            updateFields.push('account_number = ?');
+            queryParams.push(account_number || null);
+        }
+        if (account_name !== undefined) {
+            updateFields.push('account_name = ?');
+            queryParams.push(account_name || null);
+        }
 
         if (updateFields.length === 0) {
             return res.status(400).json({ message: 'No fields provided for update' });
@@ -367,7 +429,9 @@ export const updateStaffProfile = async (req, res) => {
 
         // Fetch updated profile
         const [updated] = await pool.query(
-            `SELECT su.id, su.full_name, su.email, su.phone, su.profile_image, sr.role_name as role
+            `SELECT su.id, su.full_name, su.email, su.phone, su.profile_image, 
+                    su.bank_name, su.account_number, su.account_name,
+                    sr.role_name as role
              FROM staff_users su
              JOIN staff_roles sr ON su.role_id = sr.id
              WHERE su.id = ?`,

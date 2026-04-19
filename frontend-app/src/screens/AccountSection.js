@@ -14,12 +14,16 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
+import { validateEmail, validatePhone, validateFullName, validateBankAccount } from '../utils/validation';
 
 const AccountSection = () => {
     const { user, token, logout } = useAuth();
     const [fullName, setFullName] = useState(user?.full_name || user?.name || '');
     const [email, setEmail] = useState(user?.email || '');
     const [phone, setPhone] = useState(user?.phone || '');
+    const [bankName, setBankName] = useState(user?.bank_name || '');
+    const [accountNumber, setAccountNumber] = useState(user?.account_number || '');
+    const [accountName, setAccountName] = useState(user?.account_name || '');
     const [profileImage, setProfileImage] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
@@ -44,8 +48,21 @@ const AccountSection = () => {
     };
 
     const handleUpdateProfile = async () => {
-        if (!fullName.trim() || !email.trim()) {
-            Alert.alert('Error', 'Name and Email are required.');
+        if (!validateFullName(fullName)) {
+            Alert.alert('Invalid Name', 'Full name must be at least 3 characters');
+            return;
+        }
+        const emailCheck = validateEmail(email);
+        if (!emailCheck.isValid) {
+            Alert.alert('Invalid Email', emailCheck.error);
+            return;
+        }
+        if (phone && !validatePhone(phone)) {
+            Alert.alert('Invalid Phone', 'Please enter a valid Sri Lankan phone number');
+            return;
+        }
+        if (accountNumber && !validateBankAccount(accountNumber)) {
+            Alert.alert('Invalid Account', 'Account number must be 8-15 digits');
             return;
         }
 
@@ -55,6 +72,9 @@ const AccountSection = () => {
             formData.append('full_name', fullName.trim());
             formData.append('email', email.trim());
             formData.append('phone', phone.trim());
+            formData.append('bank_name', bankName.trim());
+            formData.append('account_number', accountNumber.trim());
+            formData.append('account_name', accountName.trim());
 
             if (profileImage) {
                 const uri = profileImage.uri;
@@ -191,6 +211,49 @@ const AccountSection = () => {
                                 onChangeText={setPhone}
                                 keyboardType="phone-pad"
                                 placeholder="Your phone number"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.divider} />
+                    <Text style={[styles.sectionTitle, { fontSize: 16, marginBottom: 15 }]}>🏦 Bank Settlement Details</Text>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Bank Name</Text>
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputIcon}>🏛️</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={bankName}
+                                onChangeText={setBankName}
+                                placeholder="e.g. BOC, Commercial Bank"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Account Name</Text>
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputIcon}>📝</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={accountName}
+                                onChangeText={setAccountName}
+                                placeholder="Name as per bank records"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Account Number</Text>
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputIcon}>🔢</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={accountNumber}
+                                onChangeText={setAccountNumber}
+                                keyboardType="numeric"
+                                placeholder="8-15 digits"
                             />
                         </View>
                     </View>

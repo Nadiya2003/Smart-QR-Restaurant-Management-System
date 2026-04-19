@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
 import { useOrder } from '../hooks/useOrder';
 import { api } from '../utils/api';
+import { validateEmail } from '../utils/validation';
 
 export function LoginPage({ onNavigate }) {
   const [email, setEmail] = useState('');
@@ -15,6 +16,13 @@ export function LoginPage({ onNavigate }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setError(emailCheck.error);
+      return;
+    }
+
     setLoading(true);
     try {
       const loggedInUser = await login(email, password);
@@ -95,7 +103,7 @@ export function LoginPage({ onNavigate }) {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email Address
@@ -107,6 +115,7 @@ export function LoginPage({ onNavigate }) {
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
               placeholder="you@example.com"
               required
+              autoComplete="off"
             />
           </div>
 
@@ -130,6 +139,7 @@ export function LoginPage({ onNavigate }) {
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
               placeholder="••••••••"
               required
+              autoComplete="current-password"
             />
           </div>
 

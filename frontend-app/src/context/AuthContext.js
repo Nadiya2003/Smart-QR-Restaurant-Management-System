@@ -73,6 +73,8 @@ export const AuthProvider = ({ children }) => {
                 await AsyncStorage.setItem("user", JSON.stringify(userData));
                 await AsyncStorage.setItem("token", staffData.token);
                 return { success: true, role: userData.role };
+            } else if (staffResponse.status === 403 && staffData.is_unverified) {
+                return { success: false, is_unverified: true, email: staffData.email, message: staffData.message };
             }
         } catch (staffErr) {
             console.warn("Staff login attempt failed (network):", staffErr.message);
@@ -98,6 +100,8 @@ export const AuthProvider = ({ children }) => {
                 await AsyncStorage.setItem("user", JSON.stringify(userData));
                 await AsyncStorage.setItem("token", unifiedData.token);
                 return { success: true, role: userData.role };
+            } else if (unifiedResponse.status === 403 && unifiedData.code === 'UNVERIFIED') {
+                return { success: false, is_unverified: true, email: unifiedData.email, message: unifiedData.message };
             }
         } catch (unifiedErr) {
             console.warn("Unified login attempt failed (network):", unifiedErr.message);
@@ -112,7 +116,13 @@ export const AuthProvider = ({ children }) => {
             (unifiedData?.message) ||
             (staffData?.message) ||
             'Invalid credentials. Please check your username/email and password.';
-        return { success: false, message: errorMsg };
+            
+        return { 
+            success: false, 
+            message: errorMsg,
+            is_unverified: (unifiedData?.code === 'UNVERIFIED') || (staffData?.is_unverified),
+            email: unifiedData?.email || staffData?.email
+        };
     };
 
     const logout = async () => {
@@ -182,6 +192,31 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const verifyEmail = async (email, otp) => {
+        // Try staff endpoint first
+        try {
+            const res = await fetch(`${apiConfig.API_BASE_URL}/api/staff/verify-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, otp }),
+            });
+            const data = await res.json();
+            if (res.ok) return { success: true, message: data.message };
+            
+            // If staff failed, try customer auth
+            const customerRes = await fetch(`${apiConfig.API_BASE_URL}/api/auth/verify-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, otp }),
+            });
+            const customerData = await customerRes.json();
+            return { success: customerRes.ok, message: customerData.message };
+
+        } catch (error) {
+            return { success: false, message: 'Network error' };
+        }
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -192,6 +227,7 @@ export const AuthProvider = ({ children }) => {
             forgotPassword,
             verifyOTP,
             resetPassword,
+            verifyEmail,
             isAuthenticated: !!user
         }}>
             {children}

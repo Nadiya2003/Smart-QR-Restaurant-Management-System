@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import apiConfig from '../config/api';
+import { validateEmail, validatePassword, validatePhone, validateFullName } from '../utils/validation';
 
 const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
     const [fullName, setFullName] = useState('');
@@ -23,6 +24,9 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
     const [phone, setPhone] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [bankName, setBankName] = useState('');
+    const [accountNumber, setAccountNumber] = useState('');
+    const [accountName, setAccountName] = useState('');
     const [selectedRole, setSelectedRole] = useState(null);
     const [roles, setRoles] = useState([]);
     const [showPassword, setShowPassword] = useState(false);
@@ -113,30 +117,36 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
 
     const handleRegister = async () => {
         // Validation
-        if (!fullName.trim()) {
-            setError('Please enter your full name');
+        if (!validateFullName(fullName)) {
+            setError('Full name must be at least 3 characters');
             return;
         }
-        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            setError('Please enter a valid email address');
+        const emailCheck = validateEmail(email);
+        if (!emailCheck.isValid) {
+            setError(emailCheck.error);
             return;
         }
-        if (phone.trim() && !/^(?:\+94|0)7[0-9]{8}$/.test(phone.trim())) {
+        if (phone.trim() && !validatePhone(phone)) {
             setError('Please enter a valid Sri Lankan phone number (e.g., 07XXXXXXXX)');
             return;
         }
-        if (!password.trim()) {
-            setError('Please enter a password');
+        
+        const pwdCheck = validatePassword(password);
+        if (!pwdCheck.isValid) {
+            setError(pwdCheck.error);
             return;
         }
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
-            return;
-        }
+
         if (password !== confirmPassword) {
             setError('Passwords do not match');
             return;
         }
+
+        if (accountNumber && !validateBankAccount(accountNumber)) {
+            setError('Account number must be 8-15 digits');
+            return;
+        }
+
         if (!selectedRole) {
             setError('Please select a role');
             return;
@@ -157,6 +167,9 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
             formData.append('phone', phone.trim() || '');
             formData.append('password', password);
             formData.append('role', selectedRole.role_name);
+            formData.append('bank_name', bankName);
+            formData.append('account_number', accountNumber);
+            formData.append('account_name', accountName);
 
             if (profileImage) {
                 const uri = profileImage.uri;
@@ -371,6 +384,42 @@ const Register = ({ onRegisterSuccess, onSwitchToLogin }) => {
                                     secureTextEntry={!showPassword}
                                     autoCapitalize="none"
                                     editable={!isLoading}
+                                />
+                            </View>
+                        </View>
+
+                        <View style={{ marginVertical: 10 }}>
+                            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#6B7280', marginBottom: 10 }}>🏦 Bank Details (Optional)</Text>
+                            
+                            <View style={styles.inputGroup}>
+                                <TextInput
+                                    placeholder="Bank Name"
+                                    placeholderTextColor="#9CA3AF"
+                                    value={bankName}
+                                    onChangeText={setBankName}
+                                    editable={!isLoading}
+                                    style={[styles.inputContainer, { paddingHorizontal: 15, height: 45 }]}
+                                />
+                            </View>
+                            <View style={styles.inputGroup}>
+                                <TextInput
+                                    placeholder="Account Name"
+                                    placeholderTextColor="#9CA3AF"
+                                    value={accountName}
+                                    onChangeText={setAccountName}
+                                    editable={!isLoading}
+                                    style={[styles.inputContainer, { paddingHorizontal: 15, height: 45 }]}
+                                />
+                            </View>
+                            <View style={styles.inputGroup}>
+                                <TextInput
+                                    placeholder="Account Number (8-15 digits)"
+                                    placeholderTextColor="#9CA3AF"
+                                    value={accountNumber}
+                                    onChangeText={setAccountNumber}
+                                    keyboardType="numeric"
+                                    editable={!isLoading}
+                                    style={[styles.inputContainer, { paddingHorizontal: 15, height: 45 }]}
                                 />
                             </View>
                         </View>
