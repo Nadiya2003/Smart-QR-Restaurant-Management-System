@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
 import { useOrder } from '../hooks/useOrder';
 import { api } from '../utils/api';
+import { validateEmail, validatePassword, validateFullName } from '../utils/validation';
 
 export function RegisterPage({ onNavigate }) {
   const [name, setName] = useState('');
@@ -18,6 +19,25 @@ export function RegisterPage({ onNavigate }) {
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validation
+    if (!validateFullName(name)) {
+      setError('Full name must be at least 3 characters');
+      return;
+    }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setError(emailCheck.error);
+      return;
+    }
+
+    const pwdCheck = validatePassword(password);
+    if (!pwdCheck.isValid) {
+      setError(pwdCheck.error);
+      return;
+    }
+
     setLoading(true);
     try {
       const newUser = await register({ name, email, password });
@@ -67,7 +87,7 @@ export function RegisterPage({ onNavigate }) {
           </div>
         )}
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-4" autoComplete="off">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Full Name
@@ -79,6 +99,7 @@ export function RegisterPage({ onNavigate }) {
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
               placeholder="Amaya Perera"
               required
+              autoComplete="off"
             />
           </div>
 
@@ -93,6 +114,7 @@ export function RegisterPage({ onNavigate }) {
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
               placeholder="you@example.com"
               required
+              autoComplete="off"
             />
           </div>
 
@@ -107,6 +129,7 @@ export function RegisterPage({ onNavigate }) {
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
               placeholder="••••••••"
               required
+              autoComplete="new-password"
             />
           </div>
 

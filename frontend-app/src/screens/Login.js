@@ -12,6 +12,7 @@ import {
     Image
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { validateEmail } from '../utils/validation';
 
 const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
     const [username, setUsername] = useState('');
@@ -25,6 +26,17 @@ const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
         if (!username.trim() || !password.trim()) {
             setError('Please enter username and password');
             return;
+        }
+        setError('');
+
+        // If it looks like an email, validate its format. 
+        // Otherwise, allow it as a username.
+        if (username.includes('@')) {
+            const emailCheck = validateEmail(username.trim());
+            if (!emailCheck.isValid) {
+                setError(emailCheck.error);
+                return;
+            }
         }
 
         setError('');
@@ -81,6 +93,7 @@ const Login = ({ onLoginSuccess, onSwitchToRegister, onForgotPassword }) => {
                                 value={username}
                                 onChangeText={setUsername}
                                 autoCapitalize="none"
+                                autoCorrect={false}
                                 editable={!isLoading}
                             />
                         </View>

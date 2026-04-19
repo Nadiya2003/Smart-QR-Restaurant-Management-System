@@ -4,7 +4,27 @@ import db from '../config/db.js';
 import crypto from 'crypto';
 import transporter from '../config/mailer.js';
 
-// Helper to send email
+const sendVerificationEmail = async (email, otp) => {
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Verify Your Email - Smart QR Restaurant',
+        html: `
+            <h1>Welcome to Smart QR Restaurant!</h1>
+            <p>Your verification code is: <strong>${otp}</strong></p>
+            <p>Please enter this code in the app to verify your email address. It expires in 15 minutes.</p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        return true;
+    } catch (error) {
+        console.error('Verification email failed:', error);
+        return false;
+    }
+};
+
 const sendOTPEmail = async (email, otp) => {
     const mailOptions = {
         from: process.env.EMAIL_USER,
@@ -41,12 +61,12 @@ export const register = async (req, res) => {
         const password_hash = await bcrypt.hash(password, salt);
 
         const [result] = await db.query(
-            'INSERT INTO online_customers (name, email, phone, password) VALUES (?, ?, ?, ?)',
+            'INSERT INTO online_customers (name, email, phone, password, is_verified) VALUES (?, ?, ?, ?, 1)',
             [name, email, phone, password_hash]
         );
 
         const userId = result.insertId;
-
+        
         // Auto login after registration
         const token = jwt.sign({ userId: userId, email: email, name: name, phone: phone }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
 
@@ -196,5 +216,30 @@ export const resetPassword = async (req, res) => {
     } catch (error) {
         console.error('Reset password error:', error);
         res.status(500).json({ message: 'Error resetting password', error: error.message });
+    }
+};
+
+export const verifyEmail = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) return res.status(400).json({ message: 'Email and OTP required' });
+
+        const [users] = await db.query(
+            'SELECT id FROM online_customers WHERE email = ? AND reset_otp = ? AND reset_otp_expiry > NOW()',
+            [email, otp]
+        );
+
+        if (users.length === 0) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        await db.query(
+            'UPDATE online_customers SET is_verified = 1, reset_otp = NULL, reset_otp_expiry = NULL WHERE id = ?',
+            [users[0].id]
+        );
+
+        res.json({ message: 'Email verified successfully. You can now login.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };

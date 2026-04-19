@@ -5,6 +5,7 @@ import Button from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import config from '../config';
 import { io } from 'socket.io-client';
+import { validatePhone } from '../utils/validation';
 
 import AccountAvatar from '../assets/default-customer-avatar.png';
 
@@ -98,6 +99,12 @@ function Account() {
 
     const handleUpdateProfile = async (e) => {
         e.preventDefault();
+        
+        if (editForm.phone && !validatePhone(editForm.phone)) {
+            alert('Invalid phone number format. Please use a valid Sri Lankan number.');
+            return;
+        }
+
         setUpdateLoading(true);
         try {
             const token = sessionStorage.getItem('token');

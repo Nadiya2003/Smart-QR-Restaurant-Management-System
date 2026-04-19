@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import GlassCard from '../components/GlassCard';
 import Button from '../components/Button';
 import config from '../config';
+import { validateEmail, validatePassword, validatePhone } from '../utils/validation';
 
 function Auth() {
     const navigate = useNavigate();
@@ -46,13 +47,26 @@ function Auth() {
     };
 
     // Validations
-    const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    const validatePhone = (phone) => /^(?:\+94|0)?7[0-9]{8}$/.test(phone);
-    const validatePassword = (password) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
+    // Local helper to map utility response to showAlert
+    const checkEmail = (email) => {
+        const check = validateEmail(email);
+        if (!check.isValid) showAlert('error', check.error);
+        return check.isValid;
+    };
+
+    const checkPassword = (password) => {
+        const check = validatePassword(password);
+        if (!check.isValid) showAlert('error', check.error);
+        return check.isValid;
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        if (!validateEmail(formData.email)) return showAlert('error', 'Invalid email');
+        
+        // If it looks like an email, validate it. Otherwise allow username.
+        if (formData.email.includes('@')) {
+            if (!checkEmail(formData.email)) return;
+        }
 
         setLoading(true);
         try {
@@ -87,9 +101,9 @@ function Auth() {
     const handleRegister = async (e) => {
         e.preventDefault();
         if (!formData.name) return showAlert('error', 'Name is required');
-        if (!validatePhone(formData.phone)) return showAlert('error', 'Invalid phone number');
-        if (!validateEmail(formData.email)) return showAlert('error', 'Invalid email');
-        if (!validatePassword(formData.password)) return showAlert('error', 'Password must be 8+ characters with uppercase, lowercase, number, and symbol');
+        if (!validatePhone(formData.phone)) return showAlert('error', 'Invalid phone number (must be Sri Lankan format)');
+        if (!checkEmail(formData.email)) return;
+        if (!checkPassword(formData.password)) return;
         if (formData.password !== formData.confirmPassword) return showAlert('error', 'Passwords do not match');
 
         setLoading(true);
@@ -132,7 +146,7 @@ function Auth() {
 
     const handleForgot = async (e) => {
         e.preventDefault();
-        if (!validateEmail(formData.email)) return showAlert('error', 'Invalid email');
+        if (!checkEmail(formData.email)) return;
 
         setLoading(true);
         try {
@@ -158,7 +172,7 @@ function Auth() {
     const handleReset = async (e) => {
         e.preventDefault();
         if (!formData.otp) return showAlert('error', 'OTP is required');
-        if (!validatePassword(formData.password)) return showAlert('error', 'Password too short');
+        if (!checkPassword(formData.password)) return;
         if (formData.password !== formData.confirmPassword) return showAlert('error', 'Passwords match fail');
 
         setLoading(true);
@@ -248,8 +262,8 @@ function Auth() {
 
                 {/* FORGOT */}
                 {mode === 'forgot' && (
-                    <form onSubmit={handleForgot} className="space-y-4">
-                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required />
+                    <form onSubmit={handleForgot} className="space-y-4" autoComplete="off">
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-glass w-full" placeholder="Email Address" required autoComplete="off" />
                         <Button type="submit" className="w-full mt-4" disabled={loading}>{loading ? 'Sending OTP...' : 'Send OTP'}</Button>
                         <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 hover:text-white mt-4">Back to Login</button>
                     </form>
@@ -257,10 +271,10 @@ function Auth() {
 
                 {/* RESET */}
                 {mode === 'reset' && (
-                    <form onSubmit={handleReset} className="space-y-4">
-                        <input type="text" name="otp" value={formData.otp} onChange={handleChange} className="input-glass w-full" placeholder="6-Digit OTP" required />
-                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="New Password" required />
-                        <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input-glass w-full" placeholder="Confirm New Password" required />
+                    <form onSubmit={handleReset} className="space-y-4" autoComplete="off">
+                        <input type="text" name="otp" value={formData.otp} onChange={handleChange} className="input-glass w-full" placeholder="6-Digit OTP" required autoComplete="off" />
+                        <input type="password" name="password" value={formData.password} onChange={handleChange} className="input-glass w-full" placeholder="New Password" required autoComplete="new-password" />
+                        <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input-glass w-full" placeholder="Confirm New Password" required autoComplete="new-password" />
                         <Button type="submit" className="w-full mt-4" disabled={loading}>{loading ? 'Resetting...' : 'Reset Password'}</Button>
                         <button type="button" onClick={() => setMode('forgot')} className="w-full text-center text-sm text-gray-400 hover:text-white mt-4">Resend OTP</button>
                     </form>

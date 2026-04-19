@@ -11,6 +11,7 @@ import {
     ActivityIndicator
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { validatePassword } from '../utils/validation';
 
 const ResetPassword = ({ email, otp, onPasswordReset, onBack }) => {
     const [newPassword, setNewPassword] = useState('');
@@ -26,8 +27,9 @@ const ResetPassword = ({ email, otp, onPasswordReset, onBack }) => {
             return;
         }
 
-        if (newPassword.length < 6) {
-            setError('Password must be at least 6 characters');
+        const pwdCheck = validatePassword(newPassword);
+        if (!pwdCheck.isValid) {
+            setError(pwdCheck.error);
             return;
         }
 

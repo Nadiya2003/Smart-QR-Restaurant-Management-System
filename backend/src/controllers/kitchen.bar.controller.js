@@ -6,7 +6,7 @@ import pool from '../config/db.js';
  */
 export const getKitchenOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'PAYMENT_COMPLETED', 'PAID'];
 
         // 1. Dine-in Orders from 'orders' table
         const [dineInRows] = await pool.query(`
@@ -197,7 +197,7 @@ export const updateOrderItemStatus = async (req, res) => {
  */
 export const getBarOrders = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'PAYMENT_COMPLETED', 'PAID'];
         
         const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
@@ -441,7 +441,7 @@ export const updateKitchenOrderStatus = async (req, res) => {
 
 export const getKitchenHistory = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE', 'PAYMENT_COMPLETED', 'PAID'];
         const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, COALESCE(os.name, 'COMPLETED') AS status,
                    COALESCE(c.name, o.customer_name, 'Guest') AS customer_name, 'DINE-IN' AS order_type_name
@@ -502,7 +502,7 @@ export const getKitchenHistory = async (req, res) => {
 
 export const getBarHistory = async (req, res) => {
     try {
-        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE'];
+        const terminalStatuses = ['COMPLETED', 'CANCELLED', 'FINISHED', 'REJECTED', 'SERVED', 'READY_TO_SERVE', 'PAYMENT_COMPLETED', 'PAID'];
         const [dineInRows] = await pool.query(`
             SELECT o.id, o.total_price, o.created_at, rt.table_number, os.name as status,
                    COALESCE(c.name, o.customer_name, 'Guest') as customer_name, 'DINE-IN' as order_type_name

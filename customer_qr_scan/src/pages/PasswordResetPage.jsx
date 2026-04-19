@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Header } from '../components/layout/Header';
 import { Button } from '../components/ui/Button';
 import { api } from '../utils/api';
+import { validatePassword } from '../utils/validation';
 
 export function PasswordResetPage({ onNavigate }) {
   const [step, setStep] = useState(1);
@@ -45,6 +46,13 @@ export function PasswordResetPage({ onNavigate }) {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setError('');
+
+    const pwdCheck = validatePassword(newPassword);
+    if (!pwdCheck.isValid) {
+      setError(pwdCheck.error);
+      return;
+    }
+
     setLoading(true);
     try {
       await api.post('/auth/reset-password', { email, otp, newPassword });

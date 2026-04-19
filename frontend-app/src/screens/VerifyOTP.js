@@ -12,11 +12,11 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 
-const VerifyOTP = ({ email, onVerified, onBack }) => {
+const VerifyOTP = ({ email, onVerified, onBack, mode = 'reset' }) => {
     const [otp, setOtp] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const { verifyOTP } = useAuth();
+    const { verifyOTP, verifyEmail } = useAuth();
 
     const handleVerify = async () => {
         if (!otp.trim()) {
@@ -33,12 +33,15 @@ const VerifyOTP = ({ email, onVerified, onBack }) => {
         setIsLoading(true);
 
         try {
-            const res = await verifyOTP(email, otp.trim());
+            const res = mode === 'verify' 
+                ? await verifyEmail(email, otp.trim())
+                : await verifyOTP(email, otp.trim());
+                
             if (res.success) {
                 onVerified(otp.trim());
             } else {
                 setError(res.message);
-                Alert.alert("Invalid OTP", res.message);
+                Alert.alert("Invalid code", res.message);
             }
         } catch (err) {
             setError('An error occurred during verification');
@@ -64,9 +67,9 @@ const VerifyOTP = ({ email, onVerified, onBack }) => {
             <View style={styles.card}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
-                        <Text style={{ fontSize: 32 }}>🛡️</Text>
+                        <Text style={{ fontSize: 32 }}>{mode === 'verify' ? '📧' : '🛡️'}</Text>
                     </View>
-                    <Text style={styles.headerTitle}>Verify OTP</Text>
+                    <Text style={styles.headerTitle}>{mode === 'verify' ? 'Verify Email' : 'Verify OTP'}</Text>
                     <Text style={styles.headerSubtitle}>Enter the 6-digit code sent to {email}</Text>
                 </View>
 

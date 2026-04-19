@@ -38,6 +38,13 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       return data;
     } catch (error) {
+      // Handle unverified email redirection
+      if (error.response?.status === 403 && error.response?.data?.code === 'UNVERIFIED') {
+        const unverifiedErr = new Error(error.response.data.message);
+        unverifiedErr.isUnverified = true;
+        unverifiedErr.email = error.response.data.email;
+        throw unverifiedErr;
+      }
       throw error;
     }
   };
@@ -58,11 +65,17 @@ export function AuthProvider({ children }) {
 
   const register = async (userData) => {
     try {
-      // Note: backend register might expect FormData if profile image is included
-      // But for simple registration we can send JSON
       const data = await api.post('/auth/register', userData);
-      localStorage.setItem('token', data.token);
-      setUser(data.user);
+      // Backend now sends OTP, no longer logs in automatically
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const verifyEmail = async (email, otp) => {
+    try {
+      const data = await api.post('/auth/verify-email', { email, otp });
       return data;
     } catch (error) {
       throw error;
@@ -70,7 +83,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, register, enterAsGuest }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, register, enterAsGuest, verifyEmail }}>
       {!loading && children}
     </AuthContext.Provider>
   );

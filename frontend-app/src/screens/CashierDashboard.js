@@ -9,6 +9,7 @@ import { createAudioPlayer } from 'expo-audio';
 import { useAuth } from '../context/AuthContext';
 import apiConfig from '../config/api';
 import AccountSection from './AccountSection';
+import { validateTimeFormat } from '../utils/validation';
 
 import { io } from 'socket.io-client';
 
@@ -58,8 +59,10 @@ const CashierDashboard = () => {
     const [resSubTab, setResSubTab] = useState('CONFIRMED');
 
     const setActiveTab = (tab) => {
-        if (tab === 'home' || tab === 'stats' || tab === 'reports') {
+        if (tab === 'home' || tab === 'reports') {
             setOrderSubTab('DINE-IN');
+        } else if (tab === 'stats') {
+            setOrderSubTab('HISTORY');
         }
         setActiveTabState(tab);
     };
@@ -407,6 +410,19 @@ const CashierDashboard = () => {
                 return;
             }
 
+            if (posType !== 'DINE_IN') {
+                if (!customerInfo.name.trim()) {
+                    Alert.alert('Missing Field', 'Please enter customer name');
+                    setLoading(false);
+                    return;
+                }
+                if (customerInfo.needed_time && !validateTimeFormat(customerInfo.needed_time)) {
+                    Alert.alert('Invalid Time', 'Please enter time in HH:MM AM/PM or 24h format');
+                    setLoading(false);
+                    return;
+                }
+            }
+
             const body = {
                 order_type: posType,
                 table_id: selectedTables.map(t => t.id).join(','), // Support multi-table
@@ -468,7 +484,7 @@ const CashierDashboard = () => {
                 fetchData();
             } else {
                 const err = await res.json();
-                Alert.alert('Error', err.message);
+                Alert.alert('Error', err.error || err.message || 'Settlement failed');
             }
         } catch (error) {
             Alert.alert('Error', 'Settlement failed');
@@ -875,7 +891,7 @@ const CashierDashboard = () => {
     const renderHome = () => {
         const filteredOrders = orders.filter(o => {
             // Type filter
-            const matchesType = orderSubTab === 'ALL' || (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab);
+            const matchesType = (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === (orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab);
 
             // Search filter
             const query = orderSearch.toLowerCase();
@@ -886,16 +902,16 @@ const CashierDashboard = () => {
                 (o.customer_name || '').toLowerCase().includes(query);
 
             // Terminal status filter (Home only shows active)
-            const isActive = !['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED'].includes((o.status_name || '').toUpperCase());
+            const isActive = !['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED'].includes((o.status_name || '').toUpperCase());
 
             return matchesType && matchesSearch && isActive;
         });
 
         const getCount = (type) => {
-            if (type === 'ALL') return orders.filter(o => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status_name || '').toUpperCase())).length;
+            const finishedStatuses = ['COMPLETED', 'CANCELLED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED', 'FINISHED'];
             return orders.filter(o =>
                 (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === type &&
-                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes((o.status_name || '').toUpperCase())
+                !finishedStatuses.includes((o.status_name || '').toUpperCase())
             ).length;
         };
 
@@ -903,7 +919,6 @@ const CashierDashboard = () => {
             <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 <View style={styles.subTabRow}>
                     {[
-                        { key: 'ALL', label: 'All', icon: '📋' },
                         { key: 'DINE-IN', label: 'Dine-In', icon: '🍽️' },
                         { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
                         { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }
@@ -1450,36 +1465,24 @@ const CashierDashboard = () => {
     };
 
     const renderStatsTab = () => {
-        const activeStatuses = ['PENDING', 'CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'PLACED', 'READY_TO_SERVE', 'SERVING'];
+        const historyStatuses = ['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED', 'PAYMENT_COMPLETED'];
 
         const filteredOrders = orders.filter(o => {
-            const type = (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase();
-            const target = orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab;
-            return type === target;
+            const statusUpper = (o.status_name || '').toUpperCase();
+            if (orderSubTab === 'HISTORY') {
+                return historyStatuses.includes(statusUpper);
+            } else {
+                const type = (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase();
+                const target = orderSubTab === 'DINE-IN' ? 'DINE-IN' : orderSubTab;
+                return type === target && !historyStatuses.includes(statusUpper);
+            }
         });
 
         return (
             <ScrollView style={styles.content}>
-                <View style={styles.subTabRow}>
-                    {[
-                        { key: 'DINE-IN', label: 'Dine-In', icon: '🍽️' },
-                        { key: 'TAKEAWAY', label: 'Takeaway', icon: '🥡' },
-                        { key: 'DELIVERY', label: 'Delivery', icon: '🚚' }
-                    ].map(tab => (
-                        <TouchableOpacity
-                            key={tab.key}
-                            style={[styles.subTab, orderSubTab === tab.key && styles.activeSubTab]}
-                            onPress={() => setOrderSubTab(tab.key)}
-                        >
-                            <Text style={[styles.subTabText, orderSubTab === tab.key && styles.activeSubTabText]}>
-                                {tab.icon} {tab.label}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
 
                 <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>{orderSubTab.replace('_', ' ')} Orders History</Text>
+                    <Text style={styles.sectionTitle}>All Orders History</Text>
                     <Text style={{ fontSize: 12, color: '#6B7280' }}>Reviewing {filteredOrders.length} records</Text>
                 </View>
 
@@ -1651,13 +1654,26 @@ const CashierDashboard = () => {
                             <View style={{ marginBottom: 20 }}>
                                 <Text style={styles.inputLabel}>ITEMIZED BILL</Text>
                                 <View style={styles.itemsBoxFlat}>
-                                    {selectedOrder.items.map((item, idx) => (
-                                        <View key={idx} style={styles.billItemRow}>
-                                            <Text style={styles.billItemQty}>{item.quantity}x</Text>
-                                            <Text style={styles.billItemName}>{item.name}</Text>
-                                            <Text style={styles.billItemPrice}>Rs. {(item.price * item.quantity).toLocaleString()}</Text>
-                                        </View>
-                                    ))}
+                                    {(() => {
+                                        let items = [];
+                                        try {
+                                            items = Array.isArray(selectedOrder.items) ? selectedOrder.items : JSON.parse(selectedOrder.items || '[]');
+                                        } catch (e) {
+                                            console.error("Error parsing items in settlement modal:", e);
+                                        }
+                                        
+                                        if (!items || items.length === 0) {
+                                            return <Text style={{ padding: 10, color: '#94A3B8', fontStyle: 'italic' }}>No items recorded</Text>;
+                                        }
+
+                                        return items.map((item, idx) => (
+                                            <View key={idx} style={styles.billItemRow}>
+                                                <Text style={styles.billItemQty}>{item.quantity}x</Text>
+                                                <Text style={styles.billItemName}>{item.name}</Text>
+                                                <Text style={styles.billItemPrice}>Rs. {(item.price * item.quantity).toLocaleString()}</Text>
+                                            </View>
+                                        ));
+                                    })()}
                                     <View style={styles.billTotalRow}>
                                         <Text style={styles.billTotalLabel}>Final Total</Text>
                                         <Text style={styles.billTotalValue}>Rs. {selectedOrder.total_price.toLocaleString()}</Text>
@@ -1773,7 +1789,7 @@ const CashierDashboard = () => {
     };
 
     const renderPastOrdersModal = () => {
-        const terminalOrders = orders.filter(o => ['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED'].includes((o.status_name || '').toUpperCase()));
+        const terminalOrders = orders.filter(o => ['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED'].includes((o.status_name || '').toUpperCase()));
 
         return (
             <Modal visible={showPastOrdersModal} transparent animationType="slide">
