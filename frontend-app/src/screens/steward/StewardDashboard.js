@@ -1273,7 +1273,7 @@ const StewardDashboard = () => {
                         <View key={res.id} style={styles.resvCard}>
                             <View style={styles.resvTimeBox}>
                                 <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
-                                <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
+                                <Text style={styles.resvDate}>{((typeof res.reservation_date === 'string' ? res.reservation_date : (res.reservation_date ? res.reservation_date.toISOString() : '')).split('T')[0] || '').split('-').reverse().join('/')}</Text>
                             </View>
                             <View style={styles.resvInfo}>
                                 <Text style={styles.resvCust}>{res.customer_name}</Text>
@@ -1294,7 +1294,7 @@ const StewardDashboard = () => {
                             <View key={res.id} style={[styles.resvCard, { opacity: 0.6 }]}>
                                 <View style={styles.resvTimeBox}>
                                     <Text style={styles.resvTime}>{res.reservation_time || res.time}</Text>
-                                    <Text style={styles.resvDate}>{new Date(res.reservation_date).toLocaleDateString()}</Text>
+                                    <Text style={styles.resvDate}>{((typeof res.reservation_date === 'string' ? res.reservation_date : (res.reservation_date ? res.reservation_date.toISOString() : '')).split('T')[0] || '').split('-').reverse().join('/')}</Text>
                                 </View>
                                 <View style={styles.resvInfo}>
                                     <Text style={styles.resvCust}>{res.customer_name}</Text>

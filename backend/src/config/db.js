@@ -11,7 +11,11 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    multipleStatements: true
+    multipleStatements: true,
+    // Fix: Return DATE columns as plain "YYYY-MM-DD" strings instead of JavaScript Date objects.
+    // Without this, MySQL2 returns UTC midnight Date objects which display as the previous day
+    // in UTC+5:30 (Sri Lanka timezone).
+    dateStrings: true
 });
 
 // Test connection

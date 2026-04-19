@@ -1828,7 +1828,9 @@ const ManagerDashboard = () => {
 
             let resDateTime = new Date();
             if (resDateStr && resTimeStr) {
-                const datePart = new Date(resDateStr).toISOString().split('T')[0];
+                // Fix: Use string split to avoid UTC-midnight timezone shift (date-only strings
+                // parsed by new Date() are treated as UTC, causing off-by-one day in UTC+5:30)
+                const datePart = (typeof resDateStr === 'string' ? resDateStr : resDateStr.toISOString()).split('T')[0];
                 resDateTime = new Date(`${datePart}T${resTimeStr}`);
             }
 
@@ -1843,14 +1845,18 @@ const ManagerDashboard = () => {
         });
 
         confirmed.sort((a, b) => {
-            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
-            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            const rawA = a.reservation_date || a.date || '';
+            const rawB = b.reservation_date || b.date || '';
+            const dateA = new Date(`${(typeof rawA === 'string' ? rawA : rawA.toISOString()).split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${(typeof rawB === 'string' ? rawB : rawB.toISOString()).split('T')[0]}T${b.reservation_time || b.time}`);
             return dateA - dateB;
         });
 
         history.sort((a, b) => {
-            const dateA = new Date(`${new Date(a.reservation_date || a.date).toISOString().split('T')[0]}T${a.reservation_time || a.time}`);
-            const dateB = new Date(`${new Date(b.reservation_date || b.date).toISOString().split('T')[0]}T${b.reservation_time || b.time}`);
+            const rawA = a.reservation_date || a.date || '';
+            const rawB = b.reservation_date || b.date || '';
+            const dateA = new Date(`${(typeof rawA === 'string' ? rawA : rawA.toISOString()).split('T')[0]}T${a.reservation_time || a.time}`);
+            const dateB = new Date(`${(typeof rawB === 'string' ? rawB : rawB.toISOString()).split('T')[0]}T${b.reservation_time || b.time}`);
             return dateB - dateA;
         });
 
@@ -1952,7 +1958,16 @@ const ManagerDashboard = () => {
                         </View>
                         <Text style={styles.listCardSub}>{res.guest_count || res.party_size || 1} Guests • {res.mobile_number || 'N/A'}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {res.reservation_date ? (res.reservation_date.includes('T') ? res.reservation_date.split('T')[0] : res.reservation_date) : 'N/A'}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6' }}>📅 {
+                                (() => {
+                                    const d = res.reservation_date || res.date;
+                                    if (!d) return 'N/A';
+                                    // dateStrings:true makes it a plain "YYYY-MM-DD" string from DB.
+                                    // Fallback: if it's a Date/ISO string, split on 'T'.
+                                    const str = (typeof d === 'string') ? d : d.toISOString();
+                                    return str.split('T')[0];
+                                })()
+                            }</Text>
                             <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginLeft: 10 }}>🕒 {res.reservation_time || res.time}</Text>
                         </View>
                         <Text style={[styles.listCardSub, { marginTop: 4, fontStyle: 'italic' }]}>
