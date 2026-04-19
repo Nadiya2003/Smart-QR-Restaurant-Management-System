@@ -18,7 +18,17 @@ export function StewardSelectionPage({
 
   useEffect(() => {
     fetchStewards();
-  }, []);
+    
+    // Auto-refresh every 10 seconds if no stewards are available to help "wait" for duty
+    const interval = setInterval(() => {
+      const activeCount = stewards.filter(s => s.status !== 'offline').length;
+      if (activeCount === 0 || stewards.length === 0) {
+        fetchStewards();
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [stewards.length]); // Re-run effect setup if stewards data structure changes
 
   const fetchStewards = async () => {
     try {
@@ -99,6 +109,27 @@ export function StewardSelectionPage({
           </button>
         </div>
 
+        {/* Warning banner if no one is on duty */}
+        {stewards.length > 0 && stewards.filter(s => s.status !== 'offline').length === 0 && (
+          <div className="mb-6 bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl animate-pulse">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.41-1.19 2.123-1.19 2.533 0l.991 2.871a1.539 1.539 0 001.462 1.062h3.018c1.261 0 1.787 1.613.768 2.348l-2.441 1.773a1.539 1.539 0 00-.558 1.714l.991 2.871c.41 1.19-1.014 2.227-2.033 1.492l-2.441-1.773a1.539 1.539 0 00-1.714 0l-2.441 1.773c-1.019.735-2.443-.302-2.033-1.492l.991-2.871a1.539 1.539 0 00-.558-1.714l-2.441-1.773c-1.019-.735-.493-2.348.768-2.348h3.018a1.539 1.539 0 001.462-1.062l.991-2.871z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-amber-700 font-bold uppercase tracking-wider">
+                  Service Warning: No Stewards Currently on Duty
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  You can see our staff below, but you must wait for a steward to check in before starting your order.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3 mb-8">
           {loading ? (
             Array(5).fill(0).map((_, i) => <StewardSkeleton key={i} />)
@@ -113,7 +144,7 @@ export function StewardSelectionPage({
             </div>
           ) : stewards.length === 0 ? (
             <div className="bg-white p-8 rounded-2xl text-center border border-dashed border-gray-200">
-              <p className="text-gray-500">No stewards are currently available. Our team will assist you!</p>
+              <p className="text-gray-500">No stewards records found. Please contact management.</p>
             </div>
           ) : (
             stewards.map((steward) => (
