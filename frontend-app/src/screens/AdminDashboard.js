@@ -10,6 +10,9 @@ import AccountSection from './AccountSection';
 
 const screenWidth = Dimensions.get('window').width;
 
+// Round a price up to the nearest 10 (e.g. Rs. 1153 → Rs. 1160)
+const roundUpToTen = (n) => Math.ceil((n || 0) / 10) * 10;
+
 // ─── Timer Component ──────────────────────────────────────────────
 const OrderTimer = ({ createdAt }) => {
     const [timeLeft, setTimeLeft] = useState(20 * 60);
@@ -1085,7 +1088,7 @@ const AdminDashboard = () => {
                                         <Text style={styles.listCardSub}>📍 {order.address}</Text>
                                     ) : null}
                                     <Text style={styles.listCardSub}>Items: {order.items_summary || (order.items && Array.isArray(order.items) ? order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') : 'Check Details')}</Text>
-                                    <Text style={styles.listCardSub}>Total: Rs. {Number(order.total_price || 0).toLocaleString()} ({order.payment_method || (order.payment_status === 'paid' ? 'Paid Online' : 'Unpaid')})</Text>
+                                    <Text style={styles.listCardSub}>Total: Rs. {roundUpToTen(order.total_price).toLocaleString()} ({order.payment_method || (order.payment_status === 'paid' ? 'Paid Online' : 'Unpaid')})</Text>
                                     <Text style={styles.listCardSub}>Time: {new Date(order.created_at).toLocaleTimeString()}</Text>
                                     
                                     <View style={styles.badgeRow}>
@@ -2477,7 +2480,7 @@ const AdminDashboard = () => {
                             <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', marginTop: 15, paddingTop: 10 }}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                     <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Amount</Text>
-                                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>Rs. {Number(selectedReviewOrder.total_price || 0).toLocaleString()}</Text>
+                                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>Rs. {roundUpToTen(selectedReviewOrder.total_price).toLocaleString()}</Text>
                                 </View>
                             </View>
                         </ScrollView>
@@ -3206,7 +3209,7 @@ const AdminDashboard = () => {
                             {newOrder.items.length > 0 && (
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
                                     <Text style={{ fontWeight: '700', fontSize: 15 }}>Total</Text>
-                                    <Text style={{ fontWeight: '700', fontSize: 15, color: '#10B981' }}>Rs. {totalPrice.toLocaleString()}</Text>
+                                    <Text style={{ fontWeight: '700', fontSize: 15, color: '#10B981' }}>Rs. {roundUpToTen(totalPrice).toLocaleString()}</Text>
                                 </View>
                             )}
                             <TouchableOpacity

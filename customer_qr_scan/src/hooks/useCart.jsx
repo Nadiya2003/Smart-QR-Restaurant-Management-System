@@ -48,7 +48,9 @@ export function CartProvider({ children }) {
 
   const serviceCharge = subtotal * 0.1; // 10%
   const tax = subtotal * 0.05; // 5%
-  const total = subtotal + serviceCharge + tax;
+  const rawTotal = subtotal + serviceCharge + tax;
+  // Round up to the nearest 10 (e.g. Rs. 1153 → Rs. 1160)
+  const total = Math.ceil(rawTotal / 10) * 10;
   const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (

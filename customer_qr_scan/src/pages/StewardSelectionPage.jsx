@@ -42,16 +42,16 @@ export function StewardSelectionPage({
   };
 
   const handleRandom = () => {
-    let pool = stewards.filter((s) => s.status !== 'offline');
-    if (pool.length === 0) pool = stewards;
-    
-    if (pool.length > 0) {
-      const randomSteward =
-        pool[Math.floor(Math.random() * pool.length)];
-      setLocalSelectedId(randomSteward.id);
-      setSteward(randomSteward.id);
-      onNavigate(tableNumber ? 'menu' : 'table-selection');
+    // Only pick from active or busy stewards — never from offline
+    const pool = stewards.filter((s) => s.status !== 'offline');
+    if (pool.length === 0) {
+      alert('All stewards are currently off duty. Please wait or refresh.');
+      return;
     }
+    const randomSteward = pool[Math.floor(Math.random() * pool.length)];
+    setLocalSelectedId(randomSteward.id);
+    setSteward(randomSteward.id);
+    onNavigate(tableNumber ? 'menu' : 'table-selection');
   };
 
   const StewardSkeleton = () => (
@@ -131,7 +131,7 @@ export function StewardSelectionPage({
           variant="secondary" 
           fullWidth 
           onClick={handleRandom}
-          disabled={loading || stewards.length === 0}
+          disabled={loading || stewards.filter(s => s.status !== 'offline').length === 0}
         >
           Pick a Random Steward
         </Button>

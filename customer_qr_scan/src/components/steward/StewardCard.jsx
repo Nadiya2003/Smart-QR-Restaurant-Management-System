@@ -12,12 +12,15 @@ export function StewardCard({
 
   return (
     <button
-      onClick={() => onSelect(steward)}
+      onClick={() => !isOffline && onSelect(steward)}
+      disabled={isOffline}
       className={`w-full text-left p-4 rounded-2xl border transition-all duration-300 relative overflow-hidden group ${
-        isSelected 
+        isOffline
+          ? 'opacity-50 grayscale cursor-not-allowed border-gray-100 bg-gray-50'
+          : isSelected 
           ? 'border-gray-900 ring-2 ring-gray-900/10 bg-gray-50/50 shadow-lg translate-y-[-2px]' 
-          : 'border-gray-100 bg-white hover:border-gray-200 shadow-sm'
-      } ${isOffline ? 'opacity-85 grayscale-[0.05]' : 'hover:shadow-md hover:translate-y-[-1px]'}`}
+          : 'border-gray-100 bg-white hover:border-gray-200 shadow-sm hover:shadow-md hover:translate-y-[-1px]'
+      }`}
     >
       <div className="flex items-center gap-4 relative z-10">
         <div className="relative">

@@ -15,6 +15,9 @@ import { io } from 'socket.io-client';
 
 const { width } = Dimensions.get('window');
 const HORIZ_PADDING = 20;
+
+// Round a price up to the nearest 10 (e.g. Rs. 1153 → Rs. 1160)
+const roundUpToTen = (n) => Math.ceil((n || 0) / 10) * 10;
 const CARD_GAP = 12;
 const CARD_WIDTH = (width - (HORIZ_PADDING * 2) - CARD_GAP) / 2;
 
@@ -1081,7 +1084,7 @@ const StewardDashboard = () => {
 
                             <View style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
                                 <Text style={{ color: '#6B7280', fontSize: 12 }}>Items Total</Text>
-                                <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {order.total_price}</Text>
+                                <Text style={{ fontWeight: 'bold', color: '#111827' }}>Rs. {roundUpToTen(order.total_price).toLocaleString()}</Text>
                             </View>
 
                             <View style={styles.actionRow}>
@@ -1215,7 +1218,7 @@ const StewardDashboard = () => {
                                     <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cart.reduce((s, i) => s + i.quantity, 0)}</Text></View>
                                     <Text style={styles.cartLabel}>View Order Cart</Text>
                                 </View>
-                                <Text style={styles.cartTotal}>Rs. {cart.reduce((s, i) => s + (i.price * i.quantity), 0)}</Text>
+                                <Text style={styles.cartTotal}>Rs. {roundUpToTen(cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toLocaleString()}</Text>
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -1329,7 +1332,7 @@ const StewardDashboard = () => {
                     </View>
                     <Text style={styles.historyDate}>{new Date(order.created_at).toLocaleDateString()} {new Date(order.created_at).toLocaleTimeString()}</Text>
                     <Text style={styles.historyStatus}>{order.status}</Text>
-                    <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
+                    <Text style={styles.historyTotal}>Rs. {roundUpToTen(order.total_price).toLocaleString()}</Text>
                 </TouchableOpacity>
             ))}
         </ScrollView>
@@ -1581,7 +1584,7 @@ const StewardDashboard = () => {
                     <View style={styles.cartFooter}>
                         <View style={styles.totalRow}>
                             <Text style={styles.totalLabel}>Total Amount</Text>
-                            <Text style={styles.totalValue}>Rs. {cart.reduce((s, i) => s + (i.price * i.quantity), 0)}</Text>
+                            <Text style={styles.totalValue}>Rs. {roundUpToTen(cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toLocaleString()}</Text>
                         </View>
                         <TouchableOpacity
                             style={[styles.finalOrderBtn, loading && { opacity: 0.7 }]}
@@ -1703,7 +1706,7 @@ const StewardDashboard = () => {
                     <View style={{ borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 15 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
                             <Text style={{ color: '#6B7280' }}>Items Total</Text>
-                            <Text style={{ fontWeight: 'bold' }}>Rs. {selectedHistoryOrder?.total_price}</Text>
+                            <Text style={{ fontWeight: 'bold' }}>Rs. {roundUpToTen(selectedHistoryOrder?.total_price).toLocaleString()}</Text>
                         </View>
                     </View>
                     <TouchableOpacity

@@ -15,6 +15,9 @@ import { io } from 'socket.io-client';
 
 const { width } = Dimensions.get('window');
 
+// Round a price up to the nearest 10 (e.g. Rs. 1153 → Rs. 1160)
+const roundUpToTen = (n) => Math.ceil((n || 0) / 10) * 10;
+
 // ─── Timer Component ──────────────────────────────────────────────
 const OrderTimer = ({ createdAt }) => {
     const [timeLeft, setTimeLeft] = useState(20 * 60);
@@ -149,7 +152,7 @@ const CashierDashboard = () => {
                     </Text>
                 </View>
                 <View style={styles.compactCardEnd}>
-                    <Text style={styles.compactTotal}>Rs.{order.total_price.toLocaleString()}</Text>
+                    <Text style={styles.compactTotal}>Rs.{roundUpToTen(order.total_price).toLocaleString()}</Text>
                     <View style={[styles.compactStatus, { backgroundColor: statusColor + '20' }]}>
                         <Text style={[styles.compactStatusText, { color: statusColor }]}>{order.status_name}</Text>
                     </View>
@@ -1098,7 +1101,7 @@ const CashierDashboard = () => {
                 </View>
                 <View style={{ flex: 1, marginLeft: 15 }}>
                     <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>VIEW CART</Text>
-                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Rs. {total.toLocaleString()}</Text>
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Rs. {roundUpToTen(total).toLocaleString()}</Text>
                 </View>
                 <View style={styles.checkoutBtnPos}>
                     <Text style={{ color: '#111827', fontWeight: 'bold' }}>Checkout ➔</Text>
@@ -1316,7 +1319,7 @@ const CashierDashboard = () => {
                     <View style={[styles.checkoutFooter, { backgroundColor: 'white', paddingTop: 20, borderTopWidth: 1, borderTopColor: '#F3F4F6' }]}>
                         <View style={styles.totalRow}>
                             <Text style={styles.totalLabel}>Grand Total</Text>
-                            <Text style={styles.totalAmount}>Rs. {cart.reduce((s, i) => s + (i.price * i.quantity), 0).toLocaleString()}</Text>
+                            <Text style={styles.totalAmount}>Rs. {roundUpToTen(cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toLocaleString()}</Text>
                         </View>
                         <TouchableOpacity
                             style={[styles.confirmOrderBtn, { backgroundColor: '#111827', paddingVertical: 18, borderRadius: 16 }]}
@@ -1544,7 +1547,7 @@ const CashierDashboard = () => {
                                 <Text style={{ fontSize: 10, color: '#6B7280' }}>
                                     {order.paid_at ? `💳 ${order.payment_method_name || 'Settled'}` : '⏳ Unpaid'}
                                 </Text>
-                                <Text style={styles.historyTotal}>Rs. {order.total_price}</Text>
+                                <Text style={styles.historyTotal}>Rs. {roundUpToTen(order.total_price).toLocaleString()}</Text>
                             </View>
                         </View>
 
@@ -1676,7 +1679,7 @@ const CashierDashboard = () => {
                                     })()}
                                     <View style={styles.billTotalRow}>
                                         <Text style={styles.billTotalLabel}>Final Total</Text>
-                                        <Text style={styles.billTotalValue}>Rs. {selectedOrder.total_price.toLocaleString()}</Text>
+                                        <Text style={styles.billTotalValue}>Rs. {roundUpToTen(selectedOrder.total_price).toLocaleString()}</Text>
                                     </View>
                                 </View>
                             </View>
@@ -1754,7 +1757,7 @@ const CashierDashboard = () => {
                 <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                     <View style={{ backgroundColor: 'white', padding: 30, borderRadius: 32, alignItems: 'center', width: '100%', maxWidth: 400 }}>
                         <Text style={{ fontSize: 18, color: '#6B7280', marginBottom: 5 }}>DINE-IN PAYMENT</Text>
-                        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 5 }}>Rs. {selectedOrder?.total_price}</Text>
+                        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 5 }}>Rs. {roundUpToTen(selectedOrder?.total_price).toLocaleString()}</Text>
                         <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 25 }}>Order #{selectedOrder?.id}</Text>
 
                         <View style={{ padding: 20, backgroundColor: 'white', borderRadius: 32, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, elevation: 10, borderWidth: 1, borderColor: '#F3F4F6' }}>
@@ -1819,7 +1822,7 @@ const CashierDashboard = () => {
                                     <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F9FAFB', borderRadius: 12 }}>
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <Text style={{ fontSize: 12, color: '#6B7280' }}>Total Amount</Text>
-                                            <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Rs. {item.total_price}</Text>
+                                            <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Rs. {roundUpToTen(item.total_price).toLocaleString()}</Text>
                                         </View>
                                         {item.paid_at && (
                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, paddingTop: 5, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
