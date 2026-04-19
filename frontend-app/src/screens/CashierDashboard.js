@@ -107,14 +107,14 @@ const CashierDashboard = () => {
 
     const getStatusColor = (status) => {
         const s = (status || '').toUpperCase();
-        if (s === 'PLACED') return '#94A3B8';
+        if (s === 'PLACED' || s === 'PENDING') return '#94A3B8';
         if (s === 'CONFIRMED') return '#6366F1';
         if (s === 'PREPARING') return '#F59E0B';
         if (s === 'READY_TO_SERVE') return '#3B82F6';
         if (s === 'SERVED') return '#8B5CF6';
         if (s === 'PAYMENT_PENDING') return '#F59E0B';
-        if (s === 'PAYMENT_COMPLETED') return '#10B981';
-        if (s === 'COMPLETED') return '#10B981';
+        if (s === 'PAYMENT_COMPLETED' || s === 'PAYMENT COMPLETE') return '#10B981';
+        if (s === 'COMPLETED' || s === 'CLOSED') return '#10B981';
         return '#6B7280';
     };
 
@@ -130,6 +130,8 @@ const CashierDashboard = () => {
     const renderMinimalOrderCard = (order) => {
         const typeColor = getTypeColor(order.type_name);
         const statusColor = getStatusColor(order.status_name);
+        
+        const orderTime = new Date(order.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
         return (
             <TouchableOpacity
@@ -143,18 +145,29 @@ const CashierDashboard = () => {
                 }}
             >
                 <View style={[styles.compactCardSide, { backgroundColor: typeColor }]} />
-                <View style={styles.compactCardMain}>
-                    <Text style={styles.compactSteward} numberOfLines={1}>{order.steward_name || 'System'}</Text>
-                    <Text style={styles.compactTable}>
-                        {order.type_name === 'TAKEAWAY' ? '🥡 WALK-IN' :
-                            order.type_name === 'DELIVERY' ? '🚚 DELIVERY' :
-                                `🪑 ${order.table_number ? 'T-'+order.table_number : 'Table'}`}
-                    </Text>
-                </View>
-                <View style={styles.compactCardEnd}>
-                    <Text style={styles.compactTotal}>Rs.{roundUpToTen(order.total_price).toLocaleString()}</Text>
-                    <View style={[styles.compactStatus, { backgroundColor: statusColor + '20' }]}>
-                        <Text style={[styles.compactStatusText, { color: statusColor }]}>{order.status_name}</Text>
+                <View style={{ flex: 1, padding: 15, flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <View style={{ justifyContent: 'space-between' }}>
+                        <View>
+                            <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1E293B' }}>#{order.id}</Text>
+                            {order.needed_time && (order.type_name === 'TAKEAWAY' || order.type_name === 'DELIVERY') && (
+                                <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: 'bold' }}>⏰ {order.needed_time}</Text>
+                            )}
+                        </View>
+                        <Text style={{ fontSize: 14, color: '#64748B', marginTop: 10, fontWeight: 'bold' }}>{order.steward_name || 'System'}</Text>
+                    </View>
+                    <View style={{ justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>
+                            {order.display_location || (order.table_number ? `T-${order.table_number}` : 'Table')}
+                        </Text>
+                        <View style={[styles.compactStatus, { backgroundColor: statusColor + '20', marginTop: 5, paddingHorizontal: 10, paddingVertical: 4 }]}>
+                            <Text style={[styles.compactStatusText, { color: statusColor, fontSize: 10 }]}>{order.status_name}</Text>
+                        </View>
+                    </View>
+                    <View style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: 'bold' }}>{orderTime}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A', marginTop: 10 }}>
+                            Rs.{roundUpToTen(order.total_price).toLocaleString()}
+                        </Text>
                     </View>
                 </View>
             </TouchableOpacity>
@@ -273,9 +286,14 @@ const CashierDashboard = () => {
             socket.emit('join', 'cashier_room');
         });
 
-        socket.on('newOrder', () => {
+        socket.on('newOrder', (data) => {
             playNotificationSound();
-            Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+            if (data && (data.type === 'TAKEAWAY' || data.type === 'DELIVERY')) {
+                const title = data.type === 'TAKEAWAY' ? 'Walk-in Order Paid' : 'Delivery Order Paid';
+                Alert.alert(`✅ Payment Successful - ${title}`, `A new ${data.type.toLowerCase()} order was paid online.\nCustomer: ${data.customerName || 'N/A'}\nAmount: Rs.${data.totalPrice || 0}`);
+            } else {
+                Alert.alert('New Order!', 'New Order Started - Begin Preparation');
+            }
             fetchData(true);
         });
 
@@ -905,13 +923,13 @@ const CashierDashboard = () => {
                 (o.customer_name || '').toLowerCase().includes(query);
 
             // Terminal status filter (Home only shows active)
-            const isActive = !['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED'].includes((o.status_name || '').toUpperCase());
+            const isActive = !['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED'].includes((o.status_name || '').toUpperCase());
 
             return matchesType && matchesSearch && isActive;
         });
 
         const getCount = (type) => {
-            const finishedStatuses = ['COMPLETED', 'CANCELLED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED', 'FINISHED'];
+            const finishedStatuses = ['COMPLETED', 'CANCELLED', 'REJECTED', 'FINISHED'];
             return orders.filter(o =>
                 (o.type_name || 'DINE-IN').replace('_', '-').toUpperCase() === type &&
                 !finishedStatuses.includes((o.status_name || '').toUpperCase())
@@ -1603,16 +1621,26 @@ const CashierDashboard = () => {
 
     const renderSettlementModal = () => {
         if (!selectedOrder) return null;
-        const isClosed = selectedOrder.status_name === 'COMPLETED' || selectedOrder.status_name === 'PAYMENT_COMPLETED';
+        const isClosed = selectedOrder.status_name === 'COMPLETED' || selectedOrder.status_name === 'CLOSED';
 
-        const statusOptions = [
-            { label: 'Received', value: 'PENDING' },
+        let statusOptions = [
+            { label: 'Received', value: 'PLACED' },
             { label: 'Confirmed', value: 'CONFIRMED' },
+            { label: 'Preparing', value: 'PREPARING' },
+            { label: 'Ready to Serve', value: 'READY_TO_SERVE' },
             { label: 'Served', value: 'SERVED' },
-            { label: 'Payment Pending', value: 'PAYMENT_PENDING' },
-            { label: 'Full Settlement', value: 'PAYMENT_COMPLETED' },
-            { label: 'Closed', value: 'COMPLETED' }
+            { label: 'Payment Complete', value: 'PAYMENT_COMPLETED' }
         ];
+
+        if (selectedOrder.type_name === 'TAKEAWAY') {
+            statusOptions = [
+                { label: 'Confirmed', value: 'CONFIRMED' },
+                { label: 'Preparing', value: 'PREPARING' },
+                { label: 'Ready', value: 'READY' },
+                { label: 'Pickup', value: 'PICKUP' },
+                { label: 'Complete', value: 'COMPLETED' }
+            ];
+        }
 
         return (
             <Modal visible={showSettlementModal} transparent animationType="slide">
@@ -1630,7 +1658,7 @@ const CashierDashboard = () => {
 
                         <ScrollView showsVerticalScrollIndicator={false}>
                             {/* Status Selector */}
-                            {!isClosed && (
+                            {!isClosed && selectedOrder.type_name !== 'DELIVERY' && (
                                 <View style={{ marginBottom: 20 }}>
                                     <Text style={styles.inputLabel}>MANAGE ORDER STATUS</Text>
                                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
@@ -1685,14 +1713,34 @@ const CashierDashboard = () => {
                             </View>
 
                             {/* Payment Options */}
-                            {!isClosed && (
+                            {/* Payment Options / Customer Info */}
+                            {(selectedOrder.type_name === 'TAKEAWAY' || selectedOrder.type_name === 'DELIVERY') ? (
+                                <View style={{ marginBottom: 20, backgroundColor: '#F8FAFC', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                    <Text style={styles.inputLabel}>ONLINE ORDER DETAILS</Text>
+                                    <View style={{ marginTop: 10 }}>
+                                        <Text style={{ fontSize: 14, color: '#64748B' }}>Customer Name:</Text>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginBottom: 10 }}>{selectedOrder.customer_name || 'N/A'}</Text>
+                                        
+                                        <Text style={{ fontSize: 14, color: '#64748B' }}>Mobile Number:</Text>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginBottom: 10 }}>{selectedOrder.phone || 'N/A'}</Text>
+                                        
+                                        <Text style={{ fontSize: 14, color: '#64748B' }}>Expected {selectedOrder.type_name === 'TAKEAWAY' ? 'Pickup' : 'Delivery'} Time:</Text>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#EF4444' }}>{selectedOrder.needed_time || 'ASAP'}</Text>
+
+                                        <View style={{ marginTop: 15, backgroundColor: '#D1FAE5', padding: 10, borderRadius: 8 }}>
+                                            <Text style={{ color: '#065F46', fontWeight: 'bold', textAlign: 'center' }}>✅ Already Paid via Card (Online)</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            ) : !isClosed && (
                                 <View style={{ marginBottom: 20 }}>
                                     <Text style={styles.inputLabel}>CHOOSE PAYMENT METHOD</Text>
                                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                                         {[
                                             { id: 1, label: 'Cash', icon: '💵' },
                                             { id: 2, label: 'Card', icon: '💳' },
-                                            { id: 4, label: 'QR Pay', icon: '📱' }
+                                            { id: 4, label: 'QR Pay', icon: '📱' },
+                                            { id: 5, label: 'Bank', icon: '🏦' }
                                         ].map(method => (
                                             <TouchableOpacity
                                                 key={method.id}
@@ -1729,12 +1777,19 @@ const CashierDashboard = () => {
                             <TouchableOpacity
                                 style={[
                                     styles.confirmSettleBtn,
-                                    !settlementData.payment_method_id && { backgroundColor: '#94A3B8' }
+                                    (!settlementData.payment_method_id && selectedOrder.type_name !== 'TAKEAWAY' && selectedOrder.type_name !== 'DELIVERY') && { backgroundColor: '#94A3B8' }
                                 ]}
-                                disabled={!settlementData.payment_method_id || loading}
-                                onPress={handleSettleOrder}
+                                disabled={(!settlementData.payment_method_id && selectedOrder.type_name !== 'TAKEAWAY' && selectedOrder.type_name !== 'DELIVERY') || loading}
+                                onPress={() => {
+                                    if (selectedOrder.type_name === 'TAKEAWAY' || selectedOrder.type_name === 'DELIVERY') {
+                                        // Auto-close it without actual settlement
+                                        handleStatusUpdate('COMPLETED');
+                                    } else {
+                                        handleSettleOrder();
+                                    }
+                                }}
                             >
-                                {loading ? <ActivityIndicator color="white" /> : <Text style={styles.confirmSettleBtnText}>CONFIRM SETTLEMENT</Text>}
+                                {loading ? <ActivityIndicator color="white" /> : <Text style={styles.confirmSettleBtnText}>{selectedOrder.type_name === 'TAKEAWAY' || selectedOrder.type_name === 'DELIVERY' ? 'CLOSE COMPLETED ORDER' : 'CONFIRM SETTLEMENT'}</Text>}
                             </TouchableOpacity>
                         )}
                     </View>
@@ -1792,7 +1847,7 @@ const CashierDashboard = () => {
     };
 
     const renderPastOrdersModal = () => {
-        const terminalOrders = orders.filter(o => ['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED', 'PAYMENT_COMPLETED', 'PAYMENT-COMPLETED'].includes((o.status_name || '').toUpperCase()));
+        const terminalOrders = orders.filter(o => ['CANCELLED', 'COMPLETED', 'FINISHED', 'REJECTED'].includes((o.status_name || '').toUpperCase()));
 
         return (
             <Modal visible={showPastOrdersModal} transparent animationType="slide">
@@ -2431,7 +2486,7 @@ const styles = StyleSheet.create({
     orderSearchInput: { flex: 1, fontSize: 14, color: '#1E293B', fontWeight: '500' },
     orderGridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
     smallOrderCard: { 
-        width: '48%', 
+        width: '100%', 
         backgroundColor: 'white', 
         borderRadius: 20, 
         marginBottom: 15, 

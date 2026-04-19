@@ -202,8 +202,11 @@ export const updateOrderStatus = async (req, res) => {
 
         // Validate payment before delivering
         // Allowed to deliver if payment is 'Paid' or 'Pending Settlement'
-        const isNotPaid = !['Paid', 'Pending Settlement', 'Completed'].includes(order.payment_status);
-        if (status === 'Delivered' && isNotPaid && order.payment_method !== 'online') {
+        const psNormalized = (order.payment_status || '').toLowerCase();
+        const isNotPaid = !['paid', 'pending settlement', 'completed'].includes(psNormalized);
+        const isOnline = (order.payment_method || '').toLowerCase() === 'online';
+
+        if (status === 'Delivered' && isNotPaid && !isOnline) {
             return res.status(402).json({ 
                 message: 'Cannot mark as Delivered while payment is still Pending. Please collect payment first.' 
             });
