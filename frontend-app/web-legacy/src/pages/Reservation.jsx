@@ -56,7 +56,7 @@ function Reservation() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://192.168.1.2:5000/api/reservations', {
+            const response = await fetch('http://172.19.8.23:5000/api/reservations', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

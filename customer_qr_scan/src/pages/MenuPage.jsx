@@ -21,7 +21,7 @@ export function MenuPage({ onNavigate }) {
   const { currentOrder, selectedStewardId, tableNumber, clearOrder } = useOrder();
   const { isAuthenticated, logout } = useAuth();
 
-  const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://192.168.1.2:5000';
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://172.19.8.23:5000';
 
   useEffect(() => {
     fetchData();

@@ -40,7 +40,7 @@ export const getMenu = async (req, res) => {
 
         const [rows] = await pool.query(query, params);
 
-        const host = req.get('host') || '192.168.1.2:5000';
+        const host = req.get('host') || '172.19.8.23:5000';
         const protocol = req.protocol === 'https' ? 'https' : 'http';
         const baseUrl = `${protocol}://${host}`;
 
@@ -82,7 +82,7 @@ export const getCategories = async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM categories');
         
-        const host = req.get('host') || '192.168.1.2:5000';
+        const host = req.get('host') || '172.19.8.23:5000';
         const protocol = req.protocol === 'https' ? 'https' : 'http';
         const baseUrl = `${protocol}://${host}`;
 

@@ -59,7 +59,7 @@ export function PaymentPage({ onNavigate }) {
             formData.append('slip', selectedFile);
         }
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.2:5000'}/api/orders/request-payment`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://172.19.8.23:5000'}/api/orders/request-payment`, {
             method: 'POST',
             body: formData,
             // Don't set Content-Type header when using FormData, browser does it with boundary

@@ -59,7 +59,7 @@ export function OrderProvider({ children }) {
     initFetch();
 
     // Init Sockets for Real-Time synchronization (Requirement #5)
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://192.168.1.2:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://172.19.8.23:5000';
     const socket = io(API_URL);
     socketRef.current = socket;
 

@@ -75,21 +75,16 @@ function Delivery() {
             return;
         }
 
-        // 12 AM to 9 PM Order Placement Window Validation
+        // 11 AM to 9 PM Restaurant Open Time Validation
         const now = new Date();
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
         const currentTimeInMins = currentHour * 60 + currentMinute;
-        
-        const orderPlacementStartMins = 0; // 12:00 AM (Midnight)
-        const orderPlacementEndMins = 21 * 60; // 9:00 PM
-        
-        // Fulfillment bounds (Delivery & Pickup only happen during open hours)
         const openMins = 11 * 60; // 11:00 AM
         const closeMins = 21 * 60; // 9:00 PM
 
-        if (currentTimeInMins >= orderPlacementEndMins) {
-            setError('We are currently closed. Orders for today can only be placed between 12:00 AM and 9:00 PM.');
+        if (currentTimeInMins < openMins || currentTimeInMins >= closeMins) {
+            setError('We are currently closed. Orders are only accepted between 11:00 AM and 9:00 PM.');
             return;
         }
 
@@ -102,7 +97,7 @@ function Delivery() {
             setError('Please provide your estimated pickup time');
             return;
         }
-        
+
         if (orderType === 'takeaway' && details.pickupTime) {
             const [selHr, selMin] = details.pickupTime.split(':').map(Number);
             const selTotalMins = selHr * 60 + selMin;
@@ -178,13 +173,13 @@ function Delivery() {
         try {
             // Mocking payment processing
             await new Promise(resolve => setTimeout(resolve, 2000));
-            
+
             // Transaction ID Mock
             const transactionId = 'TXN_' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
             const token = sessionStorage.getItem('token');
             const endpoint = orderType === 'delivery' ? '/api/orders/delivery' : '/api/orders/takeaway';
-            
+
             const payload = {
                 customer_id: user?.user?.id,
                 customer_name: details.fullName,
@@ -285,7 +280,7 @@ function Delivery() {
                             <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" className="h-4" alt="Mastercard" />
                         </div>
                     </div>
-                    
+
                     <div className="grid md:grid-cols-2 gap-10">
                         {/* Summary Section */}
                         <div className="space-y-6">
@@ -306,7 +301,7 @@ function Delivery() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div className="space-y-3">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold px-1">Supported SL Banks</p>
                                 <div className="grid grid-cols-2 gap-2">
@@ -324,44 +319,44 @@ function Delivery() {
                         <div className="space-y-5">
                             <div>
                                 <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Card Number</label>
-                                <input 
+                                <input
                                     type="text" name="number" value={cardDetails.number} onChange={handleCardChange}
-                                    className="input-glass w-full text-lg tracking-widest font-mono" placeholder="4532 1122 8899 7766" 
+                                    className="input-glass w-full text-lg tracking-widest font-mono" placeholder="4532 1122 8899 7766"
                                 />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Cardholder Name</label>
-                                <input 
+                                <input
                                     type="text" name="name" value={cardDetails.name} onChange={handleCardChange}
-                                    className="input-glass w-full" placeholder="NAME ON CARD" 
+                                    className="input-glass w-full" placeholder="NAME ON CARD"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">Expiry</label>
-                                    <input 
+                                    <input
                                         type="text" name="expiry" value={cardDetails.expiry} onChange={handleCardChange}
-                                        className="input-glass w-full text-center font-mono" placeholder="MM/YY" 
+                                        className="input-glass w-full text-center font-mono" placeholder="MM/YY"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-widest">CVV</label>
-                                    <input 
+                                    <input
                                         type="password" name="cvv" value={cardDetails.cvv} onChange={handleCardChange}
-                                        className="input-glass w-full text-center font-mono" placeholder="***" 
+                                        className="input-glass w-full text-center font-mono" placeholder="***"
                                     />
                                 </div>
                             </div>
 
-                            <Button 
-                                onClick={processPayment} 
-                                disabled={loading} 
+                            <Button
+                                onClick={processPayment}
+                                disabled={loading}
                                 className="w-full bg-[#D4AF37] text-black font-bold h-14 text-lg mt-4 shadow-xl shadow-[#D4AF37]/20"
                             >
                                 {loading ? 'Authorizing...' : 'Pay with Card'}
                             </Button>
-                            
-                            <button 
+
+                            <button
                                 onClick={() => setShowPayment(false)}
                                 className="w-full text-sm text-gray-500 hover:text-white transition-colors"
                             >
@@ -417,8 +412,8 @@ function Delivery() {
                                 <div className="text-5xl mb-6">🛒</div>
                                 <h3 className="text-2xl font-bold text-white mb-4">Your cart is empty</h3>
                                 <p className="text-gray-400 mb-10">Select your favorite dishes to start your {orderType} order.</p>
-                                <Button 
-                                    size="lg" 
+                                <Button
+                                    size="lg"
                                     onClick={() => navigate('/menu')}
                                     className="bg-[#D4AF37] text-black shadow-xl shadow-[#D4AF37]/20 px-10"
                                 >
